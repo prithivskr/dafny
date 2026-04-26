@@ -2137,6 +2137,7 @@ namespace Microsoft.Dafny {
     public bool adjustFuelForExists = true;  // fuel need to be adjusted for exists based on whether exists is in assert or assume stmt.
 
     public readonly VerificationIdGenerator defaultIdGenerator = new VerificationIdGenerator();
+    readonly VerificationIdGenerator topLevelSnapshotIdGenerator = new VerificationIdGenerator();
 
     public VerificationIdGenerator CurrentIdGenerator {
       get {

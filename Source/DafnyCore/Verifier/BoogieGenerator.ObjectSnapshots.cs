@@ -91,7 +91,7 @@ public partial class BoogieGenerator {
   }
 
   Bpl.Function CreateUnarySnapshotFunction(IOrigin tok, string prefix) {
-    var name = CurrentIdGenerator.FreshId(prefix);
+    var name = topLevelSnapshotIdGenerator.FreshId(prefix);
     var formals = new List<Bpl.Variable> {
       new Bpl.Formal(tok, new Bpl.TypedIdent(tok, "arg", Predef.RefType), true)
     };
