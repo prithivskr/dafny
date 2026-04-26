@@ -83,7 +83,7 @@ public partial class BoogieGenerator {
       return result;
     }
 
-    var supportFunction = GetOrCreateSupportFunction(expr.Function);
+    var supportFunction = GetOrCreateSupportFunction(expr.Function, etran.ObjectFieldSnapshotVersion);
     var supportArguments = etran.FunctionInvocationArguments(expr, layerArgument, revealArgument);
     var callSupport = ApplySupportFunction(expr.Origin, supportFunction, supportArguments);
     return UnionSupports(expr.Origin, callSupport, result);

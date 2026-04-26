@@ -142,6 +142,7 @@ namespace Microsoft.Dafny {
     readonly Dictionary<Function, Bpl.Expr> functionReveals = new();
     readonly Dictionary<Function, Bpl.Function> supportFunctions = new();
     readonly Dictionary<Function, string> supportFunctionNames = new();
+    readonly Dictionary<(Function function, int snapshotVersion), Bpl.Function> snapshotSupportFunctions = new();
     readonly Dictionary<Field/*!*/, Bpl.Constant/*!*/>/*!*/ fields = new Dictionary<Field/*!*/, Bpl.Constant/*!*/>();
     readonly Dictionary<Field/*!*/, Bpl.Function/*!*/>/*!*/ fieldFunctions = new Dictionary<Field/*!*/, Bpl.Function/*!*/>();
     readonly Dictionary<string, Bpl.Constant> fieldConstants = new Dictionary<string, Constant>();
@@ -173,6 +174,7 @@ namespace Microsoft.Dafny {
       Contract.Invariant(Cce.NonNullDictionaryAndValues(fields));
       Contract.Invariant(Cce.NonNullDictionaryAndValues(fieldFunctions));
       Contract.Invariant(Cce.NonNullDictionaryAndValues(supportFunctions));
+      Contract.Invariant(Cce.NonNullDictionaryAndValues(snapshotSupportFunctions));
       Contract.Invariant(codeContext == null || codeContext.EnclosingModule == currentModule);
     }
 
@@ -3141,7 +3143,14 @@ namespace Microsoft.Dafny {
     }
 
     string GetSupportFunctionName(Function f) {
+      return GetSupportFunctionName(f, 0);
+    }
+
+    string GetSupportFunctionName(Function f, int snapshotVersion) {
       Contract.Requires(f != null);
+      if (snapshotVersion != 0) {
+        return $"Sp${f.FullSanitizedName}$H{snapshotVersion}";
+      }
       if (!supportFunctionNames.TryGetValue(f, out var name)) {
         name = "Sp$" + f.FullSanitizedName;
         supportFunctionNames[f] = name;
@@ -3150,10 +3159,18 @@ namespace Microsoft.Dafny {
     }
 
     Bpl.Function GetOrCreateSupportFunction(Function f) {
+      return GetOrCreateSupportFunction(f, 0);
+    }
+
+    Bpl.Function GetOrCreateSupportFunction(Function f, int snapshotVersion) {
       Contract.Requires(f != null);
       Contract.Requires(Predef != null && sink != null);
 
-      if (supportFunctions.TryGetValue(f, out var supportFunction)) {
+      if (snapshotVersion == 0) {
+        if (supportFunctions.TryGetValue(f, out var supportFunction)) {
+          return supportFunction;
+        }
+      } else if (snapshotSupportFunctions.TryGetValue((f, snapshotVersion), out var supportFunction)) {
         return supportFunction;
       }
 
@@ -3179,10 +3196,14 @@ namespace Microsoft.Dafny {
       }
 
       var result = new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, Bpl.TypedIdent.NoName, Predef.SetType), false);
-      supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f), [], formals, result,
+      supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f, snapshotVersion), [], formals, result,
         "support function declaration for " + f.FullName);
       sink.AddTopLevelDeclaration(supportFunction);
-      supportFunctions[f] = supportFunction;
+      if (snapshotVersion == 0) {
+        supportFunctions[f] = supportFunction;
+      } else {
+        snapshotSupportFunctions[(f, snapshotVersion)] = supportFunction;
+      }
       return supportFunction;
     }
 

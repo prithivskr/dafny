@@ -310,6 +310,8 @@ namespace Microsoft.Dafny {
         return objectFieldState.ReadAlloc(tok, receiver);
       }
 
+      public int ObjectFieldSnapshotVersion => objectFieldState?.SnapshotVersion ?? 0;
+
       public Boogie.IdentifierExpr ReadsFrame(IOrigin tok) {
         Contract.Requires(tok != null);
         Contract.Ensures(Contract.Result<Boogie.IdentifierExpr>() != null);

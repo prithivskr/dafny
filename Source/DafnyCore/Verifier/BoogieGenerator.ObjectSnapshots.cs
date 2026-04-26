@@ -10,6 +10,7 @@ public partial class BoogieGenerator {
     readonly BoogieGenerator boogieGenerator;
     readonly Dictionary<Field, Bpl.Function> fieldSnapshots;
     Bpl.Function allocationSnapshot;
+    int snapshotVersion;
 
     public ObjectFieldSnapshotState(BoogieGenerator boogieGenerator, Bpl.Expr legacyHeap)
       : this(boogieGenerator, legacyHeap, new Dictionary<Field, Bpl.Function>(), null) {
@@ -21,12 +22,16 @@ public partial class BoogieGenerator {
       LegacyHeap = legacyHeap;
       this.fieldSnapshots = fieldSnapshots;
       this.allocationSnapshot = allocationSnapshot;
+      snapshotVersion = 0;
     }
 
     public Bpl.Expr LegacyHeap { get; }
+    public int SnapshotVersion => snapshotVersion;
 
     public ObjectFieldSnapshotState Clone(Bpl.Expr legacyHeap) {
-      return new ObjectFieldSnapshotState(boogieGenerator, legacyHeap, new Dictionary<Field, Bpl.Function>(fieldSnapshots), allocationSnapshot);
+      return new ObjectFieldSnapshotState(boogieGenerator, legacyHeap, new Dictionary<Field, Bpl.Function>(fieldSnapshots), allocationSnapshot) {
+        snapshotVersion = this.snapshotVersion
+      };
     }
 
     public Bpl.Expr ReadField(IOrigin tok, Field field, Bpl.Expr receiver) {
@@ -61,6 +66,7 @@ public partial class BoogieGenerator {
       var next = boogieGenerator.CreateUnarySnapshotFunction(tok, $"$FieldSnapshot${field.FullSanitizedName}$");
       boogieGenerator.EmitUnarySnapshotUpdateAssumptions(tok, next, PreviousValue, receiver, boxedValue, builder);
       fieldSnapshots[field] = next;
+      snapshotVersion++;
     }
 
     public void MarkAllocated(IOrigin tok, Bpl.Expr receiver, BoogieStmtListBuilder builder) {
@@ -76,6 +82,7 @@ public partial class BoogieGenerator {
       var next = boogieGenerator.CreateUnarySnapshotFunction(tok, "$AllocSnapshot$");
       boogieGenerator.EmitUnarySnapshotUpdateAssumptions(tok, next, PreviousValue, receiver, boogieGenerator.ApplyBox(tok, Bpl.Expr.True), builder);
       allocationSnapshot = next;
+      snapshotVersion++;
     }
   }
 
