@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.Linq;
@@ -19,6 +20,7 @@ public partial class BoogieGenerator {
     foreach (var support in supports) {
       result = UnionSupports(tok, result, support);
     }
+
     return result;
   }
 
@@ -52,9 +54,11 @@ public partial class BoogieGenerator {
       BoogieWrapper => "Empty",
       MemberSelectExpr memberSelectExpr => GetMemberSupportShapeKey(definition, memberSelectExpr),
       FunctionCallExpr functionCallExpr => GetFunctionCallSupportShapeKey(definition, functionCallExpr),
-      ITEExpr iteExpr => $"If({GetSupportShapeKey(definition, iteExpr.Test)},{GetSupportShapeKey(definition, iteExpr.Thn)},{GetSupportShapeKey(definition, iteExpr.Els)})",
+      ITEExpr iteExpr =>
+        $"If({GetSupportShapeKey(definition, iteExpr.Test)},{GetSupportShapeKey(definition, iteExpr.Thn)},{GetSupportShapeKey(definition, iteExpr.Els)})",
       UnaryOpExpr { ResolvedOp: UnaryOpExpr.ResolvedOpcode.BoolNot } unary => GetSupportShapeKey(definition, unary.E),
-      BinaryExpr binaryExpr => $"Union({GetSupportShapeKey(definition, binaryExpr.E0)},{GetSupportShapeKey(definition, binaryExpr.E1)})",
+      BinaryExpr binaryExpr =>
+        $"Union({GetSupportShapeKey(definition, binaryExpr.E0)},{GetSupportShapeKey(definition, binaryExpr.E1)})",
       _ => $"Union({string.Join(",", expr.SubExpressions.Select(subExpr => GetSupportShapeKey(definition, subExpr)))})"
     };
   }
@@ -64,6 +68,7 @@ public partial class BoogieGenerator {
     if (expr.Member is not Field field || !field.IsMutable) {
       return objectSupport;
     }
+
     return $"Field({field.FullSanitizedName},{objectSupport})";
   }
 
@@ -81,7 +86,8 @@ public partial class BoogieGenerator {
     return $"Call({calleeKey};{argumentsKey})";
   }
 
-  Bpl.Expr TranslateSupportExpr(Function definition, Expression expr, ExpressionTranslator etran, Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
+  Bpl.Expr TranslateSupportExpr(Function definition, Expression expr, ExpressionTranslator etran,
+    Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
     Contract.Requires(definition != null);
     Contract.Requires(expr != null);
     Contract.Requires(etran != null);
@@ -93,17 +99,21 @@ public partial class BoogieGenerator {
       IdentifierExpr => EmptySupport(expr.Origin),
       NameSegment => EmptySupport(expr.Origin),
       BoogieWrapper => EmptySupport(expr.Origin),
-      MemberSelectExpr memberSelectExpr => TranslateMemberSupportExpr(definition, memberSelectExpr, etran, layerArgument, revealArgument),
-      FunctionCallExpr functionCallExpr => TranslateFunctionCallSupportExpr(definition, functionCallExpr, etran, layerArgument, revealArgument),
+      MemberSelectExpr memberSelectExpr => TranslateMemberSupportExpr(definition, memberSelectExpr, etran,
+        layerArgument, revealArgument),
+      FunctionCallExpr functionCallExpr => TranslateFunctionCallSupportExpr(definition, functionCallExpr, etran,
+        layerArgument, revealArgument),
       ITEExpr iteExpr => TranslateIteSupportExpr(definition, iteExpr, etran, layerArgument, revealArgument),
-      UnaryOpExpr { ResolvedOp: UnaryOpExpr.ResolvedOpcode.BoolNot } unary => TranslateSupportExpr(definition, unary.E, etran, layerArgument, revealArgument),
+      UnaryOpExpr { ResolvedOp: UnaryOpExpr.ResolvedOpcode.BoolNot } unary => TranslateSupportExpr(definition, unary.E,
+        etran, layerArgument, revealArgument),
       BinaryExpr binaryExpr => TranslateBinarySupportExpr(definition, binaryExpr, etran, layerArgument, revealArgument),
       _ => UnionSupports(expr.Origin, expr.SubExpressions.Select(subExpr =>
         TranslateSupportExpr(definition, subExpr, etran, layerArgument, revealArgument)))
     };
   }
 
-  Bpl.Expr TranslateMemberSupportExpr(Function definition, MemberSelectExpr expr, ExpressionTranslator etran, Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
+  Bpl.Expr TranslateMemberSupportExpr(Function definition, MemberSelectExpr expr, ExpressionTranslator etran,
+    Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
     Contract.Requires(definition != null);
     Contract.Requires(expr != null);
     Contract.Requires(etran != null);
@@ -117,7 +127,8 @@ public partial class BoogieGenerator {
     return UnionOneSupport(expr.Origin, objectSupport, ApplyBox(expr.Origin, receiver));
   }
 
-  Bpl.Expr TranslateFunctionCallSupportExpr(Function definition, FunctionCallExpr expr, ExpressionTranslator etran, Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
+  Bpl.Expr TranslateFunctionCallSupportExpr(Function definition, FunctionCallExpr expr, ExpressionTranslator etran,
+    Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
     Contract.Requires(definition != null);
     Contract.Requires(expr != null);
     Contract.Requires(etran != null);
@@ -125,7 +136,8 @@ public partial class BoogieGenerator {
     var argumentSupports = new List<Bpl.Expr> {
       TranslateSupportExpr(definition, expr.Receiver, etran, layerArgument, revealArgument)
     };
-    argumentSupports.AddRange(expr.Args.Select(arg => TranslateSupportExpr(definition, arg, etran, layerArgument, revealArgument)));
+    argumentSupports.AddRange(expr.Args.Select(arg =>
+      TranslateSupportExpr(definition, arg, etran, layerArgument, revealArgument)));
 
     var result = UnionSupports(expr.Origin, argumentSupports);
     if (!NeedsSupportFunction(expr.Function, expr.Function.Body?.Resolved)) {
@@ -141,25 +153,121 @@ public partial class BoogieGenerator {
     return UnionSupports(expr.Origin, callSupport, result);
   }
 
-  Bpl.Expr TranslateBinarySupportExpr(Function definition, BinaryExpr expr, ExpressionTranslator etran, Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
+  static bool IsNullLiteral(Expression expr) {
+    expr = Expression.StripParens(expr).Resolved;
+    return expr is LiteralExpr { Value: null };
+  }
+
+  static bool SameSupportRoot(Expression left, Expression right) {
+    left = Expression.StripParens(left).Resolved;
+    right = Expression.StripParens(right).Resolved;
+
+    if (left is ThisExpr && right is ThisExpr) {
+      return true;
+    }
+
+    if (left is IdentifierExpr leftId && right is IdentifierExpr rightId) {
+      return leftId.Var == rightId.Var;
+    }
+
+    if (left is BoogieWrapper leftBoogie && right is BoogieWrapper rightBoogie) {
+      return leftBoogie.Expr == rightBoogie.Expr;
+    }
+
+    if (left is MemberSelectExpr leftMember && right is MemberSelectExpr rightMember) {
+      return leftMember.Member == rightMember.Member && SameSupportRoot(leftMember.Obj, rightMember.Obj);
+    }
+
+    return false;
+  }
+
+  static bool StartsWithSupportRoot(Expression expr, Expression root) {
+    expr = Expression.StripParens(expr).Resolved;
+    return SameSupportRoot(expr, root) || expr switch {
+      MemberSelectExpr memberSelectExpr => StartsWithSupportRoot(memberSelectExpr.Obj, root),
+      FunctionCallExpr functionCallExpr => StartsWithSupportRoot(functionCallExpr.Receiver, root),
+      SeqSelectExpr seqSelectExpr => StartsWithSupportRoot(seqSelectExpr.Seq, root),
+      MultiSelectExpr multiSelectExpr => StartsWithSupportRoot(multiSelectExpr.Array, root),
+      _ => false
+    };
+  }
+
+  static bool MightDereferenceRoot(Expression expr, Expression root) {
+    expr = Expression.StripParens(expr).Resolved;
+    if (expr switch {
+          MemberSelectExpr memberSelectExpr => StartsWithSupportRoot(memberSelectExpr.Obj, root),
+          FunctionCallExpr functionCallExpr => StartsWithSupportRoot(functionCallExpr.Receiver, root),
+          SeqSelectExpr seqSelectExpr => StartsWithSupportRoot(seqSelectExpr.Seq, root),
+          MultiSelectExpr multiSelectExpr => StartsWithSupportRoot(multiSelectExpr.Array, root),
+          _ => false
+        }) {
+      return true;
+    }
+
+    return expr.SubExpressions.Any(subExpr => MightDereferenceRoot(subExpr, root));
+  }
+
+  static bool TryGetNullGuardedDereferenceCondition(Expression guard, Expression rhs,
+    out bool evaluatesRightWhenGuardTrue) {
+    evaluatesRightWhenGuardTrue = false;
+
+    guard = Expression.StripParens(guard).Resolved;
+
+    if (guard is not BinaryExpr {
+          ResolvedOp: BinaryExpr.ResolvedOpcode.EqCommon
+          or BinaryExpr.ResolvedOpcode.NeqCommon
+        } binaryExpr) {
+      
+      return false;
+    }
+
+    Expression root;
+    if (IsNullLiteral(binaryExpr.E0)) {
+      root = Expression.StripParens(binaryExpr.E1).Resolved;
+    } else if (IsNullLiteral(binaryExpr.E1)) {
+      root = Expression.StripParens(binaryExpr.E0).Resolved;
+    } else {
+      return false;
+    }
+
+    if (!MightDereferenceRoot(rhs, root)) {
+      return false;
+    }
+
+    evaluatesRightWhenGuardTrue = binaryExpr.ResolvedOp == BinaryExpr.ResolvedOpcode.NeqCommon;
+    return true;
+  }
+
+  Bpl.Expr TranslateBinarySupportExpr(Function definition, BinaryExpr expr, ExpressionTranslator etran,
+    Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
     Contract.Requires(definition != null);
     Contract.Requires(expr != null);
     Contract.Requires(etran != null);
 
     var left = TranslateSupportExpr(definition, expr.E0, etran, layerArgument, revealArgument);
     var right = TranslateSupportExpr(definition, expr.E1, etran, layerArgument, revealArgument);
-    return expr.ResolvedOp switch {
-      BinaryExpr.ResolvedOpcode.And => UnionSupports(expr.Origin, left,
-        ConditionalSupport(expr.Origin, etran.TrExpr(expr.E0), right, EmptySupport(expr.Origin))),
-      BinaryExpr.ResolvedOpcode.Or => UnionSupports(expr.Origin, left,
-        ConditionalSupport(expr.Origin, etran.TrExpr(expr.E0), EmptySupport(expr.Origin), right)),
-      BinaryExpr.ResolvedOpcode.Imp => UnionSupports(expr.Origin, left,
-        ConditionalSupport(expr.Origin, etran.TrExpr(expr.E0), right, EmptySupport(expr.Origin))),
-      _ => UnionSupports(expr.Origin, left, right)
-    };
+
+    // hacky solution to handle short-circuit ite
+    if (TryGetNullGuardedDereferenceCondition(expr.E0, expr.E1, out var evaluatesRightWhenGuardTrue)) {
+      var guard = etran.TrExpr(expr.E0);
+      return expr.ResolvedOp switch {
+        // n != null && expr: right only evaluated when guard true
+        BinaryExpr.ResolvedOpcode.And when evaluatesRightWhenGuardTrue =>
+          UnionSupports(expr.Origin, left,
+            ConditionalSupport(expr.Origin, guard, right, EmptySupport(expr.Origin))),
+        // n == null || expr: right only evaluated when guard false  
+        BinaryExpr.ResolvedOpcode.Or when !evaluatesRightWhenGuardTrue =>
+          UnionSupports(expr.Origin, left,
+            ConditionalSupport(expr.Origin, guard, EmptySupport(expr.Origin), right)),
+        _ => UnionSupports(expr.Origin, left, right)
+      };
+    }
+
+    return UnionSupports(expr.Origin, left, right);
   }
 
-  Bpl.Expr TranslateIteSupportExpr(Function definition, ITEExpr expr, ExpressionTranslator etran, Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
+  Bpl.Expr TranslateIteSupportExpr(Function definition, ITEExpr expr, ExpressionTranslator etran,
+    Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
     Contract.Requires(definition != null);
     Contract.Requires(expr != null);
     Contract.Requires(etran != null);
