@@ -3177,11 +3177,11 @@ namespace Microsoft.Dafny {
       Contract.Requires(Predef != null && sink != null);
 
       if (snapshotVersion == 0) {
-        if (supportFunctions.TryGetValue(f, out var supportFunction)) {
-          return supportFunction;
+        if (supportFunctions.TryGetValue(f, out var existingSupportFunction)) {
+          return existingSupportFunction;
         }
-      } else if (snapshotSupportFunctions.TryGetValue((f, snapshotVersion), out var supportFunction)) {
-        return supportFunction;
+      } else if (snapshotSupportFunctions.TryGetValue((f, snapshotVersion), out var existingSupportFunction)) {
+        return existingSupportFunction;
       }
 
       var formals = new List<Variable>();
@@ -3206,7 +3206,7 @@ namespace Microsoft.Dafny {
       }
 
       var result = new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, Bpl.TypedIdent.NoName, Predef.SetType), false);
-      supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f, snapshotVersion), [], formals, result,
+      var supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f, snapshotVersion), [], formals, result,
         "support function declaration for " + f.FullName);
       sink.AddTopLevelDeclaration(supportFunction);
       if (snapshotVersion == 0) {

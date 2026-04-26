@@ -166,7 +166,7 @@ public partial class BoogieGenerator {
       }
     }
 
-    var pre = Bpl.Expr.True;
+    Bpl.Expr pre = Bpl.Expr.True;
     foreach (AttributedExpression req in ConjunctsOf(f.Req)) {
       pre = BplAnd(pre, etran.TrExpr(Substitute(req.E, receiverReplacement, substMap)));
     }
