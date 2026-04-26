@@ -86,6 +86,116 @@ public partial class BoogieGenerator {
     return $"Call({calleeKey};{argumentsKey})";
   }
 
+  List<Field> GetSupportSnapshotFields(Function function) {
+    Contract.Requires(function != null);
+    if (supportSnapshotFields.TryGetValue(function, out var existingFields)) {
+      return existingFields;
+    }
+
+    if (function.Body?.Resolved is not { } body || !NeedsSupportFunction(function, body)) {
+      existingFields = [];
+    } else {
+      var fields = new HashSet<Field>();
+      CollectSupportSnapshotFields(function, body, fields);
+      existingFields = fields.OrderBy(field => field.FullSanitizedName).ToList();
+    }
+
+    supportSnapshotFields[function] = existingFields;
+    return existingFields;
+  }
+
+  void CollectSupportSnapshotFields(Function definition, Expression expr, HashSet<Field> fields) {
+    expr = Expression.StripParens(expr).Resolved;
+    switch (expr) {
+      case LiteralExpr:
+      case ThisExpr:
+      case IdentifierExpr:
+      case NameSegment:
+      case BoogieWrapper:
+        return;
+      case MemberSelectExpr memberSelectExpr:
+        CollectSupportSnapshotFields(definition, memberSelectExpr.Obj, fields);
+        CollectValueSnapshotFields(memberSelectExpr.Obj, fields);
+        return;
+      case FunctionCallExpr functionCallExpr:
+        CollectSupportSnapshotFields(definition, functionCallExpr.Receiver, fields);
+        CollectValueSnapshotFields(functionCallExpr.Receiver, fields);
+        foreach (var arg in functionCallExpr.Args) {
+          CollectSupportSnapshotFields(definition, arg, fields);
+          CollectValueSnapshotFields(arg, fields);
+        }
+
+        if (NeedsSupportFunction(functionCallExpr.Function, functionCallExpr.Function.Body?.Resolved)) {
+          foreach (var supportField in GetSupportSnapshotFields(functionCallExpr.Function)) {
+            fields.Add(supportField);
+          }
+        }
+
+        return;
+      case ITEExpr iteExpr:
+        CollectSupportSnapshotFields(definition, iteExpr.Test, fields);
+        CollectSupportSnapshotFields(definition, iteExpr.Thn, fields);
+        CollectSupportSnapshotFields(definition, iteExpr.Els, fields);
+        CollectValueSnapshotFields(iteExpr.Test, fields);
+        return;
+      case UnaryOpExpr { ResolvedOp: UnaryOpExpr.ResolvedOpcode.BoolNot } unary:
+        CollectSupportSnapshotFields(definition, unary.E, fields);
+        return;
+      case BinaryExpr binaryExpr:
+        CollectSupportSnapshotFields(definition, binaryExpr.E0, fields);
+        CollectSupportSnapshotFields(definition, binaryExpr.E1, fields);
+        if (TryGetNullGuardedDereferenceCondition(binaryExpr.E0, binaryExpr.E1, out _)) {
+          CollectValueSnapshotFields(binaryExpr.E0, fields);
+        }
+
+        return;
+      default:
+        foreach (var subExpression in expr.SubExpressions) {
+          CollectSupportSnapshotFields(definition, subExpression, fields);
+        }
+
+        return;
+    }
+  }
+
+  void CollectValueSnapshotFields(Expression expr, HashSet<Field> fields) {
+    expr = Expression.StripParens(expr).Resolved;
+    switch (expr) {
+      case LiteralExpr:
+      case ThisExpr:
+      case IdentifierExpr:
+      case NameSegment:
+      case BoogieWrapper:
+        return;
+      case MemberSelectExpr memberSelectExpr:
+        CollectValueSnapshotFields(memberSelectExpr.Obj, fields);
+        if (memberSelectExpr.Member is Field { IsMutable: true } field) {
+          fields.Add(field);
+        }
+
+        return;
+      case FunctionCallExpr functionCallExpr:
+        CollectValueSnapshotFields(functionCallExpr.Receiver, fields);
+        foreach (var arg in functionCallExpr.Args) {
+          CollectValueSnapshotFields(arg, fields);
+        }
+
+        if (NeedsSupportFunction(functionCallExpr.Function, functionCallExpr.Function.Body?.Resolved)) {
+          foreach (var supportField in GetSupportSnapshotFields(functionCallExpr.Function)) {
+            fields.Add(supportField);
+          }
+        }
+
+        return;
+      default:
+        foreach (var subExpression in expr.SubExpressions) {
+          CollectValueSnapshotFields(subExpression, fields);
+        }
+
+        return;
+    }
+  }
+
   Bpl.Expr TranslateSupportExpr(Function definition, Expression expr, ExpressionTranslator etran,
     Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
     Contract.Requires(definition != null);
@@ -144,11 +254,8 @@ public partial class BoogieGenerator {
       return result;
     }
 
-    var snapshotState = etran.ObjectFieldSnapshotState;
-    var supportFunction = snapshotState is null || snapshotState.IsBaseState
-      ? GetCanonicalSupportFunction(expr.Function) ?? GetOrCreateSupportFunction(expr.Function)
-      : GetOrCreateSupportFunction(expr.Function, snapshotState);
-    var supportArguments = etran.FunctionInvocationArguments(expr, layerArgument, revealArgument);
+    var supportFunction = GetCanonicalSupportFunction(expr.Function) ?? GetOrCreateSupportFunction(expr.Function);
+    var supportArguments = etran.SupportFunctionInvocationArguments(expr, layerArgument, revealArgument);
     var callSupport = ApplySupportFunction(expr.Origin, supportFunction, supportArguments);
     return UnionSupports(expr.Origin, callSupport, result);
   }

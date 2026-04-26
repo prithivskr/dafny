@@ -1575,6 +1575,45 @@ BplBoundVar(varNameGen.FreshId(string.Format("#{0}#", bv.Name)), Predef.BoxType,
         return FunctionInvocationArguments(e, layerArgument, revealArgument, false, out dummy);
       }
 
+      public List<Boogie.Expr> SupportFunctionInvocationArguments(FunctionCallExpr e, Boogie.Expr layerArgument, Boogie.Expr revealArgument) {
+        Contract.Requires(e != null);
+        Contract.Ensures(Contract.Result<List<Boogie.Expr>>() != null);
+
+        var args = new List<Boogie.Expr>();
+
+        var tyParams = GetTypeParams(e.Function);
+        var tySubst = e.TypeArgumentSubstitutionsWithParents();
+        args.AddRange(BoogieGenerator.TrTypeArgs(tySubst, tyParams));
+
+        if (layerArgument != null) {
+          args.Add(layerArgument);
+        }
+        if (revealArgument != null) {
+          args.Add(revealArgument);
+        }
+        foreach (var field in BoogieGenerator.GetSupportSnapshotFields(e.Function)) {
+          Contract.Assert(ObjectFieldSnapshotState != null);
+          args.Add(ObjectFieldSnapshotState.GetFieldSnapshotMap(e.Origin, field));
+        }
+        if (e.Function is TwoStateFunction) {
+          args.Add(OldAt(e.AtLabel).HeapExpr);
+        }
+        if (e.Function.ReadsHeap) {
+          Contract.Assert(HeapExpr != null);
+          args.Add(HeapExpr);
+        }
+        if (!e.Function.IsStatic) {
+          args.Add(BoogieGenerator.BoxifyForTraitParent(e.Origin, TrExpr(e.Receiver), e.Function, e.Receiver.Type));
+        }
+        for (int i = 0; i < e.Args.Count; i++) {
+          Expression ee = e.Args[i];
+          Type t = e.Function.Ins[i].Type;
+          Expr tr_ee = TrExpr(ee);
+          args.Add(BoogieGenerator.AdaptBoxing(GetToken(e), tr_ee, Cce.NonNull(ee.Type), t));
+        }
+        return args;
+      }
+
       public List<Boogie.Expr> FunctionInvocationArguments(FunctionCallExpr e, Boogie.Expr layerArgument, Boogie.Expr revealArgument, bool omitHeapArgument, out bool argsAreLit) {
         Contract.Requires(e != null);
         Contract.Ensures(Contract.Result<List<Boogie.Expr>>() != null);

@@ -98,6 +98,11 @@ public partial class BoogieGenerator {
       revealFormal = NextFormal();
     }
 
+    var supportSnapshotMaps = new Dictionary<Field, Bpl.Expr>();
+    foreach (var field in GetSupportSnapshotFields(f)) {
+      supportSnapshotMaps[field] = NextFormal();
+    }
+
     Bpl.IdentifierExpr prevHeapFormal = null;
     Bpl.IdentifierExpr heapFormal = null;
 
@@ -116,7 +121,13 @@ public partial class BoogieGenerator {
       heapFormal = NextFormal();
       etran = new ExpressionTranslator(this, Predef, heapFormal, etran.Old.HeapExpr, f);
     }
-    if (snapshotState is { IsBaseState: false }) {
+    if (supportSnapshotMaps.Count != 0) {
+      var supportSnapshotState = (snapshotState?.Clone(etran.HeapExpr) ?? etran.ObjectFieldSnapshotState?.Clone(etran.HeapExpr) ??
+                                  CreateObjectFieldSnapshotState(etran.HeapExpr))
+        ?.WithSupportSnapshotMaps(supportSnapshotMaps, etran.HeapExpr);
+      Contract.Assert(supportSnapshotState != null);
+      etran = etran.WithObjectFieldSnapshotState(supportSnapshotState);
+    } else if (snapshotState is { IsBaseState: false }) {
       etran = etran.WithObjectFieldSnapshotState(snapshotState.Clone(etran.HeapExpr));
     }
 
@@ -161,6 +172,8 @@ public partial class BoogieGenerator {
     Contract.Requires(supportFunction != null);
 
     var shapeKey = GetSupportShapeKey(f, body);
+    var supportSnapshotShapeKey = string.Join(",", GetSupportSnapshotFields(f).Select(field => field.FullSanitizedName));
+    shapeKey = $"{supportSnapshotShapeKey}|{shapeKey}";
     if (!canonicalSupportFunctionsByShape.TryGetValue(shapeKey, out var canonicalSupportFunction)) {
       canonicalSupportFunctionsByShape[shapeKey] = supportFunction;
       canonicalSupportFunctions[f] = supportFunction;
@@ -205,6 +218,12 @@ public partial class BoogieGenerator {
       var reveal = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, "$reveal", Boogie.Type.Bool));
       forallFormals.Add(reveal);
       args.Add(new Bpl.LiteralExpr(f.Origin, true));
+    }
+
+    foreach (var field in GetSupportSnapshotFields(f)) {
+      var snapshotMap = new Bpl.BoundVariable(field.Origin, new Bpl.TypedIdent(field.Origin, GetSupportSnapshotMapFormalName(field), SnapshotMapType(field.Origin)));
+      forallFormals.Add(snapshotMap);
+      args.Add(new Bpl.IdentifierExpr(field.Origin, snapshotMap));
     }
 
     Bpl.Expr ante = Bpl.Expr.True;

@@ -144,10 +144,12 @@ namespace Microsoft.Dafny {
     readonly Dictionary<Function, string> supportFunctionNames = new();
     readonly Dictionary<(Function function, string snapshotKey), Bpl.Function> snapshotSupportFunctions = new();
     readonly Dictionary<(Function function, string snapshotKey), string> snapshotSupportFunctionNames = new();
+    readonly Dictionary<Function, List<Field>> supportSnapshotFields = new();
     readonly Dictionary<string, Bpl.Function> canonicalSupportFunctionsByShape = new();
     readonly Dictionary<Function, Bpl.Function> canonicalSupportFunctions = new();
     readonly Dictionary<Field/*!*/, Bpl.Constant/*!*/>/*!*/ fields = new Dictionary<Field/*!*/, Bpl.Constant/*!*/>();
     readonly Dictionary<Field/*!*/, Bpl.Function/*!*/>/*!*/ fieldFunctions = new Dictionary<Field/*!*/, Bpl.Function/*!*/>();
+    readonly Dictionary<Field, Bpl.Function> heapFieldSnapshotMapFunctions = new();
     readonly Dictionary<string, Bpl.Constant> fieldConstants = new Dictionary<string, Constant>();
     readonly Dictionary<string, Bpl.Constant> tytagConstants = new Dictionary<string, Constant>();
 
@@ -3188,12 +3190,7 @@ namespace Microsoft.Dafny {
       Contract.Requires(f != null);
       Contract.Requires(Predef != null && sink != null);
 
-      var snapshotKey = snapshotState?.SupportFunctionSnapshotKey ?? "";
-      if (snapshotKey == "") {
-        if (supportFunctions.TryGetValue(f, out var existingSupportFunction)) {
-          return existingSupportFunction;
-        }
-      } else if (snapshotSupportFunctions.TryGetValue((f, snapshotKey), out var existingSupportFunction)) {
+      if (supportFunctions.TryGetValue(f, out var existingSupportFunction)) {
         return existingSupportFunction;
       }
 
@@ -3204,6 +3201,9 @@ namespace Microsoft.Dafny {
       }
       if (f.IsOpaque || f.IsMadeImplicitlyOpaque(options)) {
         formals.Add(new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, "$reveal", Boogie.Type.Bool), true));
+      }
+      foreach (var field in GetSupportSnapshotFields(f)) {
+        formals.Add(new Bpl.Formal(field.Origin, new Bpl.TypedIdent(field.Origin, GetSupportSnapshotMapFormalName(field), SnapshotMapType(field.Origin)), true));
       }
       if (f is TwoStateFunction) {
         formals.Add(new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, "$prevHeap", Predef.HeapType), true));
@@ -3219,13 +3219,9 @@ namespace Microsoft.Dafny {
       }
 
       var result = new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, Bpl.TypedIdent.NoName, Predef.SetType), false);
-      var supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f, snapshotKey), [], formals, result,
+      var supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f), [], formals, result,
         "support function declaration for " + f.FullName);
-      if (snapshotKey == "") {
-        supportFunctions[f] = supportFunction;
-      } else {
-        snapshotSupportFunctions[(f, snapshotKey)] = supportFunction;
-      }
+      supportFunctions[f] = supportFunction;
       if (f.Body?.Resolved is { } body && NeedsSupportFunction(f, body)) {
         supportFunction.Body = GetSupportFunctionBody(f, body, supportFunction, snapshotState);
       }
