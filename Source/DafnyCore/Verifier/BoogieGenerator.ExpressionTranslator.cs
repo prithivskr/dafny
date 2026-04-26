@@ -290,18 +290,18 @@ namespace Microsoft.Dafny {
         return objectFieldState.ReadField(tok, field, receiver);
       }
 
-      public void UpdateMutableField(IOrigin tok, Field field, Boogie.Expr receiver, Boogie.Expr boxedValue) {
+      public void UpdateMutableField(IOrigin tok, Field field, Boogie.Expr receiver, Boogie.Expr boxedValue, BoogieStmtListBuilder builder) {
         Contract.Requires(field != null && field.IsMutable);
         Contract.Requires(receiver != null);
         Contract.Requires(boxedValue != null);
         Contract.Requires(objectFieldState != null);
-        objectFieldState.UpdateField(tok, field, receiver, boxedValue);
+        objectFieldState.UpdateField(tok, field, receiver, boxedValue, builder);
       }
 
-      public void MarkAllocated(IOrigin tok, Boogie.Expr receiver) {
+      public void MarkAllocated(IOrigin tok, Boogie.Expr receiver, BoogieStmtListBuilder builder) {
         Contract.Requires(receiver != null);
         Contract.Requires(objectFieldState != null);
-        objectFieldState.MarkAllocated(tok, receiver);
+        objectFieldState.MarkAllocated(tok, receiver, builder);
       }
 
       public Boogie.Expr ReadAllocSnapshot(IOrigin tok, Boogie.Expr receiver) {

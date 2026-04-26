@@ -108,7 +108,7 @@ public partial class BoogieGenerator {
             rhs.Type = ys.Type; // resolve here
             var rawRhs = etran.TrExpr(rhs);
             var boxedRhs = CondApplyBox(s.Origin, rawRhs, rhs.Type, null);
-            etran.UpdateMutableField(s.Origin, ys, etran.TrExpr(th), boxedRhs);
+            etran.UpdateMutableField(s.Origin, ys, etran.TrExpr(th), boxedRhs, builder);
             var cmd = Bpl.Cmd.SimpleAssign(s.Origin, etran.HeapCastToIdentifierExpr,
               UpdateHeap(s.Origin, etran.HeapExpr, etran.TrExpr(th), new Bpl.IdentifierExpr(s.Origin, GetField(ys)),
                 rawRhs));
@@ -819,7 +819,7 @@ public partial class BoogieGenerator {
     Contract.Requires(builder != null);
     Contract.Requires(etran != null);
 
-    etran.MarkAllocated(tok, nw);
+    etran.MarkAllocated(tok, nw, builder);
 
     // $Heap[$nw, alloc] := true;
     Bpl.Expr alloc = Predef.Alloc(tok);

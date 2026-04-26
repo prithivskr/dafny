@@ -291,7 +291,7 @@ public partial class BoogieGenerator {
               Contract.Assert(fseField != null);
               Check_NewRestrictions(tok, fse.Obj, obj, fseField, rhs, bldr, et);
               var boxedRhs = CondApplyBox(tok, rhs, fseField.Type, null);
-              et.UpdateMutableField(tok, fseField, obj, boxedRhs);
+              et.UpdateMutableField(tok, fseField, obj, boxedRhs, bldr);
               var h = (Bpl.IdentifierExpr)et.HeapExpr;  // TODO: is this cast always justified?
               var cmd = Bpl.Cmd.SimpleAssign(tok, h, UpdateHeap(tok, h, obj, new Bpl.IdentifierExpr(tok, GetField(fseField)), rhs));
               proofDependencies?.AddProofDependencyId(cmd, lhs.Origin, new AssignmentDependency(stmt.Origin));
@@ -463,7 +463,7 @@ public partial class BoogieGenerator {
           var th = new Bpl.IdentifierExpr(tok, etran.This, Predef.RefType);
           var thisDotNew = ApplyUnbox(tok, etran.ReadMutableField(tok, th, iter.Member_New), Predef.SetType);
           var unionOne = FunctionCall(tok, BuiltinFunction.SetUnionOne, Predef.BoxType, thisDotNew, ApplyBox(tok, nw));
-          etran.UpdateMutableField(tok, iter.Member_New, th, unionOne);
+          etran.UpdateMutableField(tok, iter.Member_New, th, unionOne, builder);
           var nwField = new Bpl.IdentifierExpr(tok, GetField(iter.Member_New));
           var heapRhs = UpdateHeap(tok, etran.HeapExpr, th, nwField, unionOne);
           heapAllocationRecorder = Bpl.Cmd.SimpleAssign(tok, etran.HeapCastToIdentifierExpr, heapRhs);
@@ -540,7 +540,7 @@ public partial class BoogieGenerator {
         var th = new Bpl.IdentifierExpr(tok, etran.This, Predef.RefType);
         var thisDotNew = ApplyUnbox(tok, etran.ReadMutableField(tok, th, iter.Member_New), Predef.SetType);
         var unionOne = FunctionCall(tok, BuiltinFunction.SetUnionOne, Predef.BoxType, thisDotNew, ApplyBox(tok, nw));
-        etran.UpdateMutableField(tok, iter.Member_New, th, unionOne);
+        etran.UpdateMutableField(tok, iter.Member_New, th, unionOne, builder);
         var nwField = new Bpl.IdentifierExpr(tok, GetField(iter.Member_New));
         var heapRhs = UpdateHeap(tok, etran.HeapExpr, th, nwField, unionOne);
         heapAllocationRecorder = Bpl.Cmd.SimpleAssign(tok, etran.HeapCastToIdentifierExpr, heapRhs);

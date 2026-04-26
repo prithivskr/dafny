@@ -33,52 +33,49 @@ public partial class BoogieGenerator {
       Contract.Requires(field != null);
       Contract.Requires(field.IsMutable);
       Contract.Requires(receiver != null);
-      return boogieGenerator.ApplyUnarySnapshot(tok, GetFieldSnapshot(tok, field), receiver);
+      return fieldSnapshots.TryGetValue(field, out var snapshot)
+        ? boogieGenerator.ApplyUnarySnapshot(tok, snapshot, receiver)
+        : boogieGenerator.ReadHeap(tok, LegacyHeap, receiver, new Bpl.IdentifierExpr(tok, boogieGenerator.GetField(field)));
     }
 
     public Bpl.Expr ReadAlloc(IOrigin tok, Bpl.Expr receiver) {
       Contract.Requires(receiver != null);
-      return boogieGenerator.ApplyUnarySnapshot(tok, GetAllocationSnapshot(tok), receiver);
+      return allocationSnapshot != null
+        ? boogieGenerator.ApplyUnarySnapshot(tok, allocationSnapshot, receiver)
+        : boogieGenerator.ReadHeap(tok, LegacyHeap, receiver, boogieGenerator.Predef.Alloc(tok));
     }
 
-    public void UpdateField(IOrigin tok, Field field, Bpl.Expr receiver, Bpl.Expr boxedValue) {
+    public void UpdateField(IOrigin tok, Field field, Bpl.Expr receiver, Bpl.Expr boxedValue, BoogieStmtListBuilder builder) {
       Contract.Requires(field != null);
       Contract.Requires(field.IsMutable);
       Contract.Requires(receiver != null);
       Contract.Requires(boxedValue != null);
+      Contract.Requires(builder != null);
 
-      var previous = GetFieldSnapshot(tok, field);
+      Bpl.Expr PreviousValue(Bpl.Expr arg) {
+        return fieldSnapshots.TryGetValue(field, out var previous)
+          ? boogieGenerator.ApplyUnarySnapshot(tok, previous, arg)
+          : boogieGenerator.ReadHeap(tok, LegacyHeap, arg, new Bpl.IdentifierExpr(tok, boogieGenerator.GetField(field)));
+      }
+
       var next = boogieGenerator.CreateUnarySnapshotFunction(tok, $"$FieldSnapshot${field.FullSanitizedName}$");
-      boogieGenerator.EmitUnarySnapshotUpdateAxioms(tok, next, previous, receiver, boxedValue);
+      boogieGenerator.EmitUnarySnapshotUpdateAssumptions(tok, next, PreviousValue, receiver, boxedValue, builder);
       fieldSnapshots[field] = next;
     }
 
-    public void MarkAllocated(IOrigin tok, Bpl.Expr receiver) {
+    public void MarkAllocated(IOrigin tok, Bpl.Expr receiver, BoogieStmtListBuilder builder) {
       Contract.Requires(receiver != null);
+      Contract.Requires(builder != null);
 
-      var previous = GetAllocationSnapshot(tok);
+      Bpl.Expr PreviousValue(Bpl.Expr arg) {
+        return allocationSnapshot != null
+          ? boogieGenerator.ApplyUnarySnapshot(tok, allocationSnapshot, arg)
+          : boogieGenerator.ReadHeap(tok, LegacyHeap, arg, boogieGenerator.Predef.Alloc(tok));
+      }
+
       var next = boogieGenerator.CreateUnarySnapshotFunction(tok, "$AllocSnapshot$");
-      boogieGenerator.EmitUnarySnapshotUpdateAxioms(tok, next, previous, receiver, boogieGenerator.ApplyBox(tok, Bpl.Expr.True));
+      boogieGenerator.EmitUnarySnapshotUpdateAssumptions(tok, next, PreviousValue, receiver, boogieGenerator.ApplyBox(tok, Bpl.Expr.True), builder);
       allocationSnapshot = next;
-    }
-
-    Bpl.Function GetFieldSnapshot(IOrigin tok, Field field) {
-      if (!fieldSnapshots.TryGetValue(field, out var snapshot)) {
-        snapshot = boogieGenerator.CreateUnarySnapshotFunction(tok, $"$FieldSnapshot${field.FullSanitizedName}$base$");
-        var fieldId = new Bpl.IdentifierExpr(tok, boogieGenerator.GetField(field));
-        boogieGenerator.EmitUnarySnapshotSeedAxiom(tok, snapshot, arg => boogieGenerator.ReadHeap(tok, LegacyHeap, arg, fieldId));
-        fieldSnapshots[field] = snapshot;
-      }
-      return snapshot;
-    }
-
-    Bpl.Function GetAllocationSnapshot(IOrigin tok) {
-      if (allocationSnapshot == null) {
-        allocationSnapshot = boogieGenerator.CreateUnarySnapshotFunction(tok, "$AllocSnapshot$base$");
-        var allocField = boogieGenerator.Predef.Alloc(tok);
-        boogieGenerator.EmitUnarySnapshotSeedAxiom(tok, allocationSnapshot, arg => boogieGenerator.ReadHeap(tok, LegacyHeap, arg, allocField));
-      }
-      return allocationSnapshot;
     }
   }
 
@@ -104,29 +101,18 @@ public partial class BoogieGenerator {
     };
   }
 
-  void EmitUnarySnapshotSeedAxiom(IOrigin tok, Bpl.Function snapshot, System.Func<Bpl.Expr, Bpl.Expr> rhsFactory) {
-    var argVar = new Bpl.BoundVariable(tok, new Bpl.TypedIdent(tok, "arg", Predef.RefType));
-    var arg = new Bpl.IdentifierExpr(tok, argVar);
-    var lhs = ApplyUnarySnapshot(tok, snapshot, arg);
-    var body = Bpl.Expr.Eq(lhs, rhsFactory(arg));
-    var trigger = new Bpl.Trigger(tok, true, new List<Bpl.Expr> { lhs });
-    sink.AddTopLevelDeclaration(new Bpl.Axiom(tok,
-      new Bpl.ForallExpr(tok, [], new List<Variable> { argVar }, null, trigger, body)));
-  }
-
-  void EmitUnarySnapshotUpdateAxioms(IOrigin tok, Bpl.Function next, Bpl.Function previous, Bpl.Expr receiver, Bpl.Expr boxedValue) {
+  void EmitUnarySnapshotUpdateAssumptions(IOrigin tok, Bpl.Function next, System.Func<Bpl.Expr, Bpl.Expr> previousValueFactory,
+    Bpl.Expr receiver, Bpl.Expr boxedValue, BoogieStmtListBuilder builder) {
     var argVar = new Bpl.BoundVariable(tok, new Bpl.TypedIdent(tok, "arg", Predef.RefType));
     var arg = new Bpl.IdentifierExpr(tok, argVar);
     var lhs = ApplyUnarySnapshot(tok, next, arg);
-    var previousValue = ApplyUnarySnapshot(tok, previous, arg);
+    var previousValue = previousValueFactory(arg);
     var trigger = new Bpl.Trigger(tok, true, new List<Bpl.Expr> { lhs });
 
     var equalCase = BplImp(Bpl.Expr.Eq(arg, receiver), Bpl.Expr.Eq(lhs, boxedValue));
-    sink.AddTopLevelDeclaration(new Bpl.Axiom(tok,
-      new Bpl.ForallExpr(tok, [], new List<Variable> { argVar }, null, trigger, equalCase)));
+    builder.Add(TrAssumeCmd(tok, new Bpl.ForallExpr(tok, [], new List<Variable> { argVar }, null, trigger, equalCase)));
 
     var distinctCase = BplImp(Bpl.Expr.Neq(arg, receiver), Bpl.Expr.Eq(lhs, previousValue));
-    sink.AddTopLevelDeclaration(new Bpl.Axiom(tok,
-      new Bpl.ForallExpr(tok, [], new List<Variable> { argVar }, null, trigger, distinctCase)));
+    builder.Add(TrAssumeCmd(tok, new Bpl.ForallExpr(tok, [], new List<Variable> { argVar }, null, trigger, distinctCase)));
   }
 }
