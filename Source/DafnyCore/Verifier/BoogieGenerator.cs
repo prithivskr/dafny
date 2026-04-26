@@ -140,6 +140,8 @@ namespace Microsoft.Dafny {
     readonly Dictionary<Function, string> functionHandles = new Dictionary<Function, string>();
     readonly List<FuelConstant> functionFuel = [];
     readonly Dictionary<Function, Bpl.Expr> functionReveals = new();
+    readonly Dictionary<Function, Bpl.Function> supportFunctions = new();
+    readonly Dictionary<Function, string> supportFunctionNames = new();
     readonly Dictionary<Field/*!*/, Bpl.Constant/*!*/>/*!*/ fields = new Dictionary<Field/*!*/, Bpl.Constant/*!*/>();
     readonly Dictionary<Field/*!*/, Bpl.Function/*!*/>/*!*/ fieldFunctions = new Dictionary<Field/*!*/, Bpl.Function/*!*/>();
     readonly Dictionary<string, Bpl.Constant> fieldConstants = new Dictionary<string, Constant>();
@@ -170,6 +172,7 @@ namespace Microsoft.Dafny {
       Contract.Invariant(Cce.NonNullDictionaryAndValues(classes));
       Contract.Invariant(Cce.NonNullDictionaryAndValues(fields));
       Contract.Invariant(Cce.NonNullDictionaryAndValues(fieldFunctions));
+      Contract.Invariant(Cce.NonNullDictionaryAndValues(supportFunctions));
       Contract.Invariant(codeContext == null || codeContext.EnclosingModule == currentModule);
     }
 
@@ -3121,6 +3124,66 @@ namespace Microsoft.Dafny {
         }
       }
       return func;
+    }
+
+    bool NeedsSupportFunction(Function f, Expression body) {
+      Contract.Requires(f != null);
+
+      if (body == null) {
+        return false;
+      }
+
+      if (!f.ReadsHeap && (f.Reads.Expressions == null || f.Reads.Expressions.Count == 0) && !UsesHeap(body)) {
+        return false;
+      }
+
+      return true;
+    }
+
+    string GetSupportFunctionName(Function f) {
+      Contract.Requires(f != null);
+      if (!supportFunctionNames.TryGetValue(f, out var name)) {
+        name = "Sp$" + f.FullSanitizedName;
+        supportFunctionNames[f] = name;
+      }
+      return name;
+    }
+
+    Bpl.Function GetOrCreateSupportFunction(Function f) {
+      Contract.Requires(f != null);
+      Contract.Requires(Predef != null && sink != null);
+
+      if (supportFunctions.TryGetValue(f, out var supportFunction)) {
+        return supportFunction;
+      }
+
+      var formals = new List<Variable>();
+      formals.AddRange(MkTyParamFormals(GetTypeParams(f), false));
+      if (f.IsFuelAware()) {
+        formals.Add(new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, "$ly", Predef.LayerType), true));
+      }
+      if (f.IsOpaque || f.IsMadeImplicitlyOpaque(options)) {
+        formals.Add(new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, "$reveal", Boogie.Type.Bool), true));
+      }
+      if (f is TwoStateFunction) {
+        formals.Add(new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, "$prevHeap", Predef.HeapType), true));
+      }
+      if (f.ReadsHeap) {
+        formals.Add(new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, "$heap", Predef.HeapType), true));
+      }
+      if (!f.IsStatic) {
+        formals.Add(new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, "this", TrReceiverType(f)), true));
+      }
+      foreach (var p in f.Ins) {
+        formals.Add(new Bpl.Formal(p.Origin, new Bpl.TypedIdent(p.Origin, p.AssignUniqueName(f.IdGenerator), TrType(p.Type)), true));
+      }
+
+      var result = new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, Bpl.TypedIdent.NoName, Predef.SetType), false);
+      supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f), [], formals, result,
+        "support function declaration for " + f.FullName);
+      sink.AddTopLevelDeclaration(supportFunction);
+      supportFunctions[f] = supportFunction;
+      return supportFunction;
     }
 
     private Bpl.Function GetCanCallFunction(Function f) {
