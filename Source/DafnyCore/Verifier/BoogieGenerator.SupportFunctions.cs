@@ -32,6 +32,48 @@ public partial class BoogieGenerator {
     };
   }
 
+  string GetSupportShapeKey(Function definition, Expression expr) {
+    Contract.Requires(definition != null);
+    Contract.Requires(expr != null);
+
+    expr = expr.Resolved;
+    return expr switch {
+      LiteralExpr => "Empty",
+      ThisExpr => "Empty",
+      IdentifierExpr => "Empty",
+      NameSegment => "Empty",
+      BoogieWrapper => "Empty",
+      MemberSelectExpr memberSelectExpr => GetMemberSupportShapeKey(definition, memberSelectExpr),
+      FunctionCallExpr functionCallExpr => GetFunctionCallSupportShapeKey(definition, functionCallExpr),
+      ITEExpr iteExpr => $"If({GetSupportShapeKey(definition, iteExpr.Test)},{GetSupportShapeKey(definition, iteExpr.Thn)},{GetSupportShapeKey(definition, iteExpr.Els)})",
+      UnaryOpExpr { ResolvedOp: UnaryOpExpr.ResolvedOpcode.BoolNot } unary => GetSupportShapeKey(definition, unary.E),
+      BinaryExpr binaryExpr => $"Union({GetSupportShapeKey(definition, binaryExpr.E0)},{GetSupportShapeKey(definition, binaryExpr.E1)})",
+      _ => $"Union({string.Join(",", expr.SubExpressions.Select(subExpr => GetSupportShapeKey(definition, subExpr)))})"
+    };
+  }
+
+  string GetMemberSupportShapeKey(Function definition, MemberSelectExpr expr) {
+    var objectSupport = GetSupportShapeKey(definition, expr.Obj);
+    if (expr.Member is not Field field || !field.IsMutable) {
+      return objectSupport;
+    }
+    return $"Field({field.FullSanitizedName},{objectSupport})";
+  }
+
+  string GetFunctionCallSupportShapeKey(Function definition, FunctionCallExpr expr) {
+    var argumentShapes = new List<string> {
+      GetSupportShapeKey(definition, expr.Receiver)
+    };
+    argumentShapes.AddRange(expr.Args.Select(arg => GetSupportShapeKey(definition, arg)));
+    var argumentsKey = string.Join(",", argumentShapes);
+    if (!NeedsSupportFunction(expr.Function, expr.Function.Body?.Resolved)) {
+      return $"Args({argumentsKey})";
+    }
+
+    var calleeKey = expr.Function == definition ? "Self" : expr.Function.FullSanitizedName;
+    return $"Call({calleeKey};{argumentsKey})";
+  }
+
   Bpl.Expr TranslateSupportExpr(Function definition, Expression expr, ExpressionTranslator etran, Bpl.Expr layerArgument, Bpl.Expr revealArgument) {
     Contract.Requires(definition != null);
     Contract.Requires(expr != null);
@@ -83,7 +125,9 @@ public partial class BoogieGenerator {
       return result;
     }
 
-    var supportFunction = GetOrCreateSupportFunction(expr.Function, etran.ObjectFieldSnapshotVersion);
+    var supportFunction = etran.ObjectFieldSnapshotVersion == 0
+      ? GetCanonicalSupportFunction(expr.Function) ?? GetOrCreateSupportFunction(expr.Function, 0)
+      : GetOrCreateSupportFunction(expr.Function, etran.ObjectFieldSnapshotVersion);
     var supportArguments = etran.FunctionInvocationArguments(expr, layerArgument, revealArgument);
     var callSupport = ApplySupportFunction(expr.Origin, supportFunction, supportArguments);
     return UnionSupports(expr.Origin, callSupport, result);

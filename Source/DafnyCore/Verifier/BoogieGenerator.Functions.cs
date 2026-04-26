@@ -20,9 +20,14 @@ public partial class BoogieGenerator {
     var ax = GetFunctionAxiom(f, body, null);
     AddOtherDefinition(boogieFunction, ax);
     if (NeedsSupportFunction(f, body)) {
+      var supportFunction = GetOrCreateSupportFunction(f);
       var supportAxiom = GetSupportFunctionAxiom(f, body);
       if (supportAxiom != null) {
-        AddOtherDefinition(GetOrCreateSupportFunction(f), supportAxiom);
+        AddOtherDefinition(supportFunction, supportAxiom);
+      }
+      var supportAliasAxiom = GetSupportFunctionCanonicalizationAxiom(f, body, supportFunction);
+      if (supportAliasAxiom != null) {
+        AddOtherDefinition(supportFunction, supportAliasAxiom);
       }
     }
     // TODO(namin) Is checking f.Reads.Count==0 excluding Valid() of BinaryTree in the right way?
@@ -213,6 +218,110 @@ public partial class BoogieGenerator {
 
     var ax = BplForall(f.Origin, [], forallFormals, null, trigger, BplImp(ante, rhs));
     return new Axiom(f.Origin, ax, "support definition axiom for " + f.FullSanitizedName) {
+      CanHide = true
+    };
+  }
+
+  private Axiom GetSupportFunctionCanonicalizationAxiom(Function f, Expression body, Bpl.Function supportFunction) {
+    Contract.Requires(f != null);
+    Contract.Requires(body != null);
+    Contract.Requires(supportFunction != null);
+
+    var shapeKey = GetSupportShapeKey(f, body);
+    if (!canonicalSupportFunctionsByShape.TryGetValue(shapeKey, out var canonicalSupportFunction)) {
+      canonicalSupportFunctionsByShape[shapeKey] = supportFunction;
+      canonicalSupportFunctions[f] = supportFunction;
+      return null;
+    }
+
+    canonicalSupportFunctions[f] = canonicalSupportFunction;
+    if (canonicalSupportFunction == supportFunction) {
+      return null;
+    }
+
+    bool readsHeap = f.ReadsHeap;
+    foreach (AttributedExpression e in f.Req) {
+      readsHeap = readsHeap || UsesHeap(e.E);
+    }
+    readsHeap = readsHeap || UsesHeap(body);
+
+    ExpressionTranslator etran;
+    Bpl.BoundVariable bvPrevHeap = null;
+    if (f is TwoStateFunction) {
+      bvPrevHeap = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, "$prevHeap", Predef.HeapType));
+      etran = new ExpressionTranslator(this, Predef,
+        f.ReadsHeap ? new Bpl.IdentifierExpr(f.Origin, Predef.HeapVarName, Predef.HeapType) : null,
+        new Bpl.IdentifierExpr(f.Origin, bvPrevHeap), f);
+    } else {
+      etran = f.ReadsHeap
+        ? new ExpressionTranslator(this, Predef, f.Origin, f)
+        : new ExpressionTranslator(this, Predef, readsHeap ? NewOneHeapExpr(f.Origin) : null, f);
+    }
+
+    List<Bpl.Expr> args = [];
+    List<Bpl.Expr> tyargs = GetTypeArguments(f, null).ConvertAll(TypeToTy);
+    var forallFormals = MkTyParamBinders(GetTypeParams(f), out _);
+
+    if (f.IsFuelAware()) {
+      var layer = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, "$ly", Predef.LayerType));
+      forallFormals.Add(layer);
+      args.Add(LayerSucc(new Bpl.IdentifierExpr(f.Origin, layer)));
+    }
+
+    if (f.IsOpaque || f.IsMadeImplicitlyOpaque(options)) {
+      var reveal = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, "$reveal", Boogie.Type.Bool));
+      forallFormals.Add(reveal);
+      args.Add(new Bpl.LiteralExpr(f.Origin, true));
+    }
+
+    Bpl.Expr ante = Bpl.Expr.True;
+    if (f is TwoStateFunction) {
+      Contract.Assert(bvPrevHeap != null);
+      forallFormals.Add(bvPrevHeap);
+      args.Add(etran.Old.HeapExpr);
+      ante = BplAnd(ante, FunctionCall(f.Origin, BuiltinFunction.IsGoodHeap, null, etran.Old.HeapExpr));
+    }
+
+    if (f.ReadsHeap) {
+      var bv = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, Predef.HeapVarName, Predef.HeapType));
+      forallFormals.Add(bv);
+      args.Add(new Bpl.IdentifierExpr(f.Origin, bv));
+      ante = BplAnd(ante, FunctionCall(f.Origin, BuiltinFunction.IsGoodHeap, null, etran.HeapExpr));
+      if (f is TwoStateFunction) {
+        ante = BplAnd(ante, HeapSucc(etran.Old.HeapExpr, etran.HeapExpr));
+      }
+    }
+
+    if (!f.IsStatic) {
+      var bvThis = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, etran.This, TrReceiverType(f)));
+      forallFormals.Add(bvThis);
+      var bvThisIdExpr = new Bpl.IdentifierExpr(f.Origin, bvThis);
+      args.Add(bvThisIdExpr);
+      Type thisType = ModuleResolver.GetReceiverType(f.Origin, f);
+      ante = BplAnd(ante, BplAnd(ReceiverNotNull(bvThisIdExpr), (f is TwoStateFunction ? etran.Old : etran).GoodRef(f.Origin, bvThisIdExpr, thisType)));
+    }
+
+    foreach (Formal p in f.Ins) {
+      var bv = new Bpl.BoundVariable(p.Origin, new Bpl.TypedIdent(p.Origin, p.AssignUniqueName(CurrentDeclaration.IdGenerator), TrType(p.Type)));
+      forallFormals.Add(bv);
+      var formal = new Bpl.IdentifierExpr(p.Origin, bv);
+      args.Add(formal);
+      var wh = GetWhereClause(p.Origin, formal, p.Type, p.IsOld ? etran.Old : etran, NOALLOC);
+      if (wh != null) {
+        ante = BplAnd(ante, wh);
+      }
+    }
+
+    var supportArgs = new List<Bpl.Expr>();
+    supportArgs.AddRange(tyargs);
+    supportArgs.AddRange(args);
+    var supportAppl = ApplySupportFunction(f.Origin, supportFunction, supportArgs);
+    var canonicalAppl = ApplySupportFunction(f.Origin, canonicalSupportFunction, supportArgs);
+    var trigger = BplTriggerHeap(this, f.Origin, supportAppl, f.ReadsHeap ? etran.HeapExpr : null);
+    var canCallFuncID = new Bpl.IdentifierExpr(f.Origin, f.FullSanitizedName + "#canCall", Bpl.Type.Bool);
+    var useViaCanCall = new Bpl.NAryExpr(f.Origin, new Bpl.FunctionCall(canCallFuncID), Concat(tyargs, args));
+    var ax = BplForall(f.Origin, [], forallFormals, null, trigger, BplImp(BplAnd(ante, useViaCanCall), Bpl.Expr.Eq(supportAppl, canonicalAppl)));
+    return new Axiom(f.Origin, ax, "support canonicalization axiom for " + f.FullSanitizedName) {
       CanHide = true
     };
   }

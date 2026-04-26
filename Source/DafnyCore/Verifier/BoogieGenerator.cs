@@ -143,6 +143,8 @@ namespace Microsoft.Dafny {
     readonly Dictionary<Function, Bpl.Function> supportFunctions = new();
     readonly Dictionary<Function, string> supportFunctionNames = new();
     readonly Dictionary<(Function function, int snapshotVersion), Bpl.Function> snapshotSupportFunctions = new();
+    readonly Dictionary<string, Bpl.Function> canonicalSupportFunctionsByShape = new();
+    readonly Dictionary<Function, Bpl.Function> canonicalSupportFunctions = new();
     readonly Dictionary<Field/*!*/, Bpl.Constant/*!*/>/*!*/ fields = new Dictionary<Field/*!*/, Bpl.Constant/*!*/>();
     readonly Dictionary<Field/*!*/, Bpl.Function/*!*/>/*!*/ fieldFunctions = new Dictionary<Field/*!*/, Bpl.Function/*!*/>();
     readonly Dictionary<string, Bpl.Constant> fieldConstants = new Dictionary<string, Constant>();
@@ -175,6 +177,8 @@ namespace Microsoft.Dafny {
       Contract.Invariant(Cce.NonNullDictionaryAndValues(fieldFunctions));
       Contract.Invariant(Cce.NonNullDictionaryAndValues(supportFunctions));
       Contract.Invariant(Cce.NonNullDictionaryAndValues(snapshotSupportFunctions));
+      Contract.Invariant(Cce.NonNullDictionaryAndValues(canonicalSupportFunctionsByShape));
+      Contract.Invariant(Cce.NonNullDictionaryAndValues(canonicalSupportFunctions));
       Contract.Invariant(codeContext == null || codeContext.EnclosingModule == currentModule);
     }
 
@@ -3160,6 +3164,12 @@ namespace Microsoft.Dafny {
 
     Bpl.Function GetOrCreateSupportFunction(Function f) {
       return GetOrCreateSupportFunction(f, 0);
+    }
+
+    Bpl.Function GetCanonicalSupportFunction(Function f) {
+      Contract.Requires(f != null);
+      canonicalSupportFunctions.TryGetValue(f, out var canonicalSupportFunction);
+      return canonicalSupportFunction;
     }
 
     Bpl.Function GetOrCreateSupportFunction(Function f, int snapshotVersion) {
