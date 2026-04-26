@@ -283,6 +283,16 @@ namespace Microsoft.Dafny {
         }
       }
 
+      public ExpressionTranslator WithObjectFieldSnapshotState(ObjectFieldSnapshotState state) {
+        var translated = new ExpressionTranslator(BoogieGenerator, Predef, HeapExpr, This,
+          applyLimited_CurrentFunction, layerInterCluster, layerIntraCluster,
+          scope, readsFrame, modifiesFrame, stripLits, state, labeledObjectFieldStates);
+        if (oldEtran != null) {
+          translated.oldEtran = oldEtran;
+        }
+        return translated;
+      }
+
       public Boogie.Expr ReadMutableField(IOrigin tok, Boogie.Expr receiver, Field field) {
         Contract.Requires(field != null && field.IsMutable);
         Contract.Requires(receiver != null);
@@ -311,6 +321,7 @@ namespace Microsoft.Dafny {
       }
 
       public int ObjectFieldSnapshotVersion => objectFieldState?.SnapshotVersion ?? 0;
+      public ObjectFieldSnapshotState ObjectFieldSnapshotState => objectFieldState;
 
       public Boogie.IdentifierExpr ReadsFrame(IOrigin tok) {
         Contract.Requires(tok != null);

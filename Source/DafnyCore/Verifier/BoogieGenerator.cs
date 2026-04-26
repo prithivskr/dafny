@@ -142,7 +142,8 @@ namespace Microsoft.Dafny {
     readonly Dictionary<Function, Bpl.Expr> functionReveals = new();
     readonly Dictionary<Function, Bpl.Function> supportFunctions = new();
     readonly Dictionary<Function, string> supportFunctionNames = new();
-    readonly Dictionary<(Function function, int snapshotVersion), Bpl.Function> snapshotSupportFunctions = new();
+    readonly Dictionary<(Function function, string snapshotKey), Bpl.Function> snapshotSupportFunctions = new();
+    readonly Dictionary<(Function function, string snapshotKey), string> snapshotSupportFunctionNames = new();
     readonly Dictionary<string, Bpl.Function> canonicalSupportFunctionsByShape = new();
     readonly Dictionary<Function, Bpl.Function> canonicalSupportFunctions = new();
     readonly Dictionary<Field/*!*/, Bpl.Constant/*!*/>/*!*/ fields = new Dictionary<Field/*!*/, Bpl.Constant/*!*/>();
@@ -3148,13 +3149,23 @@ namespace Microsoft.Dafny {
     }
 
     string GetSupportFunctionName(Function f) {
-      return GetSupportFunctionName(f, 0);
+      return GetSupportFunctionName(f, "");
     }
 
     string GetSupportFunctionName(Function f, int snapshotVersion) {
+      Contract.Requires(snapshotVersion == 0);
+      return GetSupportFunctionName(f, "");
+    }
+
+    string GetSupportFunctionName(Function f, string snapshotKey) {
       Contract.Requires(f != null);
-      if (snapshotVersion != 0) {
-        return $"Sp${f.FullSanitizedName}$H{snapshotVersion}";
+      if (snapshotKey != "") {
+        var key = (f, snapshotKey);
+        if (!snapshotSupportFunctionNames.TryGetValue(key, out var snapshotName)) {
+          snapshotName = topLevelSnapshotIdGenerator.FreshId($"Sp${f.FullSanitizedName}$H");
+          snapshotSupportFunctionNames[key] = snapshotName;
+        }
+        return snapshotName;
       }
       if (!supportFunctionNames.TryGetValue(f, out var name)) {
         name = "Sp$" + f.FullSanitizedName;
@@ -3164,7 +3175,7 @@ namespace Microsoft.Dafny {
     }
 
     Bpl.Function GetOrCreateSupportFunction(Function f) {
-      return GetOrCreateSupportFunction(f, 0);
+      return GetOrCreateSupportFunction(f, null);
     }
 
     Bpl.Function GetCanonicalSupportFunction(Function f) {
@@ -3173,15 +3184,16 @@ namespace Microsoft.Dafny {
       return canonicalSupportFunction;
     }
 
-    Bpl.Function GetOrCreateSupportFunction(Function f, int snapshotVersion) {
+    Bpl.Function GetOrCreateSupportFunction(Function f, ObjectFieldSnapshotState snapshotState) {
       Contract.Requires(f != null);
       Contract.Requires(Predef != null && sink != null);
 
-      if (snapshotVersion == 0) {
+      var snapshotKey = snapshotState?.SupportFunctionSnapshotKey ?? "";
+      if (snapshotKey == "") {
         if (supportFunctions.TryGetValue(f, out var existingSupportFunction)) {
           return existingSupportFunction;
         }
-      } else if (snapshotSupportFunctions.TryGetValue((f, snapshotVersion), out var existingSupportFunction)) {
+      } else if (snapshotSupportFunctions.TryGetValue((f, snapshotKey), out var existingSupportFunction)) {
         return existingSupportFunction;
       }
 
@@ -3207,14 +3219,17 @@ namespace Microsoft.Dafny {
       }
 
       var result = new Bpl.Formal(f.Origin, new Bpl.TypedIdent(f.Origin, Bpl.TypedIdent.NoName, Predef.SetType), false);
-      var supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f, snapshotVersion), [], formals, result,
+      var supportFunction = new Bpl.Function(new FromDafnyNode(f), GetSupportFunctionName(f, snapshotKey), [], formals, result,
         "support function declaration for " + f.FullName);
-      sink.AddTopLevelDeclaration(supportFunction);
-      if (snapshotVersion == 0) {
+      if (snapshotKey == "") {
         supportFunctions[f] = supportFunction;
       } else {
-        snapshotSupportFunctions[(f, snapshotVersion)] = supportFunction;
+        snapshotSupportFunctions[(f, snapshotKey)] = supportFunction;
       }
+      if (f.Body?.Resolved is { } body && NeedsSupportFunction(f, body)) {
+        supportFunction.Body = GetSupportFunctionBody(f, body, supportFunction, snapshotState);
+      }
+      sink.AddTopLevelDeclaration(supportFunction);
       return supportFunction;
     }
 

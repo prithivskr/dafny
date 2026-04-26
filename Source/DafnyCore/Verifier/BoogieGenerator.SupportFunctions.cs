@@ -26,6 +26,13 @@ public partial class BoogieGenerator {
     return FunctionCall(tok, BuiltinFunction.SetUnionOne, Predef.BoxType, support, element);
   }
 
+  Bpl.Expr ConditionalSupport(IOrigin tok, Bpl.Expr guard, Bpl.Expr thenSupport, Bpl.Expr elseSupport) {
+    return new Bpl.NAryExpr(tok, new Bpl.IfThenElse(tok),
+      new List<Bpl.Expr> { guard, thenSupport, elseSupport }) {
+      Type = Predef.SetType
+    };
+  }
+
   Bpl.Expr ApplySupportFunction(IOrigin tok, Bpl.Function supportFunction, List<Bpl.Expr> arguments) {
     return new Bpl.NAryExpr(tok, new Bpl.FunctionCall(supportFunction), arguments) {
       Type = Predef.SetType
@@ -125,9 +132,10 @@ public partial class BoogieGenerator {
       return result;
     }
 
-    var supportFunction = etran.ObjectFieldSnapshotVersion == 0
-      ? GetCanonicalSupportFunction(expr.Function) ?? GetOrCreateSupportFunction(expr.Function, 0)
-      : GetOrCreateSupportFunction(expr.Function, etran.ObjectFieldSnapshotVersion);
+    var snapshotState = etran.ObjectFieldSnapshotState;
+    var supportFunction = snapshotState is null || snapshotState.IsBaseState
+      ? GetCanonicalSupportFunction(expr.Function) ?? GetOrCreateSupportFunction(expr.Function)
+      : GetOrCreateSupportFunction(expr.Function, snapshotState);
     var supportArguments = etran.FunctionInvocationArguments(expr, layerArgument, revealArgument);
     var callSupport = ApplySupportFunction(expr.Origin, supportFunction, supportArguments);
     return UnionSupports(expr.Origin, callSupport, result);
@@ -141,8 +149,12 @@ public partial class BoogieGenerator {
     var left = TranslateSupportExpr(definition, expr.E0, etran, layerArgument, revealArgument);
     var right = TranslateSupportExpr(definition, expr.E1, etran, layerArgument, revealArgument);
     return expr.ResolvedOp switch {
-      BinaryExpr.ResolvedOpcode.And => UnionSupports(expr.Origin, left, right),
-      BinaryExpr.ResolvedOpcode.Or => UnionSupports(expr.Origin, left, right),
+      BinaryExpr.ResolvedOpcode.And => UnionSupports(expr.Origin, left,
+        ConditionalSupport(expr.Origin, etran.TrExpr(expr.E0), right, EmptySupport(expr.Origin))),
+      BinaryExpr.ResolvedOpcode.Or => UnionSupports(expr.Origin, left,
+        ConditionalSupport(expr.Origin, etran.TrExpr(expr.E0), EmptySupport(expr.Origin), right)),
+      BinaryExpr.ResolvedOpcode.Imp => UnionSupports(expr.Origin, left,
+        ConditionalSupport(expr.Origin, etran.TrExpr(expr.E0), right, EmptySupport(expr.Origin))),
       _ => UnionSupports(expr.Origin, left, right)
     };
   }
@@ -156,10 +168,7 @@ public partial class BoogieGenerator {
     var thenSupport = TranslateSupportExpr(definition, expr.Thn, etran, layerArgument, revealArgument);
     var elseSupport = TranslateSupportExpr(definition, expr.Els, etran, layerArgument, revealArgument);
     var guard = etran.TrExpr(expr.Test);
-    var branchSupport = new Bpl.NAryExpr(expr.Origin, new Bpl.IfThenElse(expr.Origin),
-      new List<Bpl.Expr> { guard, thenSupport, elseSupport }) {
-      Type = Predef.SetType
-    };
+    var branchSupport = ConditionalSupport(expr.Origin, guard, thenSupport, elseSupport);
     return UnionSupports(expr.Origin, guardSupport, branchSupport);
   }
 }

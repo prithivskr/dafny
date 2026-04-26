@@ -21,10 +21,6 @@ public partial class BoogieGenerator {
     AddOtherDefinition(boogieFunction, ax);
     if (NeedsSupportFunction(f, body)) {
       var supportFunction = GetOrCreateSupportFunction(f);
-      var supportAxiom = GetSupportFunctionAxiom(f, body);
-      if (supportAxiom != null) {
-        AddOtherDefinition(supportFunction, supportAxiom);
-      }
       var supportAliasAxiom = GetSupportFunctionCanonicalizationAxiom(f, body, supportFunction);
       if (supportAliasAxiom != null) {
         AddOtherDefinition(supportFunction, supportAliasAxiom);
@@ -70,10 +66,12 @@ public partial class BoogieGenerator {
     }
   }
 
-  private Axiom GetSupportFunctionAxiom(Function f, Expression body) {
+  private Bpl.Expr GetSupportFunctionBody(Function f, Expression body, Bpl.Function supportFunction,
+    ObjectFieldSnapshotState snapshotState) {
     Contract.Requires(f != null);
     Contract.Requires(body != null);
     Contract.Requires(NeedsSupportFunction(f, body));
+    Contract.Requires(supportFunction != null);
 
     bool readsHeap = f.ReadsHeap;
     foreach (AttributedExpression e in f.Req) {
@@ -81,145 +79,80 @@ public partial class BoogieGenerator {
     }
     readsHeap = readsHeap || UsesHeap(body);
 
+    var formalIndex = 0;
+    Bpl.IdentifierExpr NextFormal() {
+      var formal = supportFunction.InParams[formalIndex++];
+      return new Bpl.IdentifierExpr(formal.tok, formal);
+    }
+
+    var tyParamCount = GetTypeParams(f).Count;
+    formalIndex += tyParamCount;
+
+    Bpl.IdentifierExpr layerFormal = null;
+    if (f.IsFuelAware()) {
+      layerFormal = NextFormal();
+    }
+
+    Bpl.IdentifierExpr revealFormal = null;
+    if (f.IsOpaque || f.IsMadeImplicitlyOpaque(options)) {
+      revealFormal = NextFormal();
+    }
+
+    Bpl.IdentifierExpr prevHeapFormal = null;
+    Bpl.IdentifierExpr heapFormal = null;
+
     ExpressionTranslator etran;
-    Bpl.BoundVariable bvPrevHeap = null;
     if (f is TwoStateFunction) {
-      bvPrevHeap = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, "$prevHeap", Predef.HeapType));
+      prevHeapFormal = NextFormal();
       etran = new ExpressionTranslator(this, Predef,
         f.ReadsHeap ? new Bpl.IdentifierExpr(f.Origin, Predef.HeapVarName, Predef.HeapType) : null,
-        new Bpl.IdentifierExpr(f.Origin, bvPrevHeap), f);
+        prevHeapFormal, f);
     } else {
       etran = f.ReadsHeap
         ? new ExpressionTranslator(this, Predef, f.Origin, f)
         : new ExpressionTranslator(this, Predef, readsHeap ? NewOneHeapExpr(f.Origin) : null, f);
     }
-
-    List<Bpl.Expr> args = [];
-    List<Bpl.Expr> tyargs = GetTypeArguments(f, null).ConvertAll(TypeToTy);
-    var forallFormals = MkTyParamBinders(GetTypeParams(f), out _);
-
-    Bpl.BoundVariable layer;
-    if (f.IsFuelAware()) {
-      layer = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, "$ly", Predef.LayerType));
-      forallFormals.Add(layer);
-    } else {
-      layer = null;
-    }
-
-    Bpl.BoundVariable reveal;
-    if (f.IsOpaque || f.IsMadeImplicitlyOpaque(options)) {
-      reveal = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, "$reveal", Boogie.Type.Bool));
-      forallFormals.Add(reveal);
-    } else {
-      reveal = null;
-    }
-
-    Bpl.Expr ante = Bpl.Expr.True;
-    if (f is TwoStateFunction) {
-      Contract.Assert(bvPrevHeap != null);
-      forallFormals.Add(bvPrevHeap);
-      args.Add(etran.Old.HeapExpr);
-      ante = BplAnd(ante, FunctionCall(f.Origin, BuiltinFunction.IsGoodHeap, null, etran.Old.HeapExpr));
-    }
-
     if (f.ReadsHeap) {
-      var bv = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, Predef.HeapVarName, Predef.HeapType));
-      args.Add(new Bpl.IdentifierExpr(f.Origin, bv));
-      forallFormals.Add(bv);
-      var goodHeap = FunctionCall(f.Origin, BuiltinFunction.IsGoodHeap, null, etran.HeapExpr);
-      ante = BplAnd(ante, goodHeap);
-      if (f is TwoStateFunction) {
-        ante = BplAnd(ante, HeapSucc(etran.Old.HeapExpr, etran.HeapExpr));
-      }
+      heapFormal = NextFormal();
+      etran = new ExpressionTranslator(this, Predef, heapFormal, etran.Old.HeapExpr, f);
     }
-
-    foreach (var typeBoundAxiom in TypeBoundAxioms(f.Origin, Concat(f.EnclosingClass.TypeArgs, f.TypeArgs))) {
-      ante = BplAnd(ante, typeBoundAxiom);
+    if (snapshotState is { IsBaseState: false }) {
+      etran = etran.WithObjectFieldSnapshotState(snapshotState.Clone(etran.HeapExpr));
     }
 
     Expression receiverReplacement = null;
     var substMap = new Dictionary<IVariable, Expression>();
     if (!f.IsStatic) {
-      var bvThis = new Bpl.BoundVariable(f.Origin, new Bpl.TypedIdent(f.Origin, etran.This, TrReceiverType(f)));
-      forallFormals.Add(bvThis);
-      var bvThisIdExpr = new Bpl.IdentifierExpr(f.Origin, bvThis);
-      args.Add(bvThisIdExpr);
-      Type thisType = ModuleResolver.GetReceiverType(f.Origin, f);
-      Bpl.Expr wh = BplAnd(
-        ReceiverNotNull(bvThisIdExpr),
-        (f is TwoStateFunction ? etran.Old : etran).GoodRef(f.Origin, bvThisIdExpr, thisType));
-      ante = BplAnd(ante, wh);
+      var thisFormal = NextFormal();
+      receiverReplacement = new BoogieWrapper(thisFormal, ModuleResolver.GetReceiverType(f.Origin, f));
     }
 
     var typeMap = new Dictionary<TypeParameter, Type>();
     foreach (Formal p in f.Ins) {
       var pType = p.Type.Subst(typeMap);
-      var bv = new Bpl.BoundVariable(p.Origin,
-        new Bpl.TypedIdent(p.Origin, p.AssignUniqueName(CurrentDeclaration.IdGenerator), TrType(pType)));
-      forallFormals.Add(bv);
-      Bpl.Expr formal = new Bpl.IdentifierExpr(p.Origin, bv);
-      args.Add(formal);
-
-      Bpl.Expr wh = GetWhereClause(p.Origin, formal, pType, p.IsOld ? etran.Old : etran, NOALLOC);
-      if (wh != null) {
-        ante = BplAnd(ante, wh);
-      }
+      var formal = NextFormal();
+      substMap[p] = new BoogieWrapper(formal, pType);
     }
 
-    Bpl.Expr pre = Bpl.Expr.True;
-    foreach (AttributedExpression req in ConjunctsOf(f.Req)) {
-      pre = BplAnd(pre, etran.TrExpr(Substitute(req.E, receiverReplacement, substMap)));
-    }
-
-    if (f is TwoStateFunction) {
-      Bpl.Expr preRA = Bpl.Expr.True;
-      foreach (var formal in f.Ins) {
-        if (formal.IsOld) {
-          var dafnyFormalIdExpr = new IdentifierExpr(formal.Origin, formal);
-          preRA = BplAnd(preRA, MkIsAlloc(etran.TrExpr(dafnyFormalIdExpr), formal.Type, etran.Old.HeapExpr));
-        }
-      }
-      pre = BplAnd(preRA, pre);
-    }
-
-    var canCallFuncID = new Bpl.IdentifierExpr(f.Origin, f.FullSanitizedName + "#canCall", Bpl.Type.Bool);
-    var useViaCanCall = new Bpl.NAryExpr(f.Origin, new Bpl.FunctionCall(canCallFuncID), Concat(tyargs, args));
-    ante = BplAnd(ante, pre);
-    ante = BplAnd(ante, useViaCanCall);
-
-    var supportFunction = GetOrCreateSupportFunction(f);
-    var supportArguments = new List<Bpl.Expr>();
-    supportArguments.AddRange(tyargs);
     Bpl.Expr layerArgument = null;
-    if (layer != null) {
-      layerArgument = LayerSucc(new Bpl.IdentifierExpr(f.Origin, layer));
-      supportArguments.Add(layerArgument);
+    if (layerFormal != null) {
+      layerArgument = LayerSucc(layerFormal);
     }
 
     Bpl.Expr revealArgument = null;
-    if (reveal != null) {
-      revealArgument = new Bpl.LiteralExpr(f.Origin, true);
-      supportArguments.Add(revealArgument);
+    if (revealFormal != null) {
+      revealArgument = revealFormal;
     }
-
-    supportArguments.AddRange(args);
-    var supportAppl = ApplySupportFunction(f.Origin, supportFunction, supportArguments);
-    var trigger = BplTriggerHeap(this, f.Origin, supportAppl, f.ReadsHeap ? etran.HeapExpr : null);
 
     var bodyWithSubst = Substitute(body, receiverReplacement, substMap);
     if (f is PrefixPredicate pp) {
       bodyWithSubst = PrefixSubstitution(pp, bodyWithSubst);
     }
 
-    var ly = layer == null ? null : new Bpl.IdentifierExpr(f.Origin, layer);
-    var etranBody = layer == null ? etran : etran.LimitedFunctions(f, ly);
+    var ly = layerFormal;
+    var etranBody = ly == null ? etran : etran.LimitedFunctions(f, ly);
     var supportBody = TranslateSupportExpr(f, bodyWithSubst, etranBody, layerArgument, revealArgument);
-    var rhs = BplAnd(etranBody.CanCallAssumption(bodyWithSubst), Bpl.Expr.Eq(supportAppl, supportBody));
-
-    var ax = BplForall(f.Origin, [], forallFormals, null, trigger, BplImp(ante, rhs));
-    return new Axiom(f.Origin, ax, "support definition axiom for " + f.FullSanitizedName) {
-      CanHide = true
-    };
+    return supportBody;
   }
 
   private Axiom GetSupportFunctionCanonicalizationAxiom(Function f, Expression body, Bpl.Function supportFunction) {

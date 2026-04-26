@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
+using System.Linq;
 using Microsoft.Boogie;
 using Bpl = Microsoft.Boogie;
 
@@ -27,6 +28,24 @@ public partial class BoogieGenerator {
 
     public Bpl.Expr LegacyHeap { get; }
     public int SnapshotVersion => snapshotVersion;
+    public bool IsBaseState => snapshotVersion == 0;
+
+    public string SupportFunctionSnapshotKey {
+      get {
+        if (IsBaseState) {
+          return "";
+        }
+
+        var parts = fieldSnapshots
+          .OrderBy(kv => kv.Key.FullSanitizedName)
+          .Select(kv => $"{kv.Key.FullSanitizedName}={kv.Value.Name}")
+          .ToList();
+        if (allocationSnapshot != null) {
+          parts.Add($"alloc={allocationSnapshot.Name}");
+        }
+        return string.Join(";", parts);
+      }
+    }
 
     public ObjectFieldSnapshotState Clone(Bpl.Expr legacyHeap) {
       return new ObjectFieldSnapshotState(boogieGenerator, legacyHeap, new Dictionary<Field, Bpl.Function>(fieldSnapshots), allocationSnapshot) {
