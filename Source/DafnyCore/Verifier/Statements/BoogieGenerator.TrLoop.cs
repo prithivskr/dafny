@@ -194,7 +194,9 @@ public partial class BoogieGenerator {
     if (loop.Mod.Expressions != null) { // check well-formedness and that the modifies is a subset
       CheckFrameWellFormed(new WFOptions(), loop.Mod.Expressions, locals, builder, etran);
       var desc = new ModifyFrameSubset("loop modifies clause", loop.Mod.Expressions, GetContextModifiesFrames());
-      CheckFrameSubset(loop.Origin, loop.Mod.Expressions, null, null, etran, etran.ModifiesFrame(loop.Origin), builder, desc, null);
+      if (!TryEmitConcreteFrameSubset(loop.Origin, loop.Mod.Expressions, GetContextModifiesFrames(), null, null, etran, builder, desc, null)) {
+        CheckFrameSubset(loop.Origin, loop.Mod.Expressions, null, null, etran, etran.ModifiesFrame(loop.Origin), builder, desc, null);
+      }
       DefineFrame(loop.Origin, etran.ModifiesFrame(loop.Origin), loop.Mod.Expressions, builder, locals, loopFrameName);
     }
     builder.Add(Bpl.Cmd.SimpleAssign(loop.Origin, preLoopHeap, etran.HeapExpr));
@@ -272,8 +274,16 @@ public partial class BoogieGenerator {
         ];
         modifiesClause.AddRange(explicitModifies);
       }
+      var emittedQfLoopFrame = false;
+      if (UseQuantifierFreeFrames) {
+        emittedQfLoopFrame = TryBuildLoopQfFrameFacts(loop.Origin, loop, Guard, locals, etranPreLoop.HeapExpr, etranPreLoop, out var qfInvariants);
+        invariants.AddRange(qfInvariants);
+      }
       // include boilerplate invariants
       foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(loop.Origin, modifiesClause, loop.IsGhost, codeContext.AllowsAllocation, etranPreLoop, etran, etran.Old)) {
+        if (emittedQfLoopFrame && IsFrameConditionBoilerplate(tri)) {
+          continue;
+        }
         if (tri.IsFree) {
           invariants.Add(TrAssumeCmd(loop.Origin, tri.Expr));
         } else {
@@ -282,7 +292,9 @@ public partial class BoogieGenerator {
         }
       }
       // add a free invariant which says that the heap hasn't changed outside of the modifies clause.
-      invariants.Add(TrAssumeCmd(loop.Origin, FrameConditionUsingDefinedFrame(loop.Origin, etranPreLoop, etran, updatedFrameEtran, updatedFrameEtran.ModifiesFrame(loop.Origin))));
+      if (!emittedQfLoopFrame) {
+        invariants.Add(TrAssumeCmd(loop.Origin, FrameConditionUsingDefinedFrame(loop.Origin, etranPreLoop, etran, updatedFrameEtran, updatedFrameEtran.ModifiesFrame(loop.Origin))));
+      }
       // for iterators, add "fresh(_new)" as an invariant
       if (codeContext is IteratorDecl iter) {
         var th = new ThisExpr(iter);

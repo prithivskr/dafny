@@ -284,6 +284,13 @@ public partial class BoogieGenerator {
     }
 
     var directSub = new Substituter(null, directSubstMap, tySubst);
+    Bpl.IdentifierExpr preCallHeap = null;
+    if (UseQuantifierFreeFrames) {
+      var preCallHeapVar = new Bpl.LocalVariable(tok, new Bpl.TypedIdent(tok, CurrentIdGenerator.FreshId("$PreCallHeap#"), Predef.HeapType));
+      locals.Add(preCallHeapVar);
+      preCallHeap = new Bpl.IdentifierExpr(tok, preCallHeapVar);
+      builder.Add(Bpl.Cmd.SimpleAssign(tok, preCallHeap, etran.HeapExpr));
+    }
 
     // Check that the reads clause of a subcall is a subset of the current reads frame,
     // but support the optimization that we don't define a reads frame at all if it's `reads *`. 
@@ -299,7 +306,10 @@ public partial class BoogieGenerator {
     }
 
     // substitute actual args for parameters in description expression frames...
-    var frameExpressions = callee.Mod.Expressions.ConvertAll(directSub.SubstFrameExpr);
+    var frameExpressions = callee.Mod.Expressions.ConvertAll(frameExpression =>
+      new FrameExpression(frameExpression.Origin,
+        Substitute(frameExpression.E, receiver, directSubstMap, tySubst),
+        frameExpression.FieldName));
     // Check that the modifies clause of a subcall is a subset of the current modifies frame,
     // but only if we're in a context that defines a modifies frame.
     if (codeContext is IMethodCodeContext methodCodeContext) {
@@ -308,7 +318,9 @@ public partial class BoogieGenerator {
         frameExpressions,
         methodCodeContext.Modifies.Expressions
       );
-      // ... but that substitution isn't needed for frames passed to CheckFrameSubset
+      // Keep the legacy subset check here, since it accounts for permissions on
+      // freshly allocated objects in the caller. The qf-heap mode still adds
+      // finite post-call preservation facts below.
       var modifiesSubst = new Substituter(null, new(), tySubst);
       CheckFrameSubset(
         tok, callee.Mod.Expressions.ConvertAll(modifiesSubst.SubstFrameExpr),
@@ -365,6 +377,18 @@ public partial class BoogieGenerator {
       call.IsFree = true;
     }
     builder.Add(call);
+
+    if (UseQuantifierFreeFrames && preCallHeap != null) {
+      var qfRelevantExprs = new List<Bpl.Expr>();
+      if (!method.IsStatic && method is not Constructor && receiver != null) {
+        qfRelevantExprs.Add(etran.TrExpr(receiver));
+      }
+      qfRelevantExprs.AddRange(Args.Select(etran.TrExpr));
+      foreach (var ensures in callee.Ens) {
+        qfRelevantExprs.Add(etran.TrExpr(Substitute(ensures.E, receiver, directSubstMap, tySubst)));
+      }
+      EmitCallQfFrameFacts(tok, cs, builder, locals, preCallHeap, etran, frameExpressions, qfRelevantExprs);
+    }
 
     // Unbox results as needed
     for (int i = 0; i < Lhss.Count; i++) {

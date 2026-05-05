@@ -265,7 +265,9 @@ public partial class BoogieGenerator {
         if (!useSurrogateLocal) {
           // check that the enclosing modifies clause allows this object to be written:  assert $_ModifiesFrame[obj]);
           var desc = new Modifiable("field", contextModFrames, fse.Obj, field);
-          builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, GetField(fse)), desc, builder.Context));
+          if (!TryEmitConcreteModifiesCheck(tok, obj, contextModFrames, etran, builder, desc)) {
+            builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, GetField(fse)), desc, builder.Context));
+          }
         }
 
         if (useSurrogateLocal) {
@@ -315,7 +317,9 @@ public partial class BoogieGenerator {
         prevIndex[i] = fieldName;
         // check that the enclosing modifies clause allows this object to be written:  assert $_Frame[obj,index]);
         var desc = new Modifiable("array location", contextModFrames, sel.Seq, null);
-        builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, fieldName), desc, builder.Context));
+        if (!TryEmitConcreteModifiesCheck(tok, obj, contextModFrames, etran, builder, desc)) {
+          builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, fieldName), desc, builder.Context));
+        }
 
         bLhss.Add(null);
         lhsBuilders.Add(delegate (Bpl.Expr rhs, bool origRhsIsHavoc, BoogieStmtListBuilder bldr, ExpressionTranslator et) {
@@ -340,7 +344,9 @@ public partial class BoogieGenerator {
         prevObj[i] = obj;
         prevIndex[i] = fieldName;
         var desc = new Modifiable("array location", contextModFrames, mse.Array, null);
-        builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, fieldName), desc, builder.Context));
+        if (!TryEmitConcreteModifiesCheck(tok, obj, contextModFrames, etran, builder, desc)) {
+          builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, fieldName), desc, builder.Context));
+        }
 
         bLhss.Add(null);
         lhsBuilders.Add(delegate (Bpl.Expr rhs, bool origRhsIsHavoc, BoogieStmtListBuilder bldr, ExpressionTranslator et) {

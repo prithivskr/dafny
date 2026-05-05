@@ -355,8 +355,10 @@ public partial class BoogieGenerator {
           CheckFrameWellFormed(wfOptions, s.Mod.Expressions, locals, builder, etran);
           // check that the modifies is a subset
           var desc = new ModifyFrameSubset("modify statement", s.Mod.Expressions, GetContextModifiesFrames());
-          CheckFrameSubset(s.Origin, s.Mod.Expressions, null, null, etran, etran.ModifiesFrame(s.Origin), builder, desc,
-            null);
+          if (!TryEmitConcreteFrameSubset(s.Origin, s.Mod.Expressions, GetContextModifiesFrames(), null, null, etran, builder, desc, null)) {
+            CheckFrameSubset(s.Origin, s.Mod.Expressions, null, null, etran, etran.ModifiesFrame(s.Origin), builder, desc,
+              null);
+          }
           // cause the change of the heap according to the given frame
           var suffix = CurrentIdGenerator.FreshId("modify#");
           string modifyFrameName = FrameVariablePrefix + suffix;

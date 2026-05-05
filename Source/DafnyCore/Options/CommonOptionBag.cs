@@ -61,6 +61,15 @@ public class CommonOptionBag {
       IsHidden = true
     };
 
+  public static readonly Option<bool> QuantifierFreeFrames =
+    new("--qf-heap", () => false, @"
+(experimental) Use a mostly quantifier-free heap encoding mode for supported
+verification fragments, replacing quantified frame conditions with finite
+instantiations and suppressing major heap-wide propagation assumptions."
+      .TrimStart()) {
+      IsHidden = true
+    };
+
   public enum AssertionShowMode { None, Implicit, All }
   public static readonly Option<AssertionShowMode> ShowAssertions = new("--show-assertions", () => AssertionShowMode.None,
     "Show hints on locations where implicit assertions occur");
@@ -514,6 +523,8 @@ NoGhost - disable printing of functions, ghost methods, and proof
       defaultValue: PrintModes.Everything);
 
     DafnyOptions.RegisterLegacyUi(DefaultFunctionOpacity, DafnyOptions.ParseDefaultFunctionOpacity, "Language feature selection", "defaultFunctionOpacity", null);
+    DafnyOptions.RegisterLegacyUi(QuantifierFreeFrames, DafnyOptions.ParseBoolean, "Verification options", "qfHeap", @"
+(experimental) Use the quantifier-light heap encoding mode.".TrimStart());
 
     DafnyOptions.RegisterLegacyUi(WarnContradictoryAssumptions, DafnyOptions.ParseImplicitEnable, "Verification options", "warnContradictoryAssumptions");
     DafnyOptions.RegisterLegacyUi(WarnRedundantAssumptions, DafnyOptions.ParseImplicitEnable, "Verification options", "warnRedundantAssumptions");
@@ -692,6 +703,7 @@ NoGhost - disable printing of functions, ghost methods, and proof
     OptionRegistry.RegisterOption(VerificationCoverageReport, OptionScope.Cli);
     OptionRegistry.RegisterOption(NoTimeStampForCoverageReport, OptionScope.Cli);
     OptionRegistry.RegisterOption(DefaultFunctionOpacity, OptionScope.Module);
+    OptionRegistry.RegisterOption(QuantifierFreeFrames, OptionScope.Cli);
     OptionRegistry.RegisterOption(OptimizeErasableDatatypeWrapper, OptionScope.Cli); // TODO needs translation record registration
     OptionRegistry.RegisterOption(AddCompileSuffix, OptionScope.Cli);  // TODO needs translation record registration
     OptionRegistry.RegisterOption(SystemModule, OptionScope.Cli);
@@ -705,4 +717,3 @@ NoGhost - disable printing of functions, ghost methods, and proof
     OptionRegistry.RegisterOption(CheckSourceLocationConsistency, OptionScope.Cli);
   }
 }
-

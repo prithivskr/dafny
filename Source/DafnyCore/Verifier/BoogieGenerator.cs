@@ -4449,6 +4449,9 @@ namespace Microsoft.Dafny {
       Contract.Requires(etran != null);
       Contract.Ensures(Contract.Result<AssumeCmd>() != null);
 
+      if (options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+        return TrAssumeCmd(tok, Bpl.Expr.True);
+      }
       return TrAssumeCmd(tok, FunctionCall(tok, BuiltinFunction.IsGoodHeap, null, etran.HeapExpr));
     }
 

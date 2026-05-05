@@ -1887,6 +1887,9 @@ namespace Microsoft.Dafny {
           AddEnsures(ens, Ensures(m.Origin, false || this.assertionOnlyFilter != null, dafnyFresh, fresh, null, null, "constructor allocates the object"));
         }
         foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(m.Origin, m.Mod.Expressions, m.IsGhost, m.AllowsAllocation, ordinaryEtran.Old, ordinaryEtran, ordinaryEtran.Old)) {
+          if (UseQuantifierFreeFrames && IsFrameConditionBoilerplate(tri)) {
+            continue;
+          }
           AddEnsures(ens, Ensures(tri.tok, tri.IsFree || this.assertionOnlyFilter != null, null, tri.Expr, tri.ErrorMessage, tri.SuccessMessage, tri.Comment));
         }
 
