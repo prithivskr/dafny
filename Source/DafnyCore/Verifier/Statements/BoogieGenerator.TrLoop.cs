@@ -185,7 +185,8 @@ public partial class BoogieGenerator {
     ExpressionTranslator etranPreLoop = new ExpressionTranslator(this, Predef, preLoopHeap, etran.scope);
     ExpressionTranslator updatedFrameEtran;
     string loopFrameName = FrameVariablePrefix + suffix;
-    if (loop.Mod.Expressions != null) {
+    var useLegacyLoopFrame = loop.Mod.Expressions != null && NeedsLegacyModifiesFrame(loop.Mod.Expressions, etran);
+    if (useLegacyLoopFrame) {
       updatedFrameEtran = etran.WithModifiesFrame(loopFrameName);
     } else {
       updatedFrameEtran = etran;
@@ -197,7 +198,9 @@ public partial class BoogieGenerator {
       if (!TryEmitConcreteFrameSubset(loop.Origin, loop.Mod.Expressions, GetContextModifiesFrames(), null, null, etran, builder, desc, null)) {
         CheckFrameSubset(loop.Origin, loop.Mod.Expressions, null, null, etran, etran.ModifiesFrame(loop.Origin), builder, desc, null);
       }
-      DefineFrame(loop.Origin, etran.ModifiesFrame(loop.Origin), loop.Mod.Expressions, builder, locals, loopFrameName);
+      if (useLegacyLoopFrame) {
+        DefineFrame(loop.Origin, etran.ModifiesFrame(loop.Origin), loop.Mod.Expressions, builder, locals, loopFrameName);
+      }
     }
     builder.Add(Bpl.Cmd.SimpleAssign(loop.Origin, preLoopHeap, etran.HeapExpr));
 

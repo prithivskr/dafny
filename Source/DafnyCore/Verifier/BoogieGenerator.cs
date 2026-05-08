@@ -728,7 +728,8 @@ namespace Microsoft.Dafny {
       if (preludePath == null) {
         //using (System.IO.Stream stream = Cce.NonNull( System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("DafnyPrelude.bpl")) // Use this once Spec#/VSIP supports designating a non-.resx project item as an embedded resource
         string codebase = Cce.NonNull(System.IO.Path.GetDirectoryName(Cce.NonNull(System.Reflection.Assembly.GetExecutingAssembly().Location)));
-        preludePath = System.IO.Path.Combine(codebase, "DafnyPrelude.bpl");
+        preludePath = System.IO.Path.Combine(codebase,
+          options.Get(CommonOptionBag.QuantifierFreeFrames) ? "DafnyPrelude.qf.bpl" : "DafnyPrelude.bpl");
       }
 
       var defines = new List<string>();
@@ -2400,7 +2401,9 @@ namespace Microsoft.Dafny {
       if (etran.readsFrame != null) {
         DefineFrame(m.Origin, etran.ReadsFrame(m.Origin), m.Reads.Expressions, builder, localVariables, null);
       }
-      DefineFrame(m.Origin, etran.ModifiesFrame(m.Origin), m.Mod.Expressions, builder, localVariables, null);
+      if (NeedsLegacyModifiesFrame(m.Mod.Expressions, etran)) {
+        DefineFrame(m.Origin, etran.ModifiesFrame(m.Origin), m.Mod.Expressions, builder, localVariables, null);
+      }
       if (wellformednessProc) {
         builder.AddCaptureState(m.Origin, false, "initial state");
       } else {
@@ -3357,9 +3360,11 @@ namespace Microsoft.Dafny {
         if (modifiesClause.Exists(fe => fe.FieldName != null || ContainsFieldLocation(fe.E.Type))) {
           boilerplate.Add(new BoilerplateTriple(tok, true, FrameCondition(tok, modifiesClause, canAllocate, FrameExpressionUse.Modifies, etranPre, etran, etranMod, fieldGranularity), null, null, "frame condition: field granularity"));
         }
-        // HeapSucc(S1, S2) or HeapSuccGhost(S1, S2)
-        Bpl.Expr heapSucc = HeapSucc(etranPre.HeapExpr, etran.HeapExpr, isGhostContext);
-        boilerplate.Add(new BoilerplateTriple(tok, true, heapSucc, null, null, "boilerplate"));
+        if (!UseQuantifierFreeFrames) {
+          // HeapSucc(S1, S2) or HeapSuccGhost(S1, S2)
+          Bpl.Expr heapSucc = HeapSucc(etranPre.HeapExpr, etran.HeapExpr, isGhostContext);
+          boilerplate.Add(new BoilerplateTriple(tok, true, heapSucc, null, null, "boilerplate"));
+        }
       }
       return boilerplate;
     }

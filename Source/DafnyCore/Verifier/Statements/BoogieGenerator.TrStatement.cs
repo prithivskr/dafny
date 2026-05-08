@@ -371,8 +371,10 @@ public partial class BoogieGenerator {
             builder.Add(Bpl.Cmd.SimpleAssign(s.Origin, preModifyHeap, etran.HeapExpr));
             // havoc $Heap;
             builder.Add(new Bpl.HavocCmd(s.Origin, [etran.HeapCastToIdentifierExpr]));
-            // assume $HeapSucc(preModifyHeap, $Heap);   OR $HeapSuccGhost
-            builder.Add(TrAssumeCmd(s.Origin, HeapSucc(preModifyHeap, etran.HeapExpr, s.IsGhost)));
+            if (!UseQuantifierFreeFrames) {
+              // assume $HeapSucc(preModifyHeap, $Heap);   OR $HeapSuccGhost
+              builder.Add(TrAssumeCmd(s.Origin, HeapSucc(preModifyHeap, etran.HeapExpr, s.IsGhost)));
+            }
             // assume nothing outside the frame was changed
             var etranPreLoop = new ExpressionTranslator(this, Predef, preModifyHeap,
               this.CurrentDeclaration is IFrameScope fs ? fs : null);
@@ -828,8 +830,10 @@ public partial class BoogieGenerator {
     }
     // assume $IsGoodHeap($Heap);
     builder.Add(AssumeGoodHeap(tok, etran));
-    // assume $IsHeapAnchor($Heap);
-    builder.Add(new Bpl.AssumeCmd(tok, FunctionCall(tok, BuiltinFunction.IsHeapAnchor, null, etran.HeapExpr)));
+    if (!UseQuantifierFreeFrames) {
+      // assume $IsHeapAnchor($Heap);
+      builder.Add(new Bpl.AssumeCmd(tok, FunctionCall(tok, BuiltinFunction.IsHeapAnchor, null, etran.HeapExpr)));
+    }
   }
 
   public void IntroduceAndAssignExistentialVars(ExistsExpr exists, BoogieStmtListBuilder builder,

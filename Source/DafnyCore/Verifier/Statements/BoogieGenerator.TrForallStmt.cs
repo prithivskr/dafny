@@ -395,7 +395,9 @@ public partial class BoogieGenerator {
     var prevEtran = new ExpressionTranslator(this, Predef, prevHeap, etran.scope);
     updater.Add(Bpl.Cmd.SimpleAssign(s.Origin, prevHeap, etran.HeapExpr));
     updater.Add(new Bpl.HavocCmd(s.Origin, [etran.HeapCastToIdentifierExpr]));
-    updater.Add(TrAssumeCmd(s.Origin, HeapSucc(prevHeap, etran.HeapExpr)));
+    if (!UseQuantifierFreeFrames) {
+      updater.Add(TrAssumeCmd(s.Origin, HeapSucc(prevHeap, etran.HeapExpr)));
+    }
 
     // Here comes:
     //   assume (forall o: ref, f: Field ::

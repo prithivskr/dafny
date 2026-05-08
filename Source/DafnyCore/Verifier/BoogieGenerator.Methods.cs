@@ -382,8 +382,10 @@ namespace Microsoft.Dafny {
         isalloc_hf = MkIsAlloc(oDotF, f.Type, h); // $IsAlloc(h[o, f], ..)
       }
 
-      Bpl.Expr ax = BplForall(bvsTypeAxiom, tr, BplImp(ante, is_hf));
-      AddOtherDefinition(fieldDeclaration, new Bpl.Axiom(c.Origin, ax, $"{c}.{f}: Type axiom"));
+      if (!UseQuantifierFreeFrames) {
+        Bpl.Expr ax = BplForall(bvsTypeAxiom, tr, BplImp(ante, is_hf));
+        AddOtherDefinition(fieldDeclaration, new Bpl.Axiom(c.Origin, ax, $"{c}.{f}: Type axiom"));
+      }
 
       if (isalloc_hf != null) {
         if (!is_array && !f.IsMutable) {
@@ -407,8 +409,7 @@ namespace Microsoft.Dafny {
         }
 
         tr = new Bpl.Trigger(c.Origin, true, t_es);
-
-        ax = BplForall(bvsAllocationAxiom, tr, BplImp(ante, isalloc_hf));
+        var ax = BplForall(bvsAllocationAxiom, tr, BplImp(ante, isalloc_hf));
         AddOtherDefinition(fieldDeclaration, new Boogie.Axiom(c.Origin, ax, $"{c}.{f}: Allocation axiom"));
       }
     }
@@ -452,17 +453,19 @@ namespace Microsoft.Dafny {
       bvsAllocationAxiom.AddRange(tyvars);
 
       var oDotF = new Boogie.NAryExpr(c.Origin, new Boogie.FunctionCall(GetReadonlyField(f)), tyexprs);
-      var is_hf = MkIs(oDotF, f.Type); // $Is(h[o, f], ..)
-      Boogie.Expr ax = bvsTypeAxiom.Count == 0 ? is_hf : BplForall(bvsTypeAxiom, BplTrigger(oDotF), is_hf);
-      var isAxiom = new Boogie.Axiom(c.Origin, ax, $"{c}.{f}: Type axiom");
-      AddOtherDefinition(fieldDeclaration, isAxiom);
+      if (!UseQuantifierFreeFrames) {
+        var is_hf = MkIs(oDotF, f.Type); // $Is(h[o, f], ..)
+        Boogie.Expr ax = bvsTypeAxiom.Count == 0 ? is_hf : BplForall(bvsTypeAxiom, BplTrigger(oDotF), is_hf);
+        var isAxiom = new Boogie.Axiom(c.Origin, ax, $"{c}.{f}: Type axiom");
+        AddOtherDefinition(fieldDeclaration, isAxiom);
+      }
 
       {
         var hVar = BplBoundVar("$h", Predef.HeapType, out var h);
         bvsAllocationAxiom.Add(hVar);
         var isGoodHeap = FunctionCall(c.Origin, BuiltinFunction.IsGoodHeap, null, h);
         var isalloc_hf = MkIsAlloc(oDotF, f.Type, h); // $IsAlloc(h[o, f], ..)
-        ax = BplForall(bvsAllocationAxiom, BplTrigger(isalloc_hf), BplImp(isGoodHeap, isalloc_hf));
+        var ax = BplForall(bvsAllocationAxiom, BplTrigger(isalloc_hf), BplImp(isGoodHeap, isalloc_hf));
         var isAllocAxiom = new Boogie.Axiom(c.Origin, ax, $"{c}.{f}: Allocation axiom");
         sink.AddTopLevelDeclaration(isAllocAxiom);
       }

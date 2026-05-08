@@ -676,22 +676,6 @@ uses {
 axiom $IsGhostField(alloc);
 }
 
-axiom (forall h: Heap, k: Heap :: 
-  { $HeapSuccGhost(h, k) } 
-  $HeapSuccGhost(h, k)
-     ==> $HeapSucc(h, k)
-       && (forall o: ref, f: Field :: 
-        { read(k, o, f) } 
-        !$IsGhostField(f) ==> read(h, o, f) == read(k, o, f)));
-
-axiom (forall<T> h: Heap, k: Heap, v: T, t: Ty :: 
-  { $HeapSucc(h, k), $IsAlloc(v, t, h) } 
-  $HeapSucc(h, k) ==> $IsAlloc(v, t, h) ==> $IsAlloc(v, t, k));
-
-axiom (forall h: Heap, k: Heap, bx: Box, t: Ty :: 
-  { $HeapSucc(h, k), $IsAllocBox(bx, t, h) } 
-  $HeapSucc(h, k) ==> $IsAllocBox(bx, t, h) ==> $IsAllocBox(bx, t, k));
-
 const unique alloc: Field;
 
 const unique allocName: NameFamily;
@@ -733,78 +717,30 @@ revealed function $IsGoodHeap(Heap) : bool;
 
 revealed function $IsHeapAnchor(Heap) : bool;
 
-var $Heap: Heap where $IsGoodHeap($Heap) && $IsHeapAnchor($Heap);
+var $Heap: Heap;
 
-const $OneHeap: Heap
-uses {
-axiom $IsGoodHeap($OneHeap);
-}
+const $OneHeap: Heap;
 
 revealed function $HeapSucc(Heap, Heap) : bool;
-
-axiom (forall h: Heap, r: ref, f: Field, x: Box :: 
-  { update(h, r, f, x) } 
-  $IsGoodHeap(update(h, r, f, x)) ==> $HeapSucc(h, update(h, r, f, x)));
-
-axiom (forall a: Heap, b: Heap, c: Heap :: 
-  { $HeapSucc(a, b), $HeapSucc(b, c) } 
-  a != c ==> $HeapSucc(a, b) && $HeapSucc(b, c) ==> $HeapSucc(a, c));
-
-axiom (forall h: Heap, k: Heap :: 
-  { $HeapSucc(h, k) } 
-  $HeapSucc(h, k)
-     ==> (forall o: ref :: 
-      { read(k, o, alloc) } 
-      $Unbox(read(h, o, alloc)) ==> $Unbox(read(k, o, alloc))));
 
 revealed function $HeapSuccGhost(Heap, Heap) : bool;
 
 procedure $YieldHavoc(this: ref, rds: Set, nw: Set);
   modifies $Heap;
-  ensures (forall $o: ref, $f: Field :: 
-    { read($Heap, $o, $f) } 
-    $o != null && $Unbox(read(old($Heap), $o, alloc))
-       ==> 
-      $o == this || Set#IsMember(rds, $Box($o)) || Set#IsMember(nw, $Box($o))
-       ==> read($Heap, $o, $f) == read(old($Heap), $o, $f));
-  ensures $HeapSucc(old($Heap), $Heap);
 
 
 
 procedure $IterHavoc0(this: ref, rds: Set, modi: Set);
   modifies $Heap;
-  ensures (forall $o: ref, $f: Field :: 
-    { read($Heap, $o, $f) } 
-    $o != null && $Unbox(read(old($Heap), $o, alloc))
-       ==> 
-      Set#IsMember(rds, $Box($o)) && !Set#IsMember(modi, $Box($o)) && $o != this
-       ==> read($Heap, $o, $f) == read(old($Heap), $o, $f));
-  ensures $HeapSucc(old($Heap), $Heap);
 
 
 
 procedure $IterHavoc1(this: ref, modi: Set, nw: Set);
   modifies $Heap;
-  ensures (forall $o: ref, $f: Field :: 
-    { read($Heap, $o, $f) } 
-    $o != null && $Unbox(read(old($Heap), $o, alloc))
-       ==> read($Heap, $o, $f) == read(old($Heap), $o, $f)
-         || $o == this
-         || Set#IsMember(modi, $Box($o))
-         || Set#IsMember(nw, $Box($o)));
-  ensures $HeapSucc(old($Heap), $Heap);
 
 
 
 procedure $IterCollectNewObjects(prevHeap: Heap, newHeap: Heap, this: ref, NW: Field) returns (s: Set);
-  ensures (forall bx: Box :: 
-    { Set#IsMember(s, bx) } 
-    Set#IsMember(s, bx)
-       <==> Set#IsMember($Unbox(read(newHeap, this, NW)): Set, bx)
-         || (
-          $Unbox(bx) != null
-           && !$Unbox(read(prevHeap, $Unbox(bx): ref, alloc))
-           && $Unbox(read(newHeap, $Unbox(bx): ref, alloc))));
 
 
 
@@ -1489,11 +1425,6 @@ axiom (forall h: Heap, a: ref ::
     0 <= i && i < Seq#Length(Seq#FromArray(h, a))
        ==> Seq#Index(Seq#FromArray(h, a), i) == read(h, a, IndexField(i))));
 
-axiom (forall h0: Heap, h1: Heap, a: ref :: 
-  { Seq#FromArray(h1, a), $HeapSucc(h0, h1) } 
-  $IsGoodHeap(h0) && $IsGoodHeap(h1) && $HeapSucc(h0, h1) && h0[a] == h1[a]
-     ==> Seq#FromArray(h0, a) == Seq#FromArray(h1, a));
-
 axiom (forall h: Heap, i: int, v: Box, a: ref :: 
   { Seq#FromArray(update(h, a, IndexField(i), v), a) } 
   0 <= i && i < _System.array.Length(a)
@@ -1988,18 +1919,6 @@ axiom (forall _System.array$arg: Ty, bx: Box ::
      ==> $Box($Unbox(bx): ref) == bx
        && $Is($Unbox(bx): ref, Tclass._System.array?(_System.array$arg)));
 
-// array.: Type axiom
-axiom (forall _System.array$arg: Ty, $h: Heap, $o: ref, $i0: int :: 
-  { read($h, $o, IndexField($i0)), Tclass._System.array?(_System.array$arg) } 
-  $IsGoodHeap($h)
-       && 
-      $o != null
-       && dtype($o) == Tclass._System.array?(_System.array$arg)
-       && 
-      0 <= $i0
-       && $i0 < _System.array.Length($o)
-     ==> $IsBox(read($h, $o, IndexField($i0)), _System.array$arg));
-
 // array.: Allocation axiom
 axiom (forall _System.array$arg: Ty, $h: Heap, $o: ref, $i0: int :: 
   { read($h, $o, IndexField($i0)), Tclass._System.array?(_System.array$arg) } 
@@ -2024,12 +1943,6 @@ axiom (forall _System.array$arg: Ty, $o: ref, $h: Heap ::
   { $IsAlloc($o, Tclass._System.array?(_System.array$arg), $h) } 
   $IsAlloc($o, Tclass._System.array?(_System.array$arg), $h)
      <==> $o == null || $Unbox(read($h, $o, alloc)): bool);
-
-// array.Length: Type axiom
-axiom (forall _System.array$arg: Ty, $o: ref :: 
-  { _System.array.Length($o), Tclass._System.array?(_System.array$arg) } 
-  $o != null && dtype($o) == Tclass._System.array?(_System.array$arg)
-     ==> $Is(_System.array.Length($o), TInt));
 
 // array.Length: Allocation axiom
 axiom (forall _System.array$arg: Ty, $h: Heap, $o: ref :: 
@@ -3344,12 +3257,8 @@ procedure {:verboseName "UpdateCells (well-formedness)"} CheckWellFormed$$_modul
 
 implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "UpdateCells (well-formedness)"} CheckWellFormed$$_module.__default.UpdateCells(a#0: ref, b#0: ref) returns (sum#0: int)
 {
-  var $_ModifiesFrame: [ref,Field]bool;
-
 
     // AddMethodImpl: UpdateCells, CheckWellFormed$$_module.__default.UpdateCells
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == a#0 || $o == b#0);
     assume {:captureState "Test/counter.dfy(25,7): initial state"} true;
     assume {:id "id0"} a#0 != b#0;
     assert {:id "id1"} a#0 != null;
@@ -3363,7 +3272,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "UpdateCells 
       { $Heap[$o] } 
       $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
          ==> $Heap[$o] == old($Heap)[$o] || $o == a#0 || $o == b#0);
-    assume $HeapSucc(old($Heap), $Heap);
     havoc sum#0;
     assume {:captureState "Test/counter.dfy(30,18): post-state"} true;
     assert {:id "id5"} a#0 != null;
@@ -3418,8 +3326,6 @@ procedure {:verboseName "UpdateCells (call)"} Call$$_module.__default.UpdateCell
   ensures {:id "id21"} sum#0
      == $Unbox(read($Heap, a#0, _module.Cell.value)): int
        + $Unbox(read($Heap, b#0, _module.Cell.value)): int;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
 
 
 
@@ -3450,21 +3356,16 @@ procedure {:verboseName "UpdateCells (correctness)"} Impl$$_module.__default.Upd
   ensures {:id "id27"} sum#0
      == $Unbox(read($Heap, a#0, _module.Cell.value)): int
        + $Unbox(read($Heap, b#0, _module.Cell.value)): int;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
 
 
 
 implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "UpdateCells (correctness)"} Impl$$_module.__default.UpdateCells(a#0: ref, b#0: ref)
    returns (defass#sum#0: bool, sum#0: int, $_reverifyPost: bool)
 {
-  var $_ModifiesFrame: [ref,Field]bool;
   var $PreCallHeap#0: Heap;
   var $rhs#0: int;
 
     // AddMethodImpl: UpdateCells, Impl$$_module.__default.UpdateCells
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == a#0 || $o == b#0);
     assume {:captureState "Test/counter.dfy(33,0): initial state"} true;
     $_reverifyPost := false;
     // ----- call statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(34,14)
@@ -3473,9 +3374,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "UpdateCells 
     assert {:id "id28"} a#0 != null;
     $PreCallHeap#0 := $Heap;
     assume true;
-    assert {:id "id29"} (forall $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool && $o == a#0
-         ==> $_ModifiesFrame[$o, $f]);
+    assert {:id "id29"} a#0 == a#0 || a#0 == b#0 || !$Unbox(read(old($Heap), a#0, alloc)): bool;
     call {:id "id30"} Call$$_module.Cell.Increment(a#0);
     // qf-call-frame Increment: supports=2 reads=2 modified=1
     assume a#0 != null && a#0 != a#0
@@ -3521,21 +3420,16 @@ procedure {:verboseName "Main (well-formedness)"} CheckWellFormed$$_module.__def
 
 procedure {:verboseName "Main (call)"} Call$$_module.__default.Main();
   modifies $Heap;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
 
 
 
 procedure {:verboseName "Main (correctness)"} Impl$$_module.__default.Main() returns ($_reverifyPost: bool);
   modifies $Heap;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
 
 
 
 implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Main (correctness)"} Impl$$_module.__default.Main() returns ($_reverifyPost: bool)
 {
-  var $_ModifiesFrame: [ref,Field]bool;
   var defass#x#0: bool;
   var x#0: ref
      where defass#x#0
@@ -3556,8 +3450,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Main (correc
   var $PreCallHeap#2: Heap;
 
     // AddMethodImpl: Main, Impl$$_module.__default.Main
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
     assume {:captureState "Test/counter.dfy(42,0): initial state"} true;
     $_reverifyPost := false;
     // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(43,9)
@@ -3569,11 +3461,12 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Main (correc
     v##0 := LitInt(3);
     $PreCallHeap#0 := $Heap;
     call {:id "id40"} $nw := Call$$_module.Cell.__ctor(v##0);
-    // qf-call-frame _ctor: supports=2 reads=2 modified=0
-    assume $nw != null
+    assume !$Unbox(read(old($Heap), $nw, alloc)): bool;
+    // qf-call-frame _ctor: supports=2 reads=2 modified=1
+    assume $nw != null && $nw != $nw
        ==> read($Heap, $nw, _module.Cell.value)
          == read($PreCallHeap#0, $nw, _module.Cell.value);
-    assume x#0 != null
+    assume x#0 != null && x#0 != $nw
        ==> read($Heap, x#0, _module.Cell.value)
          == read($PreCallHeap#0, x#0, _module.Cell.value);
     // TrCallStmt: After ProcessCallStmt
@@ -3590,14 +3483,15 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Main (correc
     v##1 := LitInt(5);
     $PreCallHeap#1 := $Heap;
     call {:id "id42"} $nw := Call$$_module.Cell.__ctor(v##1);
-    // qf-call-frame _ctor: supports=3 reads=3 modified=0
-    assume $nw != null
+    assume !$Unbox(read(old($Heap), $nw, alloc)): bool;
+    // qf-call-frame _ctor: supports=3 reads=3 modified=1
+    assume $nw != null && $nw != $nw
        ==> read($Heap, $nw, _module.Cell.value)
          == read($PreCallHeap#1, $nw, _module.Cell.value);
-    assume x#0 != null
+    assume x#0 != null && x#0 != $nw
        ==> read($Heap, x#0, _module.Cell.value)
          == read($PreCallHeap#1, x#0, _module.Cell.value);
-    assume y#0 != null
+    assume y#0 != null && y#0 != $nw
        ==> read($Heap, y#0, _module.Cell.value)
          == read($PreCallHeap#1, y#0, _module.Cell.value);
     // TrCallStmt: After ProcessCallStmt
@@ -3620,10 +3514,9 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Main (correc
     $PreCallHeap#2 := $Heap;
     assume true;
     assume true;
-    assert {:id "id46"} (forall $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool && ($o == a##0 || $o == b##0)
-         ==> $_ModifiesFrame[$o, $f]);
-    call {:id "id47"} $rhs##0 := Call$$_module.__default.UpdateCells(a##0, b##0);
+    assert {:id "id46"} !$Unbox(read(old($Heap), a##0, alloc)): bool;
+    assert {:id "id47"} !$Unbox(read(old($Heap), b##0, alloc)): bool;
+    call {:id "id48"} $rhs##0 := Call$$_module.__default.UpdateCells(a##0, b##0);
     // qf-call-frame UpdateCells: supports=5 reads=5 modified=2
     assume x#0 != null && x#0 != x#0 && x#0 != y#0
        ==> read($Heap, x#0, _module.Cell.value)
@@ -3644,20 +3537,20 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Main (correc
     total#0 := $rhs##0;
     assume {:captureState "Test/counter.dfy(46,32)"} true;
     // ----- assert statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(48,3)
-    assert {:id "id49"} defass#x#0;
-    assert {:id "id50"} {:subsumption 0} x#0 != null;
+    assert {:id "id50"} defass#x#0;
+    assert {:id "id51"} {:subsumption 0} x#0 != null;
     assume true;
     assume true;
-    assert {:id "id51"} $Unbox(read($Heap, x#0, _module.Cell.value)): int == LitInt(4);
+    assert {:id "id52"} $Unbox(read($Heap, x#0, _module.Cell.value)): int == LitInt(4);
     // ----- assert statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(49,3)
-    assert {:id "id52"} defass#y#0;
-    assert {:id "id53"} {:subsumption 0} y#0 != null;
+    assert {:id "id53"} defass#y#0;
+    assert {:id "id54"} {:subsumption 0} y#0 != null;
     assume true;
     assume true;
-    assert {:id "id54"} $Unbox(read($Heap, y#0, _module.Cell.value)): int == LitInt(7);
+    assert {:id "id55"} $Unbox(read($Heap, y#0, _module.Cell.value)): int == LitInt(7);
     // ----- assert statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(50,3)
     assume true;
-    assert {:id "id55"} total#0 == LitInt(11);
+    assert {:id "id56"} total#0 == LitInt(11);
 }
 
 
@@ -3698,12 +3591,6 @@ axiom FDim(_module.Cell.value) == 0
    && !$IsGhostField(_module.Cell.value);
 }
 
-// Cell.value: Type axiom
-axiom (forall $h: Heap, $o: ref :: 
-  { $Unbox(read($h, $o, _module.Cell.value)): int } 
-  $IsGoodHeap($h) && $o != null && dtype($o) == Tclass._module.Cell?()
-     ==> $Is($Unbox(read($h, $o, _module.Cell.value)): int, TInt));
-
 // Cell.value: Allocation axiom
 axiom (forall $h: Heap, $o: ref :: 
   { $Unbox(read($h, $o, _module.Cell.value)): int } 
@@ -3728,11 +3615,9 @@ procedure {:verboseName "Cell._ctor (call)"} Call$$_module.Cell.__ctor(v#0: int)
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id57"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
+  ensures {:id "id58"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
   // constructor allocates the object
   ensures !$Unbox(read(old($Heap), this, alloc)): bool;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
 
 
 
@@ -3740,20 +3625,15 @@ procedure {:verboseName "Cell._ctor (correctness)"} Impl$$_module.Cell.__ctor(v#
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id58"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
+  ensures {:id "id59"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
 
 
 
 implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell._ctor (correctness)"} Impl$$_module.Cell.__ctor(v#0: int) returns (this: ref, $_reverifyPost: bool)
 {
-  var $_ModifiesFrame: [ref,Field]bool;
   var this.value: int;
 
     // AddMethodImpl: _ctor, Impl$$_module.Cell.__ctor
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
     assume {:captureState "Test/counter.dfy(6,2): initial state"} true;
     $_reverifyPost := false;
     // ----- divided block before new; ----- /Users/saline/development/projects/dafny/Test/counter.dfy(6,3)
@@ -3769,7 +3649,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell._ctor (
     assume $Unbox(read($Heap, this, _module.Cell.value)): int == this.value;
     $Heap := update($Heap, this, alloc, $Box(true));
     assume true;
-    assume $IsHeapAnchor($Heap);
     // ----- divided block after new; ----- /Users/saline/development/projects/dafny/Test/counter.dfy(6,3)
 }
 
@@ -3796,9 +3675,7 @@ procedure {:verboseName "Cell.SetValue (call)"} Call$$_module.Cell.SetValue(this
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id61"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
+  ensures {:id "id62"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
 
 
 
@@ -3814,26 +3691,21 @@ procedure {:verboseName "Cell.SetValue (correctness)"} Impl$$_module.Cell.SetVal
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id62"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
+  ensures {:id "id63"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
 
 
 
 implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell.SetValue (correctness)"} Impl$$_module.Cell.SetValue(this: ref, v#0: int) returns ($_reverifyPost: bool)
 {
-  var $_ModifiesFrame: [ref,Field]bool;
   var $rhs#0: int;
 
     // AddMethodImpl: SetValue, Impl$$_module.Cell.SetValue
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == this);
     assume {:captureState "Test/counter.dfy(13,2): initial state"} true;
     $_reverifyPost := false;
     // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(14,11)
     assume true;
     assume true;
-    assert {:id "id63"} this == this;
+    assert {:id "id64"} this == this;
     assume true;
     $rhs#0 := v#0;
     $Heap := update($Heap, this, _module.Cell.value, $Box($rhs#0));
@@ -3854,24 +3726,19 @@ procedure {:verboseName "Cell.Increment (well-formedness)"} CheckWellFormed$$_mo
 
 implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell.Increment (well-formedness)"} CheckWellFormed$$_module.Cell.Increment(this: ref)
 {
-  var $_ModifiesFrame: [ref,Field]bool;
-
 
     // AddMethodImpl: Increment, CheckWellFormed$$_module.Cell.Increment
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == this);
     assume {:captureState "Test/counter.dfy(17,9): initial state"} true;
     havoc $Heap;
     assume (forall $o: ref :: 
       { $Heap[$o] } 
       $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
          ==> $Heap[$o] == old($Heap)[$o] || $o == this);
-    assume $HeapSucc(old($Heap), $Heap);
     assume {:captureState "Test/counter.dfy(19,18): post-state"} true;
     assume true;
-    assert {:id "id66"} $IsAlloc(this, Tclass._module.Cell(), old($Heap));
+    assert {:id "id67"} $IsAlloc(this, Tclass._module.Cell(), old($Heap));
     assume true;
-    assume {:id "id67"} $Unbox(read($Heap, this, _module.Cell.value)): int
+    assume {:id "id68"} $Unbox(read($Heap, this, _module.Cell.value)): int
        == $Unbox(read(old($Heap), this, _module.Cell.value)): int + 1;
 }
 
@@ -3887,10 +3754,8 @@ procedure {:verboseName "Cell.Increment (call)"} Call$$_module.Cell.Increment(th
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id68"} $Unbox(read($Heap, this, _module.Cell.value)): int
+  ensures {:id "id69"} $Unbox(read($Heap, this, _module.Cell.value)): int
      == $Unbox(read(old($Heap), this, _module.Cell.value)): int + 1;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
 
 
 
@@ -3905,27 +3770,22 @@ procedure {:verboseName "Cell.Increment (correctness)"} Impl$$_module.Cell.Incre
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id69"} $Unbox(read($Heap, this, _module.Cell.value)): int
+  ensures {:id "id70"} $Unbox(read($Heap, this, _module.Cell.value)): int
      == $Unbox(read(old($Heap), this, _module.Cell.value)): int + 1;
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
 
 
 
 implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell.Increment (correctness)"} Impl$$_module.Cell.Increment(this: ref) returns ($_reverifyPost: bool)
 {
-  var $_ModifiesFrame: [ref,Field]bool;
   var $rhs#0: int;
 
     // AddMethodImpl: Increment, Impl$$_module.Cell.Increment
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == this);
     assume {:captureState "Test/counter.dfy(20,2): initial state"} true;
     $_reverifyPost := false;
     // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(21,11)
     assume true;
     assume true;
-    assert {:id "id70"} this == this;
+    assert {:id "id71"} this == this;
     assume true;
     assume true;
     $rhs#0 := $Unbox(read($Heap, this, _module.Cell.value)): int + 1;

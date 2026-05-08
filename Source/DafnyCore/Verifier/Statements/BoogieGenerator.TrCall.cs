@@ -318,13 +318,13 @@ public partial class BoogieGenerator {
         frameExpressions,
         methodCodeContext.Modifies.Expressions
       );
-      // Keep the legacy subset check here, since it accounts for permissions on
-      // freshly allocated objects in the caller. The qf-heap mode still adds
-      // finite post-call preservation facts below.
-      var modifiesSubst = new Substituter(null, new(), tySubst);
-      CheckFrameSubset(
-        tok, callee.Mod.Expressions.ConvertAll(modifiesSubst.SubstFrameExpr),
-        receiver, substMap, etran, etran.ModifiesFrame(tok), builder, desc, null);
+      if (!TryEmitConcreteFrameSubset(tok, callee.Mod.Expressions, methodCodeContext.Modifies.Expressions,
+            receiver, substMap, etran, builder, desc, null)) {
+        var modifiesSubst = new Substituter(null, new(), tySubst);
+        CheckFrameSubset(
+          tok, callee.Mod.Expressions.ConvertAll(modifiesSubst.SubstFrameExpr),
+          receiver, substMap, etran, etran.ModifiesFrame(tok), builder, desc, null);
+      }
     }
 
     // Check termination
@@ -378,6 +378,11 @@ public partial class BoogieGenerator {
     }
     builder.Add(call);
 
+    if (UseQuantifierFreeFrames && method is Constructor && outs.Count != 0 && outs[0] != null) {
+      // Constructor results are fresh relative to the enclosing method entry heap.
+      builder.Add(TrAssumeCmd(tok, Bpl.Expr.Not(etran.Old.IsAlloced(tok, outs[0]))));
+    }
+
     if (UseQuantifierFreeFrames && preCallHeap != null) {
       var qfRelevantExprs = new List<Bpl.Expr>();
       if (!method.IsStatic && method is not Constructor && receiver != null) {
@@ -387,7 +392,10 @@ public partial class BoogieGenerator {
       foreach (var ensures in callee.Ens) {
         qfRelevantExprs.Add(etran.TrExpr(Substitute(ensures.E, receiver, directSubstMap, tySubst)));
       }
-      EmitCallQfFrameFacts(tok, cs, builder, locals, preCallHeap, etran, frameExpressions, qfRelevantExprs);
+      var extraModifiedRefs = method is Constructor && outs.Count != 0 && outs[0] != null
+        ? new[] { (Bpl.Expr)outs[0] }
+        : null;
+      EmitCallQfFrameFacts(tok, cs, builder, locals, preCallHeap, etran, frameExpressions, qfRelevantExprs, extraModifiedRefs);
     }
 
     // Unbox results as needed

@@ -11,6 +11,10 @@ public partial class BoogieGenerator {
 
   private bool UseQuantifierFreeFrames => options.Get(CommonOptionBag.QuantifierFreeFrames);
 
+  private bool NeedsLegacyModifiesFrame(IEnumerable<FrameExpression> frameExpressions, ExpressionTranslator etran) {
+    return !UseQuantifierFreeFrames || !TryCollectConcreteModifiedRefs(frameExpressions, etran, out _);
+  }
+
   private bool IsFrameConditionBoilerplate(BoilerplateTriple triple) {
     return triple.Comment != null && triple.Comment.StartsWith("frame condition", StringComparison.Ordinal);
   }
@@ -216,6 +220,12 @@ public partial class BoogieGenerator {
       .Aggregate((Bpl.Expr)Bpl.Expr.False, (acc, expr) => BplOr(acc, expr));
   }
 
+  private Bpl.Expr ConcreteFootprintOrFreshPermission(IOrigin tok, Bpl.Expr obj, IEnumerable<Bpl.Expr> footprint, ExpressionTranslator etran) {
+    var inFootprint = ConcreteFootprintMembership(tok, obj, footprint);
+    var isFreshSinceEntry = Bpl.Expr.Not(etran.Old.IsAlloced(tok, obj));
+    return BplOr(inFootprint, isFreshSinceEntry);
+  }
+
   private bool TryEmitConcreteModifiesCheck(IOrigin tok, Bpl.Expr obj, IEnumerable<FrameExpression> frameExpressions,
     ExpressionTranslator etran, BoogieStmtListBuilder builder, ProofObligationDescription desc) {
     if (!UseQuantifierFreeFrames || !TryCollectConcreteModifiedRefs(frameExpressions, etran, out var footprint)) {
@@ -242,7 +252,7 @@ public partial class BoogieGenerator {
     }
 
     foreach (var calleeRef in calleeFootprint) {
-      builder.Add(Assert(tok, ConcreteFootprintMembership(tok, calleeRef, enclosingFootprint), desc, builder.Context, kv));
+      builder.Add(Assert(tok, ConcreteFootprintOrFreshPermission(tok, calleeRef, enclosingFootprint, etran), desc, builder.Context, kv));
     }
     return true;
   }
@@ -280,10 +290,21 @@ public partial class BoogieGenerator {
   private bool TryBuildLoopQfFrameFacts(IOrigin tok, LoopStmt loop, Expression guard, Variables locals,
     Bpl.Expr preLoopHeap, ExpressionTranslator etran, out List<Bpl.PredicateCmd> commands) {
     commands = [];
-    if (loop.Mod.Expressions == null) {
+    List<FrameExpression> effectiveModifiesClause;
+    if (loop.Mod.Expressions != null) {
+      effectiveModifiesClause = loop.Mod.Expressions;
+    } else if (codeContext is IMethodCodeContext methodCodeContext) {
+      effectiveModifiesClause = methodCodeContext.Modifies.Expressions;
+      if (codeContext is IteratorDecl iter) {
+        effectiveModifiesClause = [
+          new FrameExpression(loop.Origin, new ThisExpr(iter), null),
+          .. effectiveModifiesClause
+        ];
+      }
+    } else {
       return false;
     }
-    if (!TryCollectConcreteModifiedRefs(loop.Mod.Expressions, etran, out var modifiedRefs)) {
+    if (!TryCollectConcreteModifiedRefs(effectiveModifiesClause, etran, out var modifiedRefs)) {
       return false;
     }
 
@@ -303,9 +324,14 @@ public partial class BoogieGenerator {
 
   private void EmitCallQfFrameFacts(IOrigin tok, CallStmt callStmt, BoogieStmtListBuilder builder, Variables locals,
     Bpl.Expr preCallHeap, ExpressionTranslator etran, IEnumerable<FrameExpression> frameExpressions,
-    IEnumerable<Bpl.Expr> relevantExprs) {
+    IEnumerable<Bpl.Expr> relevantExprs, IEnumerable<Bpl.Expr> extraModifiedRefs = null) {
     if (!TryCollectConcreteModifiedRefs(frameExpressions, etran, out var modifiedRefs)) {
       return;
+    }
+    if (extraModifiedRefs != null) {
+      foreach (var extraModifiedRef in extraModifiedRefs) {
+        AddModifiedRef(modifiedRefs, extraModifiedRef);
+      }
     }
 
     var relevantExprList = relevantExprs.Where(expr => expr != null).ToList();
