@@ -369,6 +369,9 @@ public partial class BoogieGenerator {
             var preModifyHeap = new Bpl.IdentifierExpr(s.Origin, preModifyHeapVar);
             // preModifyHeap := $Heap;
             builder.Add(Bpl.Cmd.SimpleAssign(s.Origin, preModifyHeap, etran.HeapExpr));
+            if (UseQuantifierFreeFrames) {
+              SnapshotAllocState(s.Origin, "$PreModifyHeap$" + suffix, locals, builder, etran);
+            }
             // havoc $Heap;
             builder.Add(new Bpl.HavocCmd(s.Origin, [etran.HeapCastToIdentifierExpr]));
             if (!UseQuantifierFreeFrames) {
@@ -820,10 +823,17 @@ public partial class BoogieGenerator {
     Contract.Requires(builder != null);
     Contract.Requires(etran != null);
 
-    // $Heap[$nw, alloc] := true;
-    Bpl.Expr alloc = Predef.Alloc(tok);
-    Bpl.IdentifierExpr heap = etran.HeapCastToIdentifierExpr;
-    Bpl.Cmd cmd = Bpl.Cmd.SimpleAssign(tok, heap, UpdateHeap(tok, heap, nw, alloc, Bpl.Expr.True));
+    Bpl.Cmd cmd;
+    if (UseQuantifierFreeFrames) {
+      // $Alloc[$nw] := true;
+      var alloc = AllocStateIdentifierExpr(tok);
+      cmd = Bpl.Cmd.SimpleAssign(tok, alloc, Bpl.Expr.StoreTok(tok, alloc, nw, Bpl.Expr.True));
+    } else {
+      // $Heap[$nw, alloc] := true;
+      Bpl.Expr alloc = Predef.Alloc(tok);
+      Bpl.IdentifierExpr heap = etran.HeapCastToIdentifierExpr;
+      cmd = Bpl.Cmd.SimpleAssign(tok, heap, UpdateHeap(tok, heap, nw, alloc, Bpl.Expr.True));
+    }
     builder.Add(cmd);
     if (extraCmd != null) {
       builder.Add(extraCmd);
@@ -897,9 +907,13 @@ public partial class BoogieGenerator {
       if (processLabels) {
         if (ss is LabeledStatement labelledStatement) {
           foreach (var label in labelledStatement.Labels) {
+            var heapName = "$Heap_at_" + label.AssignUniqueId(CurrentIdGenerator);
             var heapAt = locals.GetOrAdd(new Bpl.LocalVariable(ss.Origin,
-              new Bpl.TypedIdent(ss.Origin, "$Heap_at_" + label.AssignUniqueId(CurrentIdGenerator), Predef.HeapType)));
+              new Bpl.TypedIdent(ss.Origin, heapName, Predef.HeapType)));
             builder.Add(Bpl.Cmd.SimpleAssign(ss.Origin, new Bpl.IdentifierExpr(ss.Origin, heapAt), etran.HeapExpr));
+            if (UseQuantifierFreeFrames) {
+              SnapshotAllocState(ss.Origin, heapName, locals, builder, etran);
+            }
           }
         }
       }

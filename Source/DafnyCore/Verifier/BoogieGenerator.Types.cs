@@ -319,7 +319,7 @@ public partial class BoogieGenerator {
                && precondition of f(bx0) holds in h
                ==> $IsBox(Apply1(t0, t1, f, h, bx0), t1)));
       */
-      {
+      if (!UseQuantifierFreeFrames) {
         var bvarsOuter = new List<Bpl.Variable>();
         var f = BplBoundVar("f", Predef.HandleType, bvarsOuter);
         var types = Map(Enumerable.Range(0, arity + 1), i => BplBoundVar("t" + i, Predef.Ty, bvarsOuter));
@@ -396,7 +396,7 @@ public partial class BoogieGenerator {
         However, for /allocated:0 and /allocated:1, IsAlloc for arrow types is trivially true
         and implies nothing about the reads set.
       */
-      {
+      if (!UseQuantifierFreeFrames) {
         var bvarsOuter = new List<Bpl.Variable>();
         var f = BplBoundVar("f", Predef.HandleType, bvarsOuter);
         var types = Map(Enumerable.Range(0, arity + 1), i => BplBoundVar("t" + i, Predef.Ty, bvarsOuter));
@@ -442,7 +442,7 @@ public partial class BoogieGenerator {
                   $IsAllocBox(Apply1(t0, t1, f, h, bx0), t1, h))
           ));
       */
-      {
+      if (!UseQuantifierFreeFrames) {
         var bvarsOuter = new List<Bpl.Variable>();
         var f = BplBoundVar("f", Predef.HandleType, bvarsOuter);
         var types = Map(Enumerable.Range(0, arity + 1), i => BplBoundVar("t" + i, Predef.Ty, bvarsOuter));
@@ -585,13 +585,15 @@ public partial class BoogieGenerator {
     var tr = BplTrigger(isBv);
     sink.AddTopLevelDeclaration(new Bpl.Axiom(tok, new Bpl.ForallExpr(tok, bvs, tr, isBv)));
 
-    // axiom (forall v: bv3, heap: Heap :: { $IsAlloc(v, TBitvector(3), h) } $IsAlloc(v, TBitvector(3), heap));
-    vVar = BplBoundVar("v", boogieType, out v);
-    var heapVar = BplBoundVar("heap", Predef.HeapType, out var heap);
-    bvs = [vVar, heapVar];
-    var isAllocBv = MkIsAlloc(v, typeTerm, heap);
-    tr = BplTrigger(isAllocBv);
-    sink.AddTopLevelDeclaration(new Bpl.Axiom(tok, new Bpl.ForallExpr(tok, bvs, tr, isAllocBv)));
+    if (!UseQuantifierFreeFrames) {
+      // axiom (forall v: bv3, heap: Heap :: { $IsAlloc(v, TBitvector(3), h) } $IsAlloc(v, TBitvector(3), heap));
+      vVar = BplBoundVar("v", boogieType, out v);
+      var heapVar = BplBoundVar("heap", Predef.HeapType, out var heap);
+      bvs = [vVar, heapVar];
+      var isAllocBv = MkIsAlloc(v, typeTerm, heap);
+      tr = BplTrigger(isAllocBv);
+      sink.AddTopLevelDeclaration(new Bpl.Axiom(tok, new Bpl.ForallExpr(tok, bvs, tr, isAllocBv)));
+    }
   }
 
   /// <summary>
@@ -1098,6 +1100,10 @@ public partial class BoogieGenerator {
     var o = BplBoundVar((dd.Var ?? c).AssignUniqueName((dd.IdGenerator)), oBplType, vars);
 
     if (generateIsAlloc) {
+      if (UseQuantifierFreeFrames) {
+        return;
+      }
+
       var h = BplBoundVar("$h", Predef.HeapType, vars);
       // $IsAlloc(o, ..)
       var isAlloc = MkIsAlloc(o, typeTerm, h, ModeledAsBoxType(baseType));
@@ -1797,6 +1803,7 @@ public partial class BoogieGenerator {
     var mod = new List<Bpl.IdentifierExpr> {
         etran.HeapCastToIdentifierExpr,
       };
+    AddQfAllocToModifiesList(decl.Tok, mod);
     var name = MethodName(decl, MethodTranslationKind.SpecWellformedness);
     var proc = new Bpl.Procedure(decl.Tok, name, [],
       inParams, [],

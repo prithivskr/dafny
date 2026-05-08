@@ -214,7 +214,7 @@ public partial class BoogieGenerator {
       AddOtherDefinition(boogieFunction, new Bpl.Axiom(f.Origin, ax, "consequence axiom for " + f.FullSanitizedName));
     }
 
-    if (f.ResultType.MayInvolveReferences) {
+    if (!UseQuantifierFreeFrames && f.ResultType.MayInvolveReferences) {
       whr = GetWhereClause(f.Origin, funcAppl, f.ResultType, etranHeap, ISALLOC, true);
       Contract.Assert(whr != null); // since f.ResultType involves references, there should be an ISALLOC where clause
       if (whr != null) {

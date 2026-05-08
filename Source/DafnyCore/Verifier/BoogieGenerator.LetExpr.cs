@@ -367,17 +367,30 @@ namespace Microsoft.Dafny {
         gExprs.AddRange(Map(FTV_Types, tt => boogieGenerator.TypeToTy(tt)));
         if (UsesHeap) {
           gExprs.Add(etran.HeapExpr);
+          if (boogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            gExprs.Add(boogieGenerator.AllocStateIdentifierExpr(Tok, "$alloc"));
+          }
         }
 
         if (UsesOldHeap) {
           gExprs.Add(etran.Old.HeapExpr);
+          if (boogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            gExprs.Add(new Bpl.OldExpr(Tok, boogieGenerator.AllocStateIdentifierExpr(Tok)));
+          }
         }
 
         foreach (var heapAtLabel in UsesHeapAt) {
           Bpl.Expr ve;
-          var bv = BplBoundVar("$Heap_at_" + heapAtLabel.AssignUniqueId(boogieGenerator.CurrentIdGenerator),
+          var heapAtName = "$Heap_at_" + heapAtLabel.AssignUniqueId(boogieGenerator.CurrentIdGenerator);
+          var bv = BplBoundVar(heapAtName,
             boogieGenerator.Predef.HeapType, out ve);
           gExprs.Add(ve);
+          if (boogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            Bpl.Expr allocVe;
+            BplBoundVar(boogieGenerator.AllocVariableNameFromHeapName(heapAtName),
+              boogieGenerator.AllocMapType(Tok), out allocVe);
+            gExprs.Add(allocVe);
+          }
         }
 
         if (ThisType != null) {
@@ -423,6 +436,9 @@ namespace Microsoft.Dafny {
               new Bpl.IdentifierExpr(Tok, nv));
             typeAntecedents = BplAnd(typeAntecedents, isGoodHeap);
           }
+          if (boogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            vv.Add(NewVar("$alloc", boogieGenerator.AllocMapType(Tok), wantFormals));
+          }
         }
 
         if (UsesOldHeap) {
@@ -433,10 +449,14 @@ namespace Microsoft.Dafny {
               new Bpl.IdentifierExpr(Tok, nv));
             typeAntecedents = BplAnd(typeAntecedents, isGoodHeap);
           }
+          if (boogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            vv.Add(NewVar("$alloc$old", boogieGenerator.AllocMapType(Tok), wantFormals));
+          }
         }
 
         foreach (var heapAtLabel in UsesHeapAt) {
-          var nv = NewVar("$Heap_at_" + heapAtLabel.AssignUniqueId(boogieGenerator.CurrentIdGenerator),
+          var heapAtName = "$Heap_at_" + heapAtLabel.AssignUniqueId(boogieGenerator.CurrentIdGenerator);
+          var nv = NewVar(heapAtName,
             boogieGenerator.Predef.HeapType, wantFormals);
           vv.Add(nv);
           if (etran != null) {
@@ -446,6 +466,10 @@ namespace Microsoft.Dafny {
             var isGoodHeap = boogieGenerator.FunctionCall(Tok, BuiltinFunction.IsGoodHeap, null,
               new Bpl.IdentifierExpr(Tok, nv));
             typeAntecedents = BplAnd(typeAntecedents, isGoodHeap);
+          }
+          if (boogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            vv.Add(NewVar(boogieGenerator.AllocVariableNameFromHeapName(heapAtName),
+              boogieGenerator.AllocMapType(Tok), wantFormals));
           }
         }
 

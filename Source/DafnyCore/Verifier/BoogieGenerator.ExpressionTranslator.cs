@@ -1224,13 +1224,25 @@ namespace Microsoft.Dafny {
         }
         if (call.UsesHeap) {
           args.Add(HeapExpr);
+          if (BoogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            args.Add(BoogieGenerator.AllocStateExprForHeapExpr(GetToken(call), HeapExpr));
+          }
         }
         if (call.UsesOldHeap) {
           args.Add(Old.HeapExpr);
+          if (BoogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            args.Add(BoogieGenerator.AllocStateExprForHeapExpr(GetToken(call), Old.HeapExpr));
+          }
         }
         foreach (var heapAtLabel in call.HeapAtLabels) {
-          var bv = BplBoundVar("$Heap_at_" + heapAtLabel.AssignUniqueId(BoogieGenerator.CurrentIdGenerator), BoogieGenerator.Predef.HeapType, out var ve);
+          var heapAtName = "$Heap_at_" + heapAtLabel.AssignUniqueId(BoogieGenerator.CurrentIdGenerator);
+          var bv = BplBoundVar(heapAtName, BoogieGenerator.Predef.HeapType, out var ve);
           args.Add(ve);
+          if (BoogieGenerator.options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+            Bpl.Expr allocVe;
+            BplBoundVar(BoogieGenerator.AllocVariableNameFromHeapName(heapAtName), BoogieGenerator.AllocMapType(GetToken(call)), out allocVe);
+            args.Add(allocVe);
+          }
         }
         foreach (var arg in call.Args) {
           args.Add(TrExpr(arg));

@@ -59,6 +59,9 @@ public static class OpaqueBlockVerifier {
       var heapAtVariable = locals.GetOrAdd(new Boogie.LocalVariable(block.Origin,
         new TypedIdent(block.Origin, uniqueId, generator.Predef.HeapType)));
       builder.Add(Cmd.SimpleAssign(block.Origin, new Boogie.IdentifierExpr(block.Origin, heapAtVariable), etran.HeapExpr));
+      if (generator.Options.Get(CommonOptionBag.QuantifierFreeFrames)) {
+        generator.SnapshotAllocState(block.Origin, uniqueId, locals, builder, etran);
+      }
 
       beforeBlockExpressionTranslator = etran.WithHeapVariable(uniqueId);
     } else {

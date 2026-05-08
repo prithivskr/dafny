@@ -97,6 +97,9 @@ namespace Microsoft.Dafny {
           var heapAt = locals.GetOrAdd(new Bpl.LocalVariable(stmt.Origin, new Bpl.TypedIdent(stmt.Origin, name, Predef.HeapType)));
           var heapReference = new Bpl.IdentifierExpr(stmt.Origin, heapAt);
           b.Add(Bpl.Cmd.SimpleAssign(stmt.Origin, heapReference, etran.HeapExpr));
+          if (UseQuantifierFreeFrames) {
+            SnapshotAllocState(stmt.Origin, name, locals, b, etran);
+          }
           var substMap = new Dictionary<IVariable, Expression>();
           foreach (var v in FreeVariablesUtil.ComputeFreeVariables(options, assertStmt.Expr)) {
             if (v is LocalVariable) {

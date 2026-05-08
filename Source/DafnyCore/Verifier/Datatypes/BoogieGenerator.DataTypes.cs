@@ -643,6 +643,10 @@ namespace Microsoft.Dafny {
         */
     private void AddIsAllocConstructorAxiom(DatatypeDecl dt, DatatypeCtor ctor, Bpl.Function ctorFunction,
       List<Expr> args, List<Variable> bvs, NAryExpr c_params, Expr c_ty) {
+      if (UseQuantifierFreeFrames) {
+        return;
+      }
+
       var hVar = BplBoundVar("$h", Predef.HeapType, out var h);
 
       Bpl.Expr conj = Bpl.Expr.True;
@@ -673,6 +677,9 @@ namespace Microsoft.Dafny {
     ///     $IsAlloc(d, T(T0,T1,...), H))
     /// </summary>
     private void AddCommonIsAllocConstructorAxiom(DatatypeDecl dt) {
+      if (UseQuantifierFreeFrames) {
+        return;
+      }
 
       MkIsPredicateForDatatype(dt, out var boundVariables, out var d, out var tyExpr, out var isPredicate);
 
@@ -718,6 +725,9 @@ namespace Microsoft.Dafny {
                    $IsAlloc[Box](Dtor(d), D(G), H))
          */
     private void AddDestructorAxiom(DatatypeDecl dt, DatatypeCtor ctor, Bpl.Function ctorFunction, List<Variable> tyvars, Expr c_ty) {
+      if (UseQuantifierFreeFrames) {
+        return;
+      }
 
       var hVar = BplBoundVar("$h", Predef.HeapType, out var h);
       for (int i = 0; i < ctor.Formals.Count; i++) {

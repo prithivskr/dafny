@@ -237,9 +237,6 @@ axiom (forall bx : Box, s : Ty, t : Ty ::
 axiom (forall<T> v : T, t : Ty ::
     { $IsBox($Box(v), t) }
     ( $IsBox($Box(v), t) <==> $Is(v,t) ));
-axiom (forall<T> v : T, t : Ty, h : Heap ::
-    { $IsAllocBox($Box(v), t, h) }
-    ( $IsAllocBox($Box(v), t, h) <==> $IsAlloc(v,t,h) ));
 
 // ---------------------------------------------------------------
 // -- Is and IsAlloc ---------------------------------------------
@@ -310,55 +307,7 @@ axiom (forall v: IMap, t0: Ty, t1: Ty ::
     $Is(IMap#Items(v), TISet(Tclass._System.Tuple2(t0, t1))));
 
 function $IsAlloc<T>(T,Ty,Heap): bool;
-axiom(forall h : Heap, v : int  :: { $IsAlloc(v,TInt,h) }  $IsAlloc(v,TInt,h));
-axiom(forall h : Heap, v : real :: { $IsAlloc(v,TReal,h) } $IsAlloc(v,TReal,h));
-axiom(forall h : Heap, v : bool :: { $IsAlloc(v,TBool,h) } $IsAlloc(v,TBool,h));
-axiom(forall h : Heap, v : char :: { $IsAlloc(v,TChar,h) } $IsAlloc(v,TChar,h));
-axiom(forall h : Heap, v : ORDINAL :: { $IsAlloc(v,TORDINAL,h) } $IsAlloc(v,TORDINAL,h));
-
-axiom (forall v: Bv0, h: Heap :: { $IsAlloc(v, TBitvector(0), h) } $IsAlloc(v, TBitvector(0), h));
-
-axiom (forall v: Set, t0: Ty, h: Heap :: { $IsAlloc(v, TSet(t0), h) }
-  $IsAlloc(v, TSet(t0), h) <==>
-  (forall bx: Box :: { Set#IsMember(v, bx) }
-    Set#IsMember(v, bx) ==> $IsAllocBox(bx, t0, h)));
-axiom (forall v: ISet, t0: Ty, h: Heap :: { $IsAlloc(v, TISet(t0), h) }
-  $IsAlloc(v, TISet(t0), h) <==>
-  (forall bx: Box :: { v[bx] }
-    v[bx] ==> $IsAllocBox(bx, t0, h)));
-axiom (forall v: MultiSet, t0: Ty, h: Heap :: { $IsAlloc(v, TMultiSet(t0), h) }
-  $IsAlloc(v, TMultiSet(t0), h) <==>
-  (forall bx: Box :: { MultiSet#Multiplicity(v, bx) }
-    0 < MultiSet#Multiplicity(v, bx) ==> $IsAllocBox(bx, t0, h)));
-axiom (forall v: Seq, t0: Ty, h: Heap :: { $IsAlloc(v, TSeq(t0), h) }
-  $IsAlloc(v, TSeq(t0), h) <==>
-  (forall i : int :: { Seq#Index(v, i) }
-    0 <= i && i < Seq#Length(v) ==>
-	$IsAllocBox(Seq#Index(v, i), t0, h)));
-	
-axiom (forall v: Map, t0: Ty, t1: Ty, h: Heap ::
-  { $IsAlloc(v, TMap(t0, t1), h) }
-  $IsAlloc(v, TMap(t0, t1), h)
-     <==> (forall bx: Box ::
-      { Map#Elements(v)[bx] } { Set#IsMember(Map#Domain(v), bx) }
-      Set#IsMember(Map#Domain(v), bx) ==>
-        $IsAllocBox(Map#Elements(v)[bx], t1, h) &&
-        $IsAllocBox(bx, t0, h)));
-
-axiom (forall v: IMap, t0: Ty, t1: Ty, h: Heap ::
-  { $IsAlloc(v, TIMap(t0, t1), h) }
-  $IsAlloc(v, TIMap(t0, t1), h)
-     <==> (forall bx: Box ::
-      { IMap#Elements(v)[bx] } { IMap#Domain(v)[bx] }
-      IMap#Domain(v)[bx] ==>
-        $IsAllocBox(IMap#Elements(v)[bx], t1, h) &&
-        $IsAllocBox(bx, t0, h)));
-
-
 function $AlwaysAllocated(Ty): bool;
-  axiom (forall ty: Ty :: { $AlwaysAllocated(ty) }
-    $AlwaysAllocated(ty) ==>
-    (forall h: Heap, v: Box  :: { $IsAllocBox(v, ty, h) }  $IsBox(v, ty) ==> $IsAllocBox(v, ty, h)));
 
 function $OlderTag(Heap): bool;
 
@@ -523,9 +472,7 @@ axiom (forall<A> f : [LayerType]A, ly : LayerType :: { AtLayer(f,$LS(ly)) } AtLa
 
 type Field;
 
-function FDim(Field): int uses {
-  axiom FDim(alloc) == 0;
-}
+function FDim(Field): int;
 
 function IndexField(int): Field;
 axiom (forall i: int :: { IndexField(i) } FDim(IndexField(i)) == 1);
@@ -543,17 +490,13 @@ axiom (forall f: Field, i: int :: { MultiIndexField(f,i) }
 function DeclType(Field): ClassName;
 
 type NameFamily;
-function DeclName(Field): NameFamily uses {
-  axiom DeclName(alloc) == allocName;
-}
+function DeclName(Field): NameFamily;
 function FieldOfDecl(ClassName, NameFamily): Field;
 axiom (forall cl : ClassName, nm: NameFamily ::
    {FieldOfDecl(cl, nm): Field}
    DeclType(FieldOfDecl(cl, nm): Field) == cl && DeclName(FieldOfDecl(cl, nm): Field) == nm);
 
-function $IsGhostField(Field): bool uses {
-   axiom $IsGhostField(alloc); // treat as ghost field, since it is allowed to be changed by ghost code
-}
+function $IsGhostField(Field): bool;
 
 // ---------------------------------------------------------------
 // -- Allocatedness and Heap Succession --------------------------
@@ -561,10 +504,6 @@ function $IsGhostField(Field): bool uses {
 
 
 // No heap-propagation axioms in qf-heap mode.
-
-const unique alloc: Field;
-
-const unique allocName: NameFamily;
 
 // ---------------------------------------------------------------
 // -- Arrays -----------------------------------------------------
@@ -590,6 +529,7 @@ function {:inline} _System.real.Floor(x: real): int { Int(x) }
 type Heap = [ref][Field]Box;
 function {:inline} read(H: Heap, r: ref, f: Field) : Box { H[r][f] }
 function {:inline} update(H:Heap, r:ref, f: Field, v: Box) : Heap { H[r := H[r][f := v]] }
+var $Alloc: [ref]bool;
 
 function $IsGoodHeap(Heap): bool;
 function $IsHeapAnchor(Heap): bool;

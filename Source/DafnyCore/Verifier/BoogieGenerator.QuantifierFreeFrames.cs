@@ -11,6 +11,56 @@ public partial class BoogieGenerator {
 
   private bool UseQuantifierFreeFrames => options.Get(CommonOptionBag.QuantifierFreeFrames);
 
+  private Bpl.Type AllocMapType(Bpl.IToken tok) {
+    return new Bpl.MapType(tok, [], [Predef.RefType], Bpl.Type.Bool);
+  }
+
+  internal string AllocVariableNameFromHeapName(string heapVariableName) {
+    if (heapVariableName.Contains("Heap", StringComparison.Ordinal)) {
+      return heapVariableName.Replace("Heap", "Alloc", StringComparison.Ordinal);
+    }
+    if (heapVariableName.Contains("heap", StringComparison.Ordinal)) {
+      return heapVariableName.Replace("heap", "alloc", StringComparison.Ordinal);
+    }
+    return "$Alloc";
+  }
+
+  internal Bpl.IdentifierExpr AllocStateIdentifierExpr(Bpl.IToken tok, string allocVariableName = "$Alloc") {
+    return new Bpl.IdentifierExpr(tok, allocVariableName, AllocMapType(tok));
+  }
+
+  internal void AddQfAllocToModifiesList(Bpl.IToken tok, List<Bpl.IdentifierExpr> modifies) {
+    if (!UseQuantifierFreeFrames) {
+      return;
+    }
+    modifies.Add(AllocStateIdentifierExpr(tok));
+  }
+
+  internal Bpl.Expr AllocStateExprForHeapExpr(Bpl.IToken tok, Bpl.Expr heapExpr) {
+    if (!UseQuantifierFreeFrames) {
+      return null;
+    }
+    return heapExpr switch {
+      Bpl.OldExpr oldExpr => new Bpl.OldExpr(tok, AllocStateExprForHeapExpr(tok, oldExpr.Expr)),
+      Bpl.IdentifierExpr identifierExpr when identifierExpr.Name.Contains("Alloc", StringComparison.Ordinal) ||
+                                             identifierExpr.Name.Contains("alloc", StringComparison.Ordinal)
+        => identifierExpr,
+      Bpl.IdentifierExpr identifierExpr when identifierExpr.Name.Contains("$Heap", StringComparison.Ordinal) ||
+                                             identifierExpr.Name.Contains("$heap", StringComparison.Ordinal)
+        => AllocStateIdentifierExpr(tok, AllocVariableNameFromHeapName(identifierExpr.Name)),
+      _ => AllocStateIdentifierExpr(tok)
+    };
+  }
+
+  internal Bpl.IdentifierExpr SnapshotAllocState(IOrigin tok, string heapVariableName, Variables locals,
+    BoogieStmtListBuilder builder, ExpressionTranslator etran) {
+    var allocVariableName = AllocVariableNameFromHeapName(heapVariableName);
+    var allocVar = locals.GetOrAdd(new Bpl.LocalVariable(tok, new Bpl.TypedIdent(tok, allocVariableName, AllocMapType(tok))));
+    var allocIdentifier = new Bpl.IdentifierExpr(tok, allocVar);
+    builder.Add(Bpl.Cmd.SimpleAssign(tok, allocIdentifier, AllocStateExprForHeapExpr(tok, etran.HeapExpr)));
+    return allocIdentifier;
+  }
+
   private bool NeedsLegacyModifiesFrame(IEnumerable<FrameExpression> frameExpressions, ExpressionTranslator etran) {
     return !UseQuantifierFreeFrames || !TryCollectConcreteModifiedRefs(frameExpressions, etran, out _);
   }
@@ -220,9 +270,16 @@ public partial class BoogieGenerator {
       .Aggregate((Bpl.Expr)Bpl.Expr.False, (acc, expr) => BplOr(acc, expr));
   }
 
-  private Bpl.Expr ConcreteFootprintOrFreshPermission(IOrigin tok, Bpl.Expr obj, IEnumerable<Bpl.Expr> footprint, ExpressionTranslator etran) {
+  private bool IsSyntacticConcreteFootprintMember(Bpl.Expr obj, IEnumerable<Bpl.Expr> footprint) {
+    return footprint.Any(modifiedRef => SameBoogieExpr(obj, modifiedRef));
+  }
+
+  private Bpl.Expr ConcreteFootprintOrFreshPermission(IOrigin tok, Bpl.Expr obj, IEnumerable<Bpl.Expr> footprint, ExpressionTranslator etran,
+    Bpl.Expr allocSnapshot = null) {
     var inFootprint = ConcreteFootprintMembership(tok, obj, footprint);
-    var isFreshSinceEntry = Bpl.Expr.Not(etran.Old.IsAlloced(tok, obj));
+    var isFreshSinceEntry = allocSnapshot == null
+      ? Bpl.Expr.Not(etran.Old.IsAlloced(tok, obj))
+      : Bpl.Expr.Not(IsAlloced(tok, allocSnapshot, obj));
     return BplOr(inFootprint, isFreshSinceEntry);
   }
 
@@ -231,13 +288,17 @@ public partial class BoogieGenerator {
     if (!UseQuantifierFreeFrames || !TryCollectConcreteModifiedRefs(frameExpressions, etran, out var footprint)) {
       return false;
     }
+    if (IsSyntacticConcreteFootprintMember(obj, footprint)) {
+      return true;
+    }
     builder.Add(Assert(tok, ConcreteFootprintMembership(tok, obj, footprint), desc, builder.Context));
     return true;
   }
 
   private bool TryEmitConcreteFrameSubset(IOrigin tok, IEnumerable<FrameExpression> frameExpressions,
     IEnumerable<FrameExpression> enclosingFrameExpressions, Expression receiverReplacement, Dictionary<IVariable, Expression> substMap,
-    ExpressionTranslator etran, BoogieStmtListBuilder builder, ProofObligationDescription desc, Bpl.QKeyValue kv) {
+    ExpressionTranslator etran, BoogieStmtListBuilder builder, ProofObligationDescription desc, Bpl.QKeyValue kv,
+    Bpl.Expr allocSnapshot = null) {
     if (!UseQuantifierFreeFrames) {
       return false;
     }
@@ -252,7 +313,10 @@ public partial class BoogieGenerator {
     }
 
     foreach (var calleeRef in calleeFootprint) {
-      builder.Add(Assert(tok, ConcreteFootprintOrFreshPermission(tok, calleeRef, enclosingFootprint, etran), desc, builder.Context, kv));
+      if (IsSyntacticConcreteFootprintMember(calleeRef, enclosingFootprint)) {
+        continue;
+      }
+      builder.Add(Assert(tok, ConcreteFootprintOrFreshPermission(tok, calleeRef, enclosingFootprint, etran, allocSnapshot), desc, builder.Context, kv));
     }
     return true;
   }

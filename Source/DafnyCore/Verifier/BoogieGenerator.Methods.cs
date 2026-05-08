@@ -105,6 +105,10 @@ namespace Microsoft.Dafny {
       Contract.Requires(c.IsReferenceTypeDecl);
 
       MapM(Bools, is_alloc => {
+        if (UseQuantifierFreeFrames && is_alloc) {
+          return;
+        }
+
         var vars = MkTyParamBinders(GetTypeParams(c), out var tyexprs);
 
         var o = BplBoundVar("$o", Predef.RefType, vars);
@@ -267,6 +271,10 @@ namespace Microsoft.Dafny {
     ///         $IsAlloc(h[o, f], TT(PP), h));
     /// </summary>
     private void AddInstanceFieldAllocationAxioms(Bpl.Declaration fieldDeclaration, Field f, TopLevelDeclWithMembers c, bool is_array) {
+      if (UseQuantifierFreeFrames) {
+        return;
+      }
+
       var bvsTypeAxiom = new List<Bpl.Variable>();
       var bvsAllocationAxiom = new List<Bpl.Variable>();
 
@@ -444,6 +452,9 @@ namespace Microsoft.Dafny {
     ///         $Is(h[o, f], TT(TClassA_Inv_i(dtype(o)),..), h);
     /// </summary>
     private void AddStaticConstFieldAllocationAxiom(Boogie.Declaration fieldDeclaration, Field f, TopLevelDeclWithMembers c) {
+      if (UseQuantifierFreeFrames) {
+        return;
+      }
 
       var bvsTypeAxiom = new List<Bpl.Variable>();
       var bvsAllocationAxiom = new List<Bpl.Variable>();
@@ -706,6 +717,9 @@ namespace Microsoft.Dafny {
       // assume the usual two-state boilerplate information
       foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(node.Origin, modifies.Expressions, isGhostContext,
                  allowsAllocation, beforeBlockExpressionTranslator, etran, beforeBlockExpressionTranslator)) {
+        if (UseQuantifierFreeFrames && IsFrameConditionBoilerplate(tri)) {
+          continue;
+        }
         if (tri.IsFree) {
           builder.Add(TrAssumeCmd(node.Origin, tri.Expr));
         }
@@ -932,6 +946,9 @@ namespace Microsoft.Dafny {
       builder.Add(new Bpl.HavocCmd(m.Origin, [etran.HeapCastToIdentifierExpr]));
       // assume the usual two-state boilerplate information
       foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(m.Origin, m.Mod.Expressions, m.IsGhost, m.AllowsAllocation, etran.Old, etran, etran.Old)) {
+        if (UseQuantifierFreeFrames && IsFrameConditionBoilerplate(tri)) {
+          continue;
+        }
         if (tri.IsFree) {
           builder.Add(TrAssumeCmd(m.Origin, tri.Expr));
         }
@@ -1022,6 +1039,7 @@ namespace Microsoft.Dafny {
       var mod = new List<Boogie.IdentifierExpr> {
         ordinaryEtran.HeapCastToIdentifierExpr,
       };
+      AddQfAllocToModifiesList(f.Origin, mod);
       var ens = new List<Boogie.Ensures>();
 
       var name = MethodName(f, MethodTranslationKind.OverrideCheck);
@@ -1766,6 +1784,7 @@ namespace Microsoft.Dafny {
       var name = MethodName(m, kind);
       var req = GetRequires();
       var mod = new List<Bpl.IdentifierExpr> { ordinaryEtran.HeapCastToIdentifierExpr };
+      AddQfAllocToModifiesList(m.Origin, mod);
       var ens = GetEnsures();
       var proc = new Bpl.Procedure(m.Origin, name, [],
         inParams, outParams.Values.ToList(), false, req, mod, ens, etran.TrAttributes(m.Attributes, null));
@@ -1944,12 +1963,15 @@ namespace Microsoft.Dafny {
         TypeBoundAxiomExpressions(tok, [], new UserDefinedType(typeParameter), typeParameter.TypeBounds,
           out var isBoxExpr, out var isAllocBoxExpr);
         yield return isBoxExpr;
-        yield return isAllocBoxExpr;
+        if (isAllocBoxExpr != null) {
+          yield return isAllocBoxExpr;
+        }
       }
     }
 
     public void TypeBoundAxiomExpressions(IOrigin tok, List<Bpl.Variable> bvarsTypeParameters, Type type, List<Type> typeBounds,
       out Bpl.Expr isBoxExpr, out Bpl.Expr isAllocBoxExpr) {
+      isAllocBoxExpr = null;
       {
         // (forall bvarsTypeParameters, bx: Box ::
         //   { $IsBox(bx, typeExpression) }
@@ -1968,7 +1990,7 @@ namespace Microsoft.Dafny {
         isBoxExpr = new Bpl.ForallExpr(tok, vars, BplTrigger(isBox), body);
       }
 
-      {
+      if (!UseQuantifierFreeFrames) {
         // (forall bx: Box, $Heap: Heap ::
         //   { $IsAllocBox(bx, X, $h) }
         //   $IsAllocBox(bx, X, $h) && $IsGoodHeap($h) ==>

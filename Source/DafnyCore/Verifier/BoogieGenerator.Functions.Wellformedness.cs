@@ -40,6 +40,7 @@ public partial class BoogieGenerator {
       var mod = new List<Bpl.IdentifierExpr> {
         ordinaryEtran.HeapCastToIdentifierExpr,
       };
+      generator.AddQfAllocToModifiesList(f.Origin, mod);
 
       var context = new BodyTranslationContext(f.ContainsHide);
       var ens = new List<Bpl.Ensures>();

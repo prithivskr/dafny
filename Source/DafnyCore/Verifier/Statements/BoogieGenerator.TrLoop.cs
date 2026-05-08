@@ -203,6 +203,9 @@ public partial class BoogieGenerator {
       }
     }
     builder.Add(Bpl.Cmd.SimpleAssign(loop.Origin, preLoopHeap, etran.HeapExpr));
+    if (UseQuantifierFreeFrames) {
+      SnapshotAllocState(loop.Origin, preloopheap, locals, builder, etran);
+    }
 
     var assignedVariables = loop.DescendantsAndSelf.
       SelectMany(s => s.GetAssignedLocals()).Select(ie => ie.Var)

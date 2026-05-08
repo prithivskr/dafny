@@ -335,7 +335,6 @@ namespace Microsoft.Dafny {
         Contract.Invariant(TyTag != null);
         Contract.Invariant(TyTagFamily != null);
         Contract.Invariant(Null != null);
-        Contract.Invariant(AllocField != null);
       }
 
       public Bpl.Type FieldName(Bpl.IToken tok) {
@@ -356,6 +355,7 @@ namespace Microsoft.Dafny {
         Contract.Requires(tok != null);
         Contract.Ensures(Contract.Result<Bpl.IdentifierExpr>() != null);
 
+        Contract.Assert(AllocField != null);
         return new Bpl.IdentifierExpr(tok, AllocField);
       }
 
@@ -410,7 +410,6 @@ namespace Microsoft.Dafny {
         Contract.Requires(datatypeType != null);
         Contract.Requires(layerType != null);
         Contract.Requires(dtCtorId != null);
-        Contract.Requires(allocField != null);
         Contract.Requires(tyType != null);
         Contract.Requires(tyTagType != null);
         Contract.Requires(tyTagFamilyType != null);
@@ -689,7 +688,7 @@ namespace Microsoft.Dafny {
         options.OutputWriter.Exception("Dafny prelude is missing declaration of type Box");
       } else if (heap == null) {
         options.OutputWriter.Exception("Dafny prelude is missing declaration of $Heap");
-      } else if (allocField == null) {
+      } else if (!UseQuantifierFreeFrames && allocField == null) {
         options.OutputWriter.Exception("Dafny prelude is missing declaration of constant alloc");
       } else if (tuple2TypeConstructor == null) {
         options.OutputWriter.Exception("Dafny prelude is missing declaration of tuple2TypeConstructor");
@@ -1155,14 +1154,16 @@ namespace Microsoft.Dafny {
         Expr.Imp(isBox, Expr.And(Expr.Eq(boxUnbox, bxExpr), isUnbox)));
       sink.AddTopLevelDeclaration(new Axiom(tok, boxAxiom));
 
-      // $IsAlloc axiom: (forall h: Heap, v: fp32 :: { $IsAlloc(v, TFp32, h) } $IsAlloc(v, TFp32, h))
-      var hVar = new BoundVariable(tok, new TypedIdent(tok, "h", Predef.HeapType));
-      var hExpr = new Bpl.IdentifierExpr(tok, hVar);
-      var vVar2 = new BoundVariable(tok, new TypedIdent(tok, "v", fp32Type));
-      var vExpr2 = new Bpl.IdentifierExpr(tok, vVar2);
-      var isAlloc = FunctionCall(tok, BuiltinFunction.IsAlloc, null, vExpr2, tFp32Expr, hExpr);
-      var isAllocAxiom = new Bpl.ForallExpr(tok, [hVar, vVar2], BplTrigger(isAlloc), isAlloc);
-      sink.AddTopLevelDeclaration(new Axiom(tok, isAllocAxiom));
+      if (!UseQuantifierFreeFrames) {
+        // $IsAlloc axiom: (forall h: Heap, v: fp32 :: { $IsAlloc(v, TFp32, h) } $IsAlloc(v, TFp32, h))
+        var hVar = new BoundVariable(tok, new TypedIdent(tok, "h", Predef.HeapType));
+        var hExpr = new Bpl.IdentifierExpr(tok, hVar);
+        var vVar2 = new BoundVariable(tok, new TypedIdent(tok, "v", fp32Type));
+        var vExpr2 = new Bpl.IdentifierExpr(tok, vVar2);
+        var isAlloc = FunctionCall(tok, BuiltinFunction.IsAlloc, null, vExpr2, tFp32Expr, hExpr);
+        var isAllocAxiom = new Bpl.ForallExpr(tok, [hVar, vVar2], BplTrigger(isAlloc), isAlloc);
+        sink.AddTopLevelDeclaration(new Axiom(tok, isAllocAxiom));
+      }
 
       fp32TypeConstantCreated = true;
     }
@@ -1209,14 +1210,16 @@ namespace Microsoft.Dafny {
         Expr.Imp(isBox, Expr.And(Expr.Eq(boxUnbox, bxExpr), isUnbox)));
       sink.AddTopLevelDeclaration(new Axiom(tok, boxAxiom));
 
-      // $IsAlloc axiom: (forall h: Heap, v: fp64 :: { $IsAlloc(v, TFp64, h) } $IsAlloc(v, TFp64, h))
-      var hVar = new BoundVariable(tok, new TypedIdent(tok, "h", Predef.HeapType));
-      var hExpr = new Bpl.IdentifierExpr(tok, hVar);
-      var vVar2 = new BoundVariable(tok, new TypedIdent(tok, "v", fp64Type));
-      var vExpr2 = new Bpl.IdentifierExpr(tok, vVar2);
-      var isAlloc = FunctionCall(tok, BuiltinFunction.IsAlloc, null, vExpr2, tFp64Expr, hExpr);
-      var isAllocAxiom = new Bpl.ForallExpr(tok, [hVar, vVar2], BplTrigger(isAlloc), isAlloc);
-      sink.AddTopLevelDeclaration(new Axiom(tok, isAllocAxiom));
+      if (!UseQuantifierFreeFrames) {
+        // $IsAlloc axiom: (forall h: Heap, v: fp64 :: { $IsAlloc(v, TFp64, h) } $IsAlloc(v, TFp64, h))
+        var hVar = new BoundVariable(tok, new TypedIdent(tok, "h", Predef.HeapType));
+        var hExpr = new Bpl.IdentifierExpr(tok, hVar);
+        var vVar2 = new BoundVariable(tok, new TypedIdent(tok, "v", fp64Type));
+        var vExpr2 = new Bpl.IdentifierExpr(tok, vVar2);
+        var isAlloc = FunctionCall(tok, BuiltinFunction.IsAlloc, null, vExpr2, tFp64Expr, hExpr);
+        var isAllocAxiom = new Bpl.ForallExpr(tok, [hVar, vVar2], BplTrigger(isAlloc), isAlloc);
+        sink.AddTopLevelDeclaration(new Axiom(tok, isAllocAxiom));
+      }
 
       fp64TypeConstantCreated = true;
     }
@@ -1482,20 +1485,22 @@ namespace Microsoft.Dafny {
               $"type axiom for trait parent: {childType.Name} extends {parentType}"));
             sink.AddTopLevelDeclaration(new Bpl.Axiom(c.Origin, isBoxExpr));
 
-            // axiom (forall T: Ty, $Heap: Heap, $o: ref ::
-            //     { $IsAlloc($o, C(T), $Heap) }
-            //     $IsAlloc($o, C(T), $Heap) ==> $IsAlloc($o, J(G(T)), $Heap);
-            var isAllocC = MkIsAlloc(o, childType, heap);
-            var isAllocJ = MkIsAlloc(oj, parentType, heap);
-            bvs = [];
-            bvs.AddRange(bvarsTypeParameters);
-            bvs.Add(oVar);
-            bvs.Add(heapVar);
-            tr = BplTrigger(isAllocC);
-            body = BplImp(isAllocC, isAllocJ);
-            sink.AddTopLevelDeclaration(new Bpl.Axiom(c.Origin, new Bpl.ForallExpr(c.Origin, bvs, tr, body),
-              $"allocation axiom for trait parent: {childType.Name} extends {parentType}"));
-            sink.AddTopLevelDeclaration(new Bpl.Axiom(c.Origin, isAllocBoxExpr));
+            if (!UseQuantifierFreeFrames) {
+              // axiom (forall T: Ty, $Heap: Heap, $o: ref ::
+              //     { $IsAlloc($o, C(T), $Heap) }
+              //     $IsAlloc($o, C(T), $Heap) ==> $IsAlloc($o, J(G(T)), $Heap);
+              var isAllocC = MkIsAlloc(o, childType, heap);
+              var isAllocJ = MkIsAlloc(oj, parentType, heap);
+              bvs = [];
+              bvs.AddRange(bvarsTypeParameters);
+              bvs.Add(oVar);
+              bvs.Add(heapVar);
+              tr = BplTrigger(isAllocC);
+              body = BplImp(isAllocC, isAllocJ);
+              sink.AddTopLevelDeclaration(new Bpl.Axiom(c.Origin, new Bpl.ForallExpr(c.Origin, bvs, tr, body),
+                $"allocation axiom for trait parent: {childType.Name} extends {parentType}"));
+              sink.AddTopLevelDeclaration(new Bpl.Axiom(c.Origin, isAllocBoxExpr));
+            }
           }
         }
       }
@@ -1675,6 +1680,9 @@ namespace Microsoft.Dafny {
       Contract.Requires(e != null);
       Contract.Ensures(Contract.Result<Bpl.Expr>() != null);
 
+      if (UseQuantifierFreeFrames) {
+        return Bpl.Expr.SelectTok(tok, AllocStateExprForHeapExpr(tok, heapExpr), e);
+      }
       return ApplyUnbox(tok, ReadHeap(tok, heapExpr, e, Predef.Alloc(tok)), Bpl.Type.Bool);
     }
 
@@ -2730,7 +2738,7 @@ namespace Microsoft.Dafny {
         }
         if (field != null && f != null) {
           Bpl.Expr q = Bpl.Expr.Eq(f, new Bpl.IdentifierExpr(rwComponent.E.Origin, GetField(field)));
-          if (usedInUnchanged) {
+          if (usedInUnchanged && !UseQuantifierFreeFrames) {
             q = BplOr(q,
               Bpl.Expr.Eq(f, new Bpl.IdentifierExpr(rwComponent.E.Origin, Predef.AllocField)));
           }
@@ -4185,10 +4193,19 @@ namespace Microsoft.Dafny {
 
     // Boxes, if necessary
     Bpl.Expr MkIsAlloc(Bpl.Expr x, Type t, Bpl.Expr h) {
+      var normalizedType = t.NormalizeExpandKeepConstraints();
+      if (UseQuantifierFreeFrames && normalizedType.IsRefType) {
+        return BplOr(Bpl.Expr.Eq(x, Predef.Null), IsAlloced(ToDafnyToken(x.tok), h, x));
+      }
       return MkIsAlloc(x, TypeToTy(t), h, ModeledAsBoxType(t));
     }
 
     Bpl.Expr MkIsAllocBox(Bpl.Expr x, Type t, Bpl.Expr h) {
+      var normalizedType = t.NormalizeExpandKeepConstraints();
+      if (UseQuantifierFreeFrames && normalizedType.IsRefType) {
+        var unboxedRef = ApplyUnbox(x.tok, x, Predef.RefType);
+        return BplOr(Bpl.Expr.Eq(unboxedRef, Predef.Null), IsAlloced(ToDafnyToken(x.tok), h, unboxedRef));
+      }
       return MkIsAlloc(x, TypeToTy(t), h, true);
     }
 

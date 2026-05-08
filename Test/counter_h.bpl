@@ -282,6 +282,10 @@ axiom (forall<T> v: T, t: Ty ::
   { $IsBox($Box(v), t) } 
   $IsBox($Box(v), t) <==> $Is(v, t));
 
+axiom (forall<T> v: T, t: Ty, h: Heap :: 
+  { $IsAllocBox($Box(v), t, h) } 
+  $IsAllocBox($Box(v), t, h) <==> $IsAlloc(v, t, h));
+
 revealed function $Is<T>(T, Ty) : bool;
 
 axiom (forall v: int :: { $Is(v, TInt) } $Is(v, TInt));
@@ -358,7 +362,72 @@ axiom (forall v: IMap, t0: Ty, t1: Ty ::
 
 revealed function $IsAlloc<T>(T, Ty, Heap) : bool;
 
+axiom (forall h: Heap, v: int :: { $IsAlloc(v, TInt, h) } $IsAlloc(v, TInt, h));
+
+axiom (forall h: Heap, v: real :: { $IsAlloc(v, TReal, h) } $IsAlloc(v, TReal, h));
+
+axiom (forall h: Heap, v: bool :: { $IsAlloc(v, TBool, h) } $IsAlloc(v, TBool, h));
+
+axiom (forall h: Heap, v: char :: { $IsAlloc(v, TChar, h) } $IsAlloc(v, TChar, h));
+
+axiom (forall h: Heap, v: ORDINAL :: 
+  { $IsAlloc(v, TORDINAL, h) } 
+  $IsAlloc(v, TORDINAL, h));
+
+axiom (forall v: Bv0, h: Heap :: 
+  { $IsAlloc(v, TBitvector(0), h) } 
+  $IsAlloc(v, TBitvector(0), h));
+
+axiom (forall v: Set, t0: Ty, h: Heap :: 
+  { $IsAlloc(v, TSet(t0), h) } 
+  $IsAlloc(v, TSet(t0), h)
+     <==> (forall bx: Box :: 
+      { Set#IsMember(v, bx) } 
+      Set#IsMember(v, bx) ==> $IsAllocBox(bx, t0, h)));
+
+axiom (forall v: ISet, t0: Ty, h: Heap :: 
+  { $IsAlloc(v, TISet(t0), h) } 
+  $IsAlloc(v, TISet(t0), h)
+     <==> (forall bx: Box :: { v[bx] } v[bx] ==> $IsAllocBox(bx, t0, h)));
+
+axiom (forall v: MultiSet, t0: Ty, h: Heap :: 
+  { $IsAlloc(v, TMultiSet(t0), h) } 
+  $IsAlloc(v, TMultiSet(t0), h)
+     <==> (forall bx: Box :: 
+      { MultiSet#Multiplicity(v, bx) } 
+      0 < MultiSet#Multiplicity(v, bx) ==> $IsAllocBox(bx, t0, h)));
+
+axiom (forall v: Seq, t0: Ty, h: Heap :: 
+  { $IsAlloc(v, TSeq(t0), h) } 
+  $IsAlloc(v, TSeq(t0), h)
+     <==> (forall i: int :: 
+      { Seq#Index(v, i) } 
+      0 <= i && i < Seq#Length(v) ==> $IsAllocBox(Seq#Index(v, i), t0, h)));
+
+axiom (forall v: Map, t0: Ty, t1: Ty, h: Heap :: 
+  { $IsAlloc(v, TMap(t0, t1), h) } 
+  $IsAlloc(v, TMap(t0, t1), h)
+     <==> (forall bx: Box :: 
+      { Map#Elements(v)[bx] } { Set#IsMember(Map#Domain(v), bx) } 
+      Set#IsMember(Map#Domain(v), bx)
+         ==> $IsAllocBox(Map#Elements(v)[bx], t1, h) && $IsAllocBox(bx, t0, h)));
+
+axiom (forall v: IMap, t0: Ty, t1: Ty, h: Heap :: 
+  { $IsAlloc(v, TIMap(t0, t1), h) } 
+  $IsAlloc(v, TIMap(t0, t1), h)
+     <==> (forall bx: Box :: 
+      { IMap#Elements(v)[bx] } { IMap#Domain(v)[bx] } 
+      IMap#Domain(v)[bx]
+         ==> $IsAllocBox(IMap#Elements(v)[bx], t1, h) && $IsAllocBox(bx, t0, h)));
+
 revealed function $AlwaysAllocated(Ty) : bool;
+
+axiom (forall ty: Ty :: 
+  { $AlwaysAllocated(ty) } 
+  $AlwaysAllocated(ty)
+     ==> (forall h: Heap, v: Box :: 
+      { $IsAllocBox(v, ty, h) } 
+      $IsBox(v, ty) ==> $IsAllocBox(v, ty, h)));
 
 revealed function $OlderTag(Heap) : bool;
 

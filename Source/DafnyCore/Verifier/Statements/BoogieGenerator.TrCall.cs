@@ -285,11 +285,16 @@ public partial class BoogieGenerator {
 
     var directSub = new Substituter(null, directSubstMap, tySubst);
     Bpl.IdentifierExpr preCallHeap = null;
+    Bpl.IdentifierExpr preCallAlloc = null;
     if (UseQuantifierFreeFrames) {
       var preCallHeapVar = new Bpl.LocalVariable(tok, new Bpl.TypedIdent(tok, CurrentIdGenerator.FreshId("$PreCallHeap#"), Predef.HeapType));
       locals.Add(preCallHeapVar);
       preCallHeap = new Bpl.IdentifierExpr(tok, preCallHeapVar);
       builder.Add(Bpl.Cmd.SimpleAssign(tok, preCallHeap, etran.HeapExpr));
+      var preCallAllocVar = new Bpl.LocalVariable(tok, new Bpl.TypedIdent(tok, CurrentIdGenerator.FreshId("$PreCallAlloc#"), AllocMapType(tok)));
+      locals.Add(preCallAllocVar);
+      preCallAlloc = new Bpl.IdentifierExpr(tok, preCallAllocVar);
+      builder.Add(Bpl.Cmd.SimpleAssign(tok, preCallAlloc, AllocStateExprForHeapExpr(tok, etran.HeapExpr)));
     }
 
     // Check that the reads clause of a subcall is a subset of the current reads frame,
@@ -379,7 +384,11 @@ public partial class BoogieGenerator {
     builder.Add(call);
 
     if (UseQuantifierFreeFrames && method is Constructor && outs.Count != 0 && outs[0] != null) {
-      // Constructor results are fresh relative to the enclosing method entry heap.
+      // Constructor results are fresh relative to the allocation state immediately before the call.
+      builder.Add(TrAssumeCmd(tok, Bpl.Expr.Not(IsAlloced(tok, preCallAlloc, outs[0]))));
+      // Allocation only grows, so a freshly allocated constructor result is also fresh
+      // relative to the enclosing method-entry state. This fact is needed by later
+      // caller-frame subset checks that still reason about freshness at method entry.
       builder.Add(TrAssumeCmd(tok, Bpl.Expr.Not(etran.Old.IsAlloced(tok, outs[0]))));
     }
 
