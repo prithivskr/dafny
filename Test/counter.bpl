@@ -40,47 +40,17 @@ axiom Tag(TORDINAL) == TagORDINAL;
 
 revealed function TBitvector(int) : Ty;
 
-axiom (forall w: int :: { TBitvector(w) } Inv0_TBitvector(TBitvector(w)) == w);
-
 revealed function TSet(Ty) : Ty;
-
-axiom (forall t: Ty :: { TSet(t) } Inv0_TSet(TSet(t)) == t);
-
-axiom (forall t: Ty :: { TSet(t) } Tag(TSet(t)) == TagSet);
 
 revealed function TISet(Ty) : Ty;
 
-axiom (forall t: Ty :: { TISet(t) } Inv0_TISet(TISet(t)) == t);
-
-axiom (forall t: Ty :: { TISet(t) } Tag(TISet(t)) == TagISet);
-
 revealed function TMultiSet(Ty) : Ty;
-
-axiom (forall t: Ty :: { TMultiSet(t) } Inv0_TMultiSet(TMultiSet(t)) == t);
-
-axiom (forall t: Ty :: { TMultiSet(t) } Tag(TMultiSet(t)) == TagMultiSet);
 
 revealed function TSeq(Ty) : Ty;
 
-axiom (forall t: Ty :: { TSeq(t) } Inv0_TSeq(TSeq(t)) == t);
-
-axiom (forall t: Ty :: { TSeq(t) } Tag(TSeq(t)) == TagSeq);
-
 revealed function TMap(Ty, Ty) : Ty;
 
-axiom (forall t: Ty, u: Ty :: { TMap(t, u) } Inv0_TMap(TMap(t, u)) == t);
-
-axiom (forall t: Ty, u: Ty :: { TMap(t, u) } Inv1_TMap(TMap(t, u)) == u);
-
-axiom (forall t: Ty, u: Ty :: { TMap(t, u) } Tag(TMap(t, u)) == TagMap);
-
 revealed function TIMap(Ty, Ty) : Ty;
-
-axiom (forall t: Ty, u: Ty :: { TIMap(t, u) } Inv0_TIMap(TIMap(t, u)) == t);
-
-axiom (forall t: Ty, u: Ty :: { TIMap(t, u) } Inv1_TIMap(TIMap(t, u)) == u);
-
-axiom (forall t: Ty, u: Ty :: { TIMap(t, u) } Tag(TIMap(t, u)) == TagIMap);
 
 revealed function Inv0_TBitvector(Ty) : int;
 
@@ -248,36 +218,6 @@ axiom (forall bx: Box ::
   $IsBox(bx, TBitvector(0))
      ==> $Box($Unbox(bx): Bv0) == bx && $Is($Unbox(bx): Bv0, TBitvector(0)));
 
-axiom (forall bx: Box, t: Ty :: 
-  { $IsBox(bx, TSet(t)) } 
-  $IsBox(bx, TSet(t))
-     ==> $Box($Unbox(bx): Set) == bx && $Is($Unbox(bx): Set, TSet(t)));
-
-axiom (forall bx: Box, t: Ty :: 
-  { $IsBox(bx, TISet(t)) } 
-  $IsBox(bx, TISet(t))
-     ==> $Box($Unbox(bx): ISet) == bx && $Is($Unbox(bx): ISet, TISet(t)));
-
-axiom (forall bx: Box, t: Ty :: 
-  { $IsBox(bx, TMultiSet(t)) } 
-  $IsBox(bx, TMultiSet(t))
-     ==> $Box($Unbox(bx): MultiSet) == bx && $Is($Unbox(bx): MultiSet, TMultiSet(t)));
-
-axiom (forall bx: Box, t: Ty :: 
-  { $IsBox(bx, TSeq(t)) } 
-  $IsBox(bx, TSeq(t))
-     ==> $Box($Unbox(bx): Seq) == bx && $Is($Unbox(bx): Seq, TSeq(t)));
-
-axiom (forall bx: Box, s: Ty, t: Ty :: 
-  { $IsBox(bx, TMap(s, t)) } 
-  $IsBox(bx, TMap(s, t))
-     ==> $Box($Unbox(bx): Map) == bx && $Is($Unbox(bx): Map, TMap(s, t)));
-
-axiom (forall bx: Box, s: Ty, t: Ty :: 
-  { $IsBox(bx, TIMap(s, t)) } 
-  $IsBox(bx, TIMap(s, t))
-     ==> $Box($Unbox(bx): IMap) == bx && $Is($Unbox(bx): IMap, TIMap(s, t)));
-
 axiom (forall<T> v: T, t: Ty :: 
   { $IsBox($Box(v), t) } 
   $IsBox($Box(v), t) <==> $Is(v, t));
@@ -297,64 +237,6 @@ axiom (forall v: Field :: { $Is(v, TField) } $Is(v, TField));
 axiom (forall v: ORDINAL :: { $Is(v, TORDINAL) } $Is(v, TORDINAL));
 
 axiom (forall v: Bv0 :: { $Is(v, TBitvector(0)) } $Is(v, TBitvector(0)));
-
-axiom (forall v: Set, t0: Ty :: 
-  { $Is(v, TSet(t0)) } 
-  $Is(v, TSet(t0))
-     <==> (forall bx: Box :: 
-      { Set#IsMember(v, bx) } 
-      Set#IsMember(v, bx) ==> $IsBox(bx, t0)));
-
-axiom (forall v: ISet, t0: Ty :: 
-  { $Is(v, TISet(t0)) } 
-  $Is(v, TISet(t0)) <==> (forall bx: Box :: { v[bx] } v[bx] ==> $IsBox(bx, t0)));
-
-axiom (forall v: MultiSet, t0: Ty :: 
-  { $Is(v, TMultiSet(t0)) } 
-  $Is(v, TMultiSet(t0))
-     <==> (forall bx: Box :: 
-      { MultiSet#Multiplicity(v, bx) } 
-      0 < MultiSet#Multiplicity(v, bx) ==> $IsBox(bx, t0)));
-
-axiom (forall v: MultiSet, t0: Ty :: 
-  { $Is(v, TMultiSet(t0)) } 
-  $Is(v, TMultiSet(t0)) ==> $IsGoodMultiSet(v));
-
-axiom (forall v: Seq, t0: Ty :: 
-  { $Is(v, TSeq(t0)) } 
-  $Is(v, TSeq(t0))
-     <==> (forall i: int :: 
-      { Seq#Index(v, i) } 
-      0 <= i && i < Seq#Length(v) ==> $IsBox(Seq#Index(v, i), t0)));
-
-axiom (forall v: Map, t0: Ty, t1: Ty :: 
-  { $Is(v, TMap(t0, t1)) } 
-  $Is(v, TMap(t0, t1))
-     <==> (forall bx: Box :: 
-      { Map#Elements(v)[bx] } { Set#IsMember(Map#Domain(v), bx) } 
-      Set#IsMember(Map#Domain(v), bx)
-         ==> $IsBox(Map#Elements(v)[bx], t1) && $IsBox(bx, t0)));
-
-axiom (forall v: Map, t0: Ty, t1: Ty :: 
-  { $Is(v, TMap(t0, t1)) } 
-  $Is(v, TMap(t0, t1))
-     ==> $Is(Map#Domain(v), TSet(t0))
-       && $Is(Map#Values(v), TSet(t1))
-       && $Is(Map#Items(v), TSet(Tclass._System.Tuple2(t0, t1))));
-
-axiom (forall v: IMap, t0: Ty, t1: Ty :: 
-  { $Is(v, TIMap(t0, t1)) } 
-  $Is(v, TIMap(t0, t1))
-     <==> (forall bx: Box :: 
-      { IMap#Elements(v)[bx] } { IMap#Domain(v)[bx] } 
-      IMap#Domain(v)[bx] ==> $IsBox(IMap#Elements(v)[bx], t1) && $IsBox(bx, t0)));
-
-axiom (forall v: IMap, t0: Ty, t1: Ty :: 
-  { $Is(v, TIMap(t0, t1)) } 
-  $Is(v, TIMap(t0, t1))
-     ==> $Is(IMap#Domain(v), TISet(t0))
-       && $Is(IMap#Values(v), TISet(t1))
-       && $Is(IMap#Items(v), TISet(Tclass._System.Tuple2(t0, t1))));
 
 revealed function $IsAlloc<T>(T, Ty, Heap) : bool;
 
@@ -399,15 +281,25 @@ type HandleType;
 
 revealed function SetRef_to_SetBox(s: [ref]bool) : Set;
 
-axiom (forall s: [ref]bool, bx: Box :: 
-  { Set#IsMember(SetRef_to_SetBox(s), bx) } 
-  Set#IsMember(SetRef_to_SetBox(s), bx) == s[$Unbox(bx): ref]);
-
-axiom (forall s: [ref]bool :: 
-  { SetRef_to_SetBox(s) } 
-  $Is(SetRef_to_SetBox(s), TSet(Tclass._System.object?())));
-
 revealed function Apply1(Ty, Ty, Heap, HandleType, Box) : Box;
+
+revealed function Requires0(Ty, Heap, HandleType) : bool;
+
+revealed function Requires1(Ty, Ty, Heap, HandleType, Box) : bool;
+
+revealed function Requires2(Ty, Ty, Ty, Heap, HandleType, Box, Box) : bool;
+
+revealed function Reads0(Ty, Heap, HandleType) : Set;
+
+revealed function Reads1(Ty, Ty, Heap, HandleType, Box) : Set;
+
+revealed function Reads2(Ty, Ty, Ty, Heap, HandleType, Box, Box) : Set;
+
+revealed function Requires0#canCall(Ty, Heap, HandleType) : bool;
+
+revealed function Requires1#canCall(Ty, Ty, Heap, HandleType, Box) : bool;
+
+revealed function Requires2#canCall(Ty, Ty, Ty, Heap, HandleType, Box, Box) : bool;
 
 type DatatypeType;
 
@@ -427,8 +319,6 @@ revealed function ORD#IsNat(ORDINAL) : bool;
 
 revealed function ORD#Offset(ORDINAL) : int;
 
-axiom (forall o: ORDINAL :: { ORD#Offset(o) } 0 <= ORD#Offset(o));
-
 revealed function {:inline} ORD#IsLimit(o: ORDINAL) : bool
 {
   ORD#Offset(o) == 0
@@ -441,102 +331,13 @@ revealed function {:inline} ORD#IsSucc(o: ORDINAL) : bool
 
 revealed function ORD#FromNat(int) : ORDINAL;
 
-axiom (forall n: int :: 
-  { ORD#FromNat(n) } 
-  0 <= n ==> ORD#IsNat(ORD#FromNat(n)) && ORD#Offset(ORD#FromNat(n)) == n);
-
-axiom (forall o: ORDINAL :: 
-  { ORD#Offset(o) } { ORD#IsNat(o) } 
-  ORD#IsNat(o) ==> o == ORD#FromNat(ORD#Offset(o)));
-
 revealed function ORD#Less(ORDINAL, ORDINAL) : bool;
-
-axiom (forall o: ORDINAL, p: ORDINAL :: 
-  { ORD#Less(o, p) } 
-  (ORD#Less(o, p) ==> o != p)
-     && (ORD#IsNat(o) && !ORD#IsNat(p) ==> ORD#Less(o, p))
-     && (ORD#IsNat(o) && ORD#IsNat(p)
-       ==> ORD#Less(o, p) == (ORD#Offset(o) < ORD#Offset(p)))
-     && (ORD#Less(o, p) && ORD#IsNat(p) ==> ORD#IsNat(o)));
-
-axiom (forall o: ORDINAL, p: ORDINAL :: 
-  { ORD#Less(o, p), ORD#Less(p, o) } 
-  ORD#Less(o, p) || o == p || ORD#Less(p, o));
-
-axiom (forall o: ORDINAL, p: ORDINAL, r: ORDINAL :: 
-  { ORD#Less(o, p), ORD#Less(p, r) } { ORD#Less(o, p), ORD#Less(o, r) } 
-  ORD#Less(o, p) && ORD#Less(p, r) ==> ORD#Less(o, r));
 
 revealed function ORD#LessThanLimit(ORDINAL, ORDINAL) : bool;
 
-axiom (forall o: ORDINAL, p: ORDINAL :: 
-  { ORD#LessThanLimit(o, p) } 
-  ORD#LessThanLimit(o, p) == ORD#Less(o, p));
-
 revealed function ORD#Plus(ORDINAL, ORDINAL) : ORDINAL;
 
-axiom (forall o: ORDINAL, p: ORDINAL :: 
-  { ORD#Plus(o, p) } 
-  (ORD#IsNat(ORD#Plus(o, p)) ==> ORD#IsNat(o) && ORD#IsNat(p))
-     && (ORD#IsNat(p)
-       ==> ORD#IsNat(ORD#Plus(o, p)) == ORD#IsNat(o)
-         && ORD#Offset(ORD#Plus(o, p)) == ORD#Offset(o) + ORD#Offset(p)));
-
-axiom (forall o: ORDINAL, p: ORDINAL :: 
-  { ORD#Plus(o, p) } 
-  (o == ORD#Plus(o, p) || ORD#Less(o, ORD#Plus(o, p)))
-     && (p == ORD#Plus(o, p) || ORD#Less(p, ORD#Plus(o, p))));
-
-axiom (forall o: ORDINAL, p: ORDINAL :: 
-  { ORD#Plus(o, p) } 
-  (o == ORD#FromNat(0) ==> ORD#Plus(o, p) == p)
-     && (p == ORD#FromNat(0) ==> ORD#Plus(o, p) == o));
-
 revealed function ORD#Minus(ORDINAL, ORDINAL) : ORDINAL;
-
-axiom (forall o: ORDINAL, p: ORDINAL :: 
-  { ORD#Minus(o, p) } 
-  ORD#IsNat(p) && ORD#Offset(p) <= ORD#Offset(o)
-     ==> ORD#IsNat(ORD#Minus(o, p)) == ORD#IsNat(o)
-       && ORD#Offset(ORD#Minus(o, p)) == ORD#Offset(o) - ORD#Offset(p));
-
-axiom (forall o: ORDINAL, p: ORDINAL :: 
-  { ORD#Minus(o, p) } 
-  ORD#IsNat(p) && ORD#Offset(p) <= ORD#Offset(o)
-     ==> (p == ORD#FromNat(0) && ORD#Minus(o, p) == o)
-       || (p != ORD#FromNat(0) && ORD#Less(ORD#Minus(o, p), o)));
-
-axiom (forall o: ORDINAL, m: int, n: int :: 
-  { ORD#Plus(ORD#Plus(o, ORD#FromNat(m)), ORD#FromNat(n)) } 
-  0 <= m && 0 <= n
-     ==> ORD#Plus(ORD#Plus(o, ORD#FromNat(m)), ORD#FromNat(n))
-       == ORD#Plus(o, ORD#FromNat(m + n)));
-
-axiom (forall o: ORDINAL, m: int, n: int :: 
-  { ORD#Minus(ORD#Minus(o, ORD#FromNat(m)), ORD#FromNat(n)) } 
-  0 <= m && 0 <= n && m + n <= ORD#Offset(o)
-     ==> ORD#Minus(ORD#Minus(o, ORD#FromNat(m)), ORD#FromNat(n))
-       == ORD#Minus(o, ORD#FromNat(m + n)));
-
-axiom (forall o: ORDINAL, m: int, n: int :: 
-  { ORD#Minus(ORD#Plus(o, ORD#FromNat(m)), ORD#FromNat(n)) } 
-  0 <= m && 0 <= n && n <= ORD#Offset(o) + m
-     ==> (0 <= m - n
-         ==> ORD#Minus(ORD#Plus(o, ORD#FromNat(m)), ORD#FromNat(n))
-           == ORD#Plus(o, ORD#FromNat(m - n)))
-       && (m - n <= 0
-         ==> ORD#Minus(ORD#Plus(o, ORD#FromNat(m)), ORD#FromNat(n))
-           == ORD#Minus(o, ORD#FromNat(n - m))));
-
-axiom (forall o: ORDINAL, m: int, n: int :: 
-  { ORD#Plus(ORD#Minus(o, ORD#FromNat(m)), ORD#FromNat(n)) } 
-  0 <= m && 0 <= n && n <= ORD#Offset(o) + m
-     ==> (0 <= m - n
-         ==> ORD#Plus(ORD#Minus(o, ORD#FromNat(m)), ORD#FromNat(n))
-           == ORD#Minus(o, ORD#FromNat(m - n)))
-       && (m - n <= 0
-         ==> ORD#Plus(ORD#Minus(o, ORD#FromNat(m)), ORD#FromNat(n))
-           == ORD#Plus(o, ORD#FromNat(n - m))));
 
 type LayerType;
 
@@ -668,257 +469,49 @@ type Set;
 
 revealed function Set#Card(s: Set) : int;
 
-axiom (forall s: Set :: { Set#Card(s) } 0 <= Set#Card(s));
-
 revealed function Set#Empty() : Set;
 
 revealed function Set#IsMember(s: Set, o: Box) : bool;
 
-axiom (forall o: Box :: 
-  { Set#IsMember(Set#Empty(), o) } 
-  !Set#IsMember(Set#Empty(), o));
-
-axiom (forall s: Set :: 
-  { Set#Card(s) } 
-  (Set#Card(s) == 0 <==> s == Set#Empty())
-     && (Set#Card(s) != 0
-       ==> (exists x: Box :: { Set#IsMember(s, x) } Set#IsMember(s, x))));
-
 revealed function Set#UnionOne(s: Set, o: Box) : Set;
-
-axiom (forall a: Set, x: Box, o: Box :: 
-  { Set#IsMember(Set#UnionOne(a, x), o) } 
-  Set#IsMember(Set#UnionOne(a, x), o) <==> o == x || Set#IsMember(a, o));
-
-axiom (forall a: Set, x: Box :: 
-  { Set#UnionOne(a, x) } 
-  Set#IsMember(Set#UnionOne(a, x), x));
-
-axiom (forall a: Set, x: Box, y: Box :: 
-  { Set#UnionOne(a, x), Set#IsMember(a, y) } 
-  Set#IsMember(a, y) ==> Set#IsMember(Set#UnionOne(a, x), y));
-
-axiom (forall a: Set, x: Box :: 
-  { Set#Card(Set#UnionOne(a, x)) } 
-  Set#IsMember(a, x) ==> Set#Card(Set#UnionOne(a, x)) == Set#Card(a));
-
-axiom (forall a: Set, x: Box :: 
-  { Set#Card(Set#UnionOne(a, x)) } 
-  !Set#IsMember(a, x) ==> Set#Card(Set#UnionOne(a, x)) == Set#Card(a) + 1);
 
 revealed function Set#Union(a: Set, b: Set) : Set;
 
-axiom (forall a: Set, b: Set, o: Box :: 
-  { Set#IsMember(Set#Union(a, b), o) } 
-  Set#IsMember(Set#Union(a, b), o) <==> Set#IsMember(a, o) || Set#IsMember(b, o));
-
-axiom (forall a: Set, b: Set, y: Box :: 
-  { Set#Union(a, b), Set#IsMember(a, y) } 
-  Set#IsMember(a, y) ==> Set#IsMember(Set#Union(a, b), y));
-
-axiom (forall a: Set, b: Set, y: Box :: 
-  { Set#Union(a, b), Set#IsMember(b, y) } 
-  Set#IsMember(b, y) ==> Set#IsMember(Set#Union(a, b), y));
-
-axiom (forall a: Set, b: Set :: 
-  { Set#Union(a, b) } 
-  Set#Disjoint(a, b)
-     ==> Set#Difference(Set#Union(a, b), a) == b
-       && Set#Difference(Set#Union(a, b), b) == a);
-
 revealed function Set#Intersection(a: Set, b: Set) : Set;
-
-axiom (forall a: Set, b: Set, o: Box :: 
-  { Set#IsMember(Set#Intersection(a, b), o) } 
-  Set#IsMember(Set#Intersection(a, b), o)
-     <==> Set#IsMember(a, o) && Set#IsMember(b, o));
-
-axiom (forall a: Set, b: Set :: 
-  { Set#Union(Set#Union(a, b), b) } 
-  Set#Union(Set#Union(a, b), b) == Set#Union(a, b));
-
-axiom (forall a: Set, b: Set :: 
-  { Set#Union(a, Set#Union(a, b)) } 
-  Set#Union(a, Set#Union(a, b)) == Set#Union(a, b));
-
-axiom (forall a: Set, b: Set :: 
-  { Set#Intersection(Set#Intersection(a, b), b) } 
-  Set#Intersection(Set#Intersection(a, b), b) == Set#Intersection(a, b));
-
-axiom (forall a: Set, b: Set :: 
-  { Set#Intersection(a, Set#Intersection(a, b)) } 
-  Set#Intersection(a, Set#Intersection(a, b)) == Set#Intersection(a, b));
-
-axiom (forall a: Set, b: Set :: 
-  { Set#Card(Set#Union(a, b)) } { Set#Card(Set#Intersection(a, b)) } 
-  Set#Card(Set#Union(a, b)) + Set#Card(Set#Intersection(a, b))
-     == Set#Card(a) + Set#Card(b));
 
 revealed function Set#Difference(a: Set, b: Set) : Set;
 
-axiom (forall a: Set, b: Set, o: Box :: 
-  { Set#IsMember(Set#Difference(a, b), o) } 
-  Set#IsMember(Set#Difference(a, b), o)
-     <==> Set#IsMember(a, o) && !Set#IsMember(b, o));
-
-axiom (forall a: Set, b: Set, y: Box :: 
-  { Set#Difference(a, b), Set#IsMember(b, y) } 
-  Set#IsMember(b, y) ==> !Set#IsMember(Set#Difference(a, b), y));
-
-axiom (forall a: Set, b: Set :: 
-  { Set#Card(Set#Difference(a, b)) } 
-  Set#Card(Set#Difference(a, b))
-         + Set#Card(Set#Difference(b, a))
-         + Set#Card(Set#Intersection(a, b))
-       == Set#Card(Set#Union(a, b))
-     && Set#Card(Set#Difference(a, b)) == Set#Card(a) - Set#Card(Set#Intersection(a, b)));
-
 revealed function Set#Subset(a: Set, b: Set) : bool;
-
-axiom (forall a: Set, b: Set :: 
-  { Set#Subset(a, b) } 
-  Set#Subset(a, b)
-     <==> (forall o: Box :: 
-      { Set#IsMember(a, o) } { Set#IsMember(b, o) } 
-      Set#IsMember(a, o) ==> Set#IsMember(b, o)));
 
 revealed function Set#Equal(a: Set, b: Set) : bool;
 
-axiom (forall a: Set, b: Set :: 
-  { Set#Equal(a, b) } 
-  Set#Equal(a, b)
-     <==> (forall o: Box :: 
-      { Set#IsMember(a, o) } { Set#IsMember(b, o) } 
-      Set#IsMember(a, o) <==> Set#IsMember(b, o)));
-
-axiom (forall a: Set, b: Set :: { Set#Equal(a, b) } Set#Equal(a, b) ==> a == b);
-
 revealed function Set#Disjoint(a: Set, b: Set) : bool;
 
-axiom (forall a: Set, b: Set :: 
-  { Set#Disjoint(a, b) } 
-  Set#Disjoint(a, b)
-     <==> (forall o: Box :: 
-      { Set#IsMember(a, o) } { Set#IsMember(b, o) } 
-      !Set#IsMember(a, o) || !Set#IsMember(b, o)));
-
 revealed function Set#FromBoogieMap([Box]bool) : Set;
-
-axiom (forall m: [Box]bool, bx: Box :: 
-  { Set#IsMember(Set#FromBoogieMap(m), bx) } 
-  Set#IsMember(Set#FromBoogieMap(m), bx) == m[bx]);
 
 type ISet = [Box]bool;
 
 revealed function ISet#Empty() : ISet;
 
-axiom (forall o: Box :: { ISet#Empty()[o] } !ISet#Empty()[o]);
-
 revealed function ISet#FromSet(Set) : ISet;
-
-axiom (forall s: Set, bx: Box :: 
-  { ISet#FromSet(s)[bx] } 
-  ISet#FromSet(s)[bx] == Set#IsMember(s, bx));
 
 revealed function ISet#UnionOne(ISet, Box) : ISet;
 
-axiom (forall a: ISet, x: Box, o: Box :: 
-  { ISet#UnionOne(a, x)[o] } 
-  ISet#UnionOne(a, x)[o] <==> o == x || a[o]);
-
-axiom (forall a: ISet, x: Box :: { ISet#UnionOne(a, x) } ISet#UnionOne(a, x)[x]);
-
-axiom (forall a: ISet, x: Box, y: Box :: 
-  { ISet#UnionOne(a, x), a[y] } 
-  a[y] ==> ISet#UnionOne(a, x)[y]);
-
 revealed function ISet#Union(ISet, ISet) : ISet;
-
-axiom (forall a: ISet, b: ISet, o: Box :: 
-  { ISet#Union(a, b)[o] } 
-  ISet#Union(a, b)[o] <==> a[o] || b[o]);
-
-axiom (forall a: ISet, b: ISet, y: Box :: 
-  { ISet#Union(a, b), a[y] } 
-  a[y] ==> ISet#Union(a, b)[y]);
-
-axiom (forall a: ISet, b: ISet, y: Box :: 
-  { ISet#Union(a, b), b[y] } 
-  b[y] ==> ISet#Union(a, b)[y]);
-
-axiom (forall a: ISet, b: ISet :: 
-  { ISet#Union(a, b) } 
-  ISet#Disjoint(a, b)
-     ==> ISet#Difference(ISet#Union(a, b), a) == b
-       && ISet#Difference(ISet#Union(a, b), b) == a);
 
 revealed function ISet#Intersection(ISet, ISet) : ISet;
 
-axiom (forall a: ISet, b: ISet, o: Box :: 
-  { ISet#Intersection(a, b)[o] } 
-  ISet#Intersection(a, b)[o] <==> a[o] && b[o]);
-
-axiom (forall a: ISet, b: ISet :: 
-  { ISet#Union(ISet#Union(a, b), b) } 
-  ISet#Union(ISet#Union(a, b), b) == ISet#Union(a, b));
-
-axiom (forall a: ISet, b: ISet :: 
-  { ISet#Union(a, ISet#Union(a, b)) } 
-  ISet#Union(a, ISet#Union(a, b)) == ISet#Union(a, b));
-
-axiom (forall a: ISet, b: ISet :: 
-  { ISet#Intersection(ISet#Intersection(a, b), b) } 
-  ISet#Intersection(ISet#Intersection(a, b), b) == ISet#Intersection(a, b));
-
-axiom (forall a: ISet, b: ISet :: 
-  { ISet#Intersection(a, ISet#Intersection(a, b)) } 
-  ISet#Intersection(a, ISet#Intersection(a, b)) == ISet#Intersection(a, b));
-
 revealed function ISet#Difference(ISet, ISet) : ISet;
-
-axiom (forall a: ISet, b: ISet, o: Box :: 
-  { ISet#Difference(a, b)[o] } 
-  ISet#Difference(a, b)[o] <==> a[o] && !b[o]);
-
-axiom (forall a: ISet, b: ISet, y: Box :: 
-  { ISet#Difference(a, b), b[y] } 
-  b[y] ==> !ISet#Difference(a, b)[y]);
 
 revealed function ISet#Subset(ISet, ISet) : bool;
 
-axiom (forall a: ISet, b: ISet :: 
-  { ISet#Subset(a, b) } 
-  ISet#Subset(a, b) <==> (forall o: Box :: { a[o] } { b[o] } a[o] ==> b[o]));
-
 revealed function ISet#Equal(ISet, ISet) : bool;
-
-axiom (forall a: ISet, b: ISet :: 
-  { ISet#Equal(a, b) } 
-  ISet#Equal(a, b) <==> (forall o: Box :: { a[o] } { b[o] } a[o] <==> b[o]));
-
-axiom (forall a: ISet, b: ISet :: { ISet#Equal(a, b) } ISet#Equal(a, b) ==> a == b);
 
 revealed function ISet#Disjoint(ISet, ISet) : bool;
 
-axiom (forall a: ISet, b: ISet :: 
-  { ISet#Disjoint(a, b) } 
-  ISet#Disjoint(a, b) <==> (forall o: Box :: { a[o] } { b[o] } !a[o] || !b[o]));
-
 revealed function Math#min(a: int, b: int) : int;
 
-axiom (forall a: int, b: int :: { Math#min(a, b) } a <= b <==> Math#min(a, b) == a);
-
-axiom (forall a: int, b: int :: { Math#min(a, b) } b <= a <==> Math#min(a, b) == b);
-
-axiom (forall a: int, b: int :: 
-  { Math#min(a, b) } 
-  Math#min(a, b) == a || Math#min(a, b) == b);
-
 revealed function Math#clip(a: int) : int;
-
-axiom (forall a: int :: { Math#clip(a) } 0 <= a ==> Math#clip(a) == a);
-
-axiom (forall a: int :: { Math#clip(a) } a < 0 ==> Math#clip(a) == 0);
 
 type MultiSet;
 
@@ -926,223 +519,37 @@ revealed function MultiSet#Multiplicity(m: MultiSet, o: Box) : int;
 
 revealed function MultiSet#UpdateMultiplicity(m: MultiSet, o: Box, n: int) : MultiSet;
 
-axiom (forall m: MultiSet, o: Box, n: int, p: Box :: 
-  { MultiSet#Multiplicity(MultiSet#UpdateMultiplicity(m, o, n), p) } 
-  0 <= n
-     ==> (o == p ==> MultiSet#Multiplicity(MultiSet#UpdateMultiplicity(m, o, n), p) == n)
-       && (o != p
-         ==> MultiSet#Multiplicity(MultiSet#UpdateMultiplicity(m, o, n), p)
-           == MultiSet#Multiplicity(m, p)));
-
 revealed function $IsGoodMultiSet(ms: MultiSet) : bool;
-
-axiom (forall ms: MultiSet :: 
-  { $IsGoodMultiSet(ms) } 
-  $IsGoodMultiSet(ms)
-     <==> (forall bx: Box :: 
-      { MultiSet#Multiplicity(ms, bx) } 
-      0 <= MultiSet#Multiplicity(ms, bx)
-         && MultiSet#Multiplicity(ms, bx) <= MultiSet#Card(ms)));
 
 revealed function MultiSet#Card(m: MultiSet) : int;
 
-axiom (forall s: MultiSet :: { MultiSet#Card(s) } 0 <= MultiSet#Card(s));
-
-axiom (forall s: MultiSet, x: Box, n: int :: 
-  { MultiSet#Card(MultiSet#UpdateMultiplicity(s, x, n)) } 
-  0 <= n
-     ==> MultiSet#Card(MultiSet#UpdateMultiplicity(s, x, n))
-       == MultiSet#Card(s) - MultiSet#Multiplicity(s, x) + n);
-
 revealed function MultiSet#Empty() : MultiSet;
-
-axiom (forall o: Box :: 
-  { MultiSet#Multiplicity(MultiSet#Empty(), o) } 
-  MultiSet#Multiplicity(MultiSet#Empty(), o) == 0);
-
-axiom (forall s: MultiSet :: 
-  { MultiSet#Card(s) } 
-  (MultiSet#Card(s) == 0 <==> s == MultiSet#Empty())
-     && (MultiSet#Card(s) != 0
-       ==> (exists x: Box :: 
-        { MultiSet#Multiplicity(s, x) } 
-        0 < MultiSet#Multiplicity(s, x))));
 
 revealed function MultiSet#Singleton(o: Box) : MultiSet;
 
-axiom (forall r: Box, o: Box :: 
-  { MultiSet#Multiplicity(MultiSet#Singleton(r), o) } 
-  (MultiSet#Multiplicity(MultiSet#Singleton(r), o) == 1 <==> r == o)
-     && (MultiSet#Multiplicity(MultiSet#Singleton(r), o) == 0 <==> r != o));
-
-axiom (forall r: Box :: 
-  { MultiSet#Singleton(r) } 
-  MultiSet#Singleton(r) == MultiSet#UnionOne(MultiSet#Empty(), r));
-
 revealed function MultiSet#UnionOne(m: MultiSet, o: Box) : MultiSet;
-
-axiom (forall a: MultiSet, x: Box, o: Box :: 
-  { MultiSet#Multiplicity(MultiSet#UnionOne(a, x), o) } 
-  0 < MultiSet#Multiplicity(MultiSet#UnionOne(a, x), o)
-     <==> o == x || 0 < MultiSet#Multiplicity(a, o));
-
-axiom (forall a: MultiSet, x: Box :: 
-  { MultiSet#UnionOne(a, x) } 
-  MultiSet#Multiplicity(MultiSet#UnionOne(a, x), x)
-     == MultiSet#Multiplicity(a, x) + 1);
-
-axiom (forall a: MultiSet, x: Box, y: Box :: 
-  { MultiSet#UnionOne(a, x), MultiSet#Multiplicity(a, y) } 
-  0 < MultiSet#Multiplicity(a, y)
-     ==> 0 < MultiSet#Multiplicity(MultiSet#UnionOne(a, x), y));
-
-axiom (forall a: MultiSet, x: Box, y: Box :: 
-  { MultiSet#UnionOne(a, x), MultiSet#Multiplicity(a, y) } 
-  x != y
-     ==> MultiSet#Multiplicity(a, y) == MultiSet#Multiplicity(MultiSet#UnionOne(a, x), y));
-
-axiom (forall a: MultiSet, x: Box :: 
-  { MultiSet#Card(MultiSet#UnionOne(a, x)) } 
-  MultiSet#Card(MultiSet#UnionOne(a, x)) == MultiSet#Card(a) + 1);
 
 revealed function MultiSet#Union(a: MultiSet, b: MultiSet) : MultiSet;
 
-axiom (forall a: MultiSet, b: MultiSet, o: Box :: 
-  { MultiSet#Multiplicity(MultiSet#Union(a, b), o) } 
-  MultiSet#Multiplicity(MultiSet#Union(a, b), o)
-     == MultiSet#Multiplicity(a, o) + MultiSet#Multiplicity(b, o));
-
-axiom (forall a: MultiSet, b: MultiSet :: 
-  { MultiSet#Card(MultiSet#Union(a, b)) } 
-  MultiSet#Card(MultiSet#Union(a, b)) == MultiSet#Card(a) + MultiSet#Card(b));
-
 revealed function MultiSet#Intersection(a: MultiSet, b: MultiSet) : MultiSet;
-
-axiom (forall a: MultiSet, b: MultiSet, o: Box :: 
-  { MultiSet#Multiplicity(MultiSet#Intersection(a, b), o) } 
-  MultiSet#Multiplicity(MultiSet#Intersection(a, b), o)
-     == Math#min(MultiSet#Multiplicity(a, o), MultiSet#Multiplicity(b, o)));
-
-axiom (forall a: MultiSet, b: MultiSet :: 
-  { MultiSet#Intersection(MultiSet#Intersection(a, b), b) } 
-  MultiSet#Intersection(MultiSet#Intersection(a, b), b)
-     == MultiSet#Intersection(a, b));
-
-axiom (forall a: MultiSet, b: MultiSet :: 
-  { MultiSet#Intersection(a, MultiSet#Intersection(a, b)) } 
-  MultiSet#Intersection(a, MultiSet#Intersection(a, b))
-     == MultiSet#Intersection(a, b));
 
 revealed function MultiSet#Difference(a: MultiSet, b: MultiSet) : MultiSet;
 
-axiom (forall a: MultiSet, b: MultiSet, o: Box :: 
-  { MultiSet#Multiplicity(MultiSet#Difference(a, b), o) } 
-  MultiSet#Multiplicity(MultiSet#Difference(a, b), o)
-     == Math#clip(MultiSet#Multiplicity(a, o) - MultiSet#Multiplicity(b, o)));
-
-axiom (forall a: MultiSet, b: MultiSet, y: Box :: 
-  { MultiSet#Difference(a, b), MultiSet#Multiplicity(b, y), MultiSet#Multiplicity(a, y) } 
-  MultiSet#Multiplicity(a, y) <= MultiSet#Multiplicity(b, y)
-     ==> MultiSet#Multiplicity(MultiSet#Difference(a, b), y) == 0);
-
-axiom (forall a: MultiSet, b: MultiSet :: 
-  { MultiSet#Card(MultiSet#Difference(a, b)) } 
-  MultiSet#Card(MultiSet#Difference(a, b))
-         + MultiSet#Card(MultiSet#Difference(b, a))
-         + 2 * MultiSet#Card(MultiSet#Intersection(a, b))
-       == MultiSet#Card(MultiSet#Union(a, b))
-     && MultiSet#Card(MultiSet#Difference(a, b))
-       == MultiSet#Card(a) - MultiSet#Card(MultiSet#Intersection(a, b)));
-
 revealed function MultiSet#Subset(a: MultiSet, b: MultiSet) : bool;
-
-axiom (forall a: MultiSet, b: MultiSet :: 
-  { MultiSet#Subset(a, b) } 
-  MultiSet#Subset(a, b)
-     <==> (forall o: Box :: 
-      { MultiSet#Multiplicity(a, o) } { MultiSet#Multiplicity(b, o) } 
-      MultiSet#Multiplicity(a, o) <= MultiSet#Multiplicity(b, o)));
 
 revealed function MultiSet#Equal(a: MultiSet, b: MultiSet) : bool;
 
-axiom (forall a: MultiSet, b: MultiSet :: 
-  { MultiSet#Equal(a, b) } 
-  MultiSet#Equal(a, b)
-     <==> (forall o: Box :: 
-      { MultiSet#Multiplicity(a, o) } { MultiSet#Multiplicity(b, o) } 
-      MultiSet#Multiplicity(a, o) == MultiSet#Multiplicity(b, o)));
-
-axiom (forall a: MultiSet, b: MultiSet :: 
-  { MultiSet#Equal(a, b) } 
-  MultiSet#Equal(a, b) ==> a == b);
-
 revealed function MultiSet#Disjoint(a: MultiSet, b: MultiSet) : bool;
-
-axiom (forall a: MultiSet, b: MultiSet :: 
-  { MultiSet#Disjoint(a, b) } 
-  MultiSet#Disjoint(a, b)
-     <==> (forall o: Box :: 
-      { MultiSet#Multiplicity(a, o) } { MultiSet#Multiplicity(b, o) } 
-      MultiSet#Multiplicity(a, o) == 0 || MultiSet#Multiplicity(b, o) == 0));
 
 revealed function MultiSet#FromSet(s: Set) : MultiSet;
 
-axiom (forall s: Set, a: Box :: 
-  { MultiSet#Multiplicity(MultiSet#FromSet(s), a) } 
-  (MultiSet#Multiplicity(MultiSet#FromSet(s), a) == 0 <==> !Set#IsMember(s, a))
-     && (MultiSet#Multiplicity(MultiSet#FromSet(s), a) == 1 <==> Set#IsMember(s, a)));
-
-axiom (forall s: Set :: 
-  { MultiSet#Card(MultiSet#FromSet(s)) } 
-  MultiSet#Card(MultiSet#FromSet(s)) == Set#Card(s));
-
-revealed function MultiSet#FromSeq(s: Seq) : MultiSet
-uses {
-axiom MultiSet#FromSeq(Seq#Empty()) == MultiSet#Empty();
-}
-
-axiom (forall s: Seq :: { MultiSet#FromSeq(s) } $IsGoodMultiSet(MultiSet#FromSeq(s)));
-
-axiom (forall s: Seq :: 
-  { MultiSet#Card(MultiSet#FromSeq(s)) } 
-  MultiSet#Card(MultiSet#FromSeq(s)) == Seq#Length(s));
-
-axiom (forall s: Seq, v: Box :: 
-  { MultiSet#FromSeq(Seq#Build(s, v)) } 
-  MultiSet#FromSeq(Seq#Build(s, v)) == MultiSet#UnionOne(MultiSet#FromSeq(s), v));
-
-axiom (forall a: Seq, b: Seq :: 
-  { MultiSet#FromSeq(Seq#Append(a, b)) } 
-  MultiSet#FromSeq(Seq#Append(a, b))
-     == MultiSet#Union(MultiSet#FromSeq(a), MultiSet#FromSeq(b)));
-
-axiom (forall s: Seq, i: int, v: Box, x: Box :: 
-  { MultiSet#Multiplicity(MultiSet#FromSeq(Seq#Update(s, i, v)), x) } 
-  0 <= i && i < Seq#Length(s)
-     ==> MultiSet#Multiplicity(MultiSet#FromSeq(Seq#Update(s, i, v)), x)
-       == MultiSet#Multiplicity(MultiSet#Union(MultiSet#Difference(MultiSet#FromSeq(s), MultiSet#Singleton(Seq#Index(s, i))), 
-          MultiSet#Singleton(v)), 
-        x));
-
-axiom (forall s: Seq, x: Box :: 
-  { MultiSet#Multiplicity(MultiSet#FromSeq(s), x) } 
-  (exists i: int :: 
-      { Seq#Index(s, i) } 
-      0 <= i && i < Seq#Length(s) && x == Seq#Index(s, i))
-     <==> 0 < MultiSet#Multiplicity(MultiSet#FromSeq(s), x));
+revealed function MultiSet#FromSeq(s: Seq) : MultiSet;
 
 type Seq;
 
 revealed function Seq#Length(s: Seq) : int;
 
-axiom (forall s: Seq :: { Seq#Length(s) } 0 <= Seq#Length(s));
-
-revealed function Seq#Empty() : Seq
-uses {
-axiom Seq#Length(Seq#Empty()) == 0;
-}
-
-axiom (forall s: Seq :: { Seq#Length(s) } Seq#Length(s) == 0 ==> s == Seq#Empty());
+revealed function Seq#Empty() : Seq;
 
 revealed function Seq#Build(s: Seq, val: Box) : Seq;
 
@@ -1150,281 +557,31 @@ revealed function Seq#Build_inv0(s: Seq) : Seq;
 
 revealed function Seq#Build_inv1(s: Seq) : Box;
 
-axiom (forall s: Seq, val: Box :: 
-  { Seq#Build(s, val) } 
-  Seq#Build_inv0(Seq#Build(s, val)) == s
-     && Seq#Build_inv1(Seq#Build(s, val)) == val);
-
-axiom (forall s: Seq, v: Box :: 
-  { Seq#Build(s, v) } 
-  Seq#Length(Seq#Build(s, v)) == 1 + Seq#Length(s));
-
-axiom (forall s: Seq, i: int, v: Box :: 
-  { Seq#Index(Seq#Build(s, v), i) } 
-  (i == Seq#Length(s) ==> Seq#Index(Seq#Build(s, v), i) == v)
-     && (i != Seq#Length(s) ==> Seq#Index(Seq#Build(s, v), i) == Seq#Index(s, i)));
-
-axiom (forall s0: Seq, s1: Seq :: 
-  { Seq#Length(Seq#Append(s0, s1)) } 
-  Seq#Length(Seq#Append(s0, s1)) == Seq#Length(s0) + Seq#Length(s1));
-
 revealed function Seq#Index(s: Seq, i: int) : Box;
 
-axiom (forall s0: Seq, s1: Seq, n: int :: 
-  { Seq#Index(Seq#Append(s0, s1), n) } 
-  (n < Seq#Length(s0) ==> Seq#Index(Seq#Append(s0, s1), n) == Seq#Index(s0, n))
-     && (Seq#Length(s0) <= n
-       ==> Seq#Index(Seq#Append(s0, s1), n) == Seq#Index(s1, n - Seq#Length(s0))));
-
 revealed function Seq#Update(s: Seq, i: int, val: Box) : Seq;
-
-axiom (forall s: Seq, i: int, v: Box :: 
-  { Seq#Length(Seq#Update(s, i, v)) } 
-  0 <= i && i < Seq#Length(s) ==> Seq#Length(Seq#Update(s, i, v)) == Seq#Length(s));
-
-axiom (forall s: Seq, i: int, v: Box, n: int :: 
-  { Seq#Index(Seq#Update(s, i, v), n) } 
-  0 <= n && n < Seq#Length(s)
-     ==> (i == n ==> Seq#Index(Seq#Update(s, i, v), n) == v)
-       && (i != n ==> Seq#Index(Seq#Update(s, i, v), n) == Seq#Index(s, n)));
 
 revealed function Seq#Append(s0: Seq, s1: Seq) : Seq;
 
 revealed function Seq#Contains(s: Seq, val: Box) : bool;
 
-axiom (forall s: Seq, x: Box :: 
-  { Seq#Contains(s, x) } 
-  Seq#Contains(s, x)
-     <==> (exists i: int :: 
-      { Seq#Index(s, i) } 
-      0 <= i && i < Seq#Length(s) && Seq#Index(s, i) == x));
-
-axiom (forall x: Box :: 
-  { Seq#Contains(Seq#Empty(), x) } 
-  !Seq#Contains(Seq#Empty(), x));
-
-axiom (forall s0: Seq, s1: Seq, x: Box :: 
-  { Seq#Contains(Seq#Append(s0, s1), x) } 
-  Seq#Contains(Seq#Append(s0, s1), x)
-     <==> Seq#Contains(s0, x) || Seq#Contains(s1, x));
-
-axiom (forall s: Seq, v: Box, x: Box :: 
-  { Seq#Contains(Seq#Build(s, v), x) } 
-  Seq#Contains(Seq#Build(s, v), x) <==> v == x || Seq#Contains(s, x));
-
-axiom (forall s: Seq, n: int, x: Box :: 
-  { Seq#Contains(Seq#Take(s, n), x) } 
-  Seq#Contains(Seq#Take(s, n), x)
-     <==> (exists i: int :: 
-      { Seq#Index(s, i) } 
-      0 <= i && i < n && i < Seq#Length(s) && Seq#Index(s, i) == x));
-
-axiom (forall s: Seq, n: int, x: Box :: 
-  { Seq#Contains(Seq#Drop(s, n), x) } 
-  Seq#Contains(Seq#Drop(s, n), x)
-     <==> (exists i: int :: 
-      { Seq#Index(s, i) } 
-      0 <= n && n <= i && i < Seq#Length(s) && Seq#Index(s, i) == x));
-
 revealed function Seq#Equal(s0: Seq, s1: Seq) : bool;
-
-axiom (forall s0: Seq, s1: Seq :: 
-  { Seq#Equal(s0, s1) } 
-  Seq#Equal(s0, s1)
-     <==> Seq#Length(s0) == Seq#Length(s1)
-       && (forall j: int :: 
-        { Seq#Index(s0, j) } { Seq#Index(s1, j) } 
-        0 <= j && j < Seq#Length(s0) ==> Seq#Index(s0, j) == Seq#Index(s1, j)));
-
-axiom (forall a: Seq, b: Seq :: { Seq#Equal(a, b) } Seq#Equal(a, b) ==> a == b);
 
 revealed function Seq#SameUntil(s0: Seq, s1: Seq, n: int) : bool;
 
-axiom (forall s0: Seq, s1: Seq, n: int :: 
-  { Seq#SameUntil(s0, s1, n) } 
-  Seq#SameUntil(s0, s1, n)
-     <==> (forall j: int :: 
-      { Seq#Index(s0, j) } { Seq#Index(s1, j) } 
-      0 <= j && j < n ==> Seq#Index(s0, j) == Seq#Index(s1, j)));
-
 revealed function Seq#Take(s: Seq, howMany: int) : Seq;
-
-axiom (forall s: Seq, n: int :: 
-  { Seq#Length(Seq#Take(s, n)) } 
-  0 <= n && n <= Seq#Length(s) ==> Seq#Length(Seq#Take(s, n)) == n);
-
-axiom (forall s: Seq, n: int, j: int :: 
-  {:weight 11} { Seq#Index(Seq#Take(s, n), j) } { Seq#Index(s, j), Seq#Take(s, n) } 
-  0 <= j && j < n && j < Seq#Length(s)
-     ==> Seq#Index(Seq#Take(s, n), j) == Seq#Index(s, j));
 
 revealed function Seq#Drop(s: Seq, howMany: int) : Seq;
 
-axiom (forall s: Seq, n: int :: 
-  { Seq#Length(Seq#Drop(s, n)) } 
-  0 <= n && n <= Seq#Length(s) ==> Seq#Length(Seq#Drop(s, n)) == Seq#Length(s) - n);
-
-axiom (forall s: Seq, n: int, j: int :: 
-  {:weight 11} { Seq#Index(Seq#Drop(s, n), j) } 
-  0 <= n && 0 <= j && j < Seq#Length(s) - n
-     ==> Seq#Index(Seq#Drop(s, n), j) == Seq#Index(s, j + n));
-
-axiom (forall s: Seq, n: int, k: int :: 
-  {:weight 11} { Seq#Index(s, k), Seq#Drop(s, n) } 
-  0 <= n && n <= k && k < Seq#Length(s)
-     ==> Seq#Index(Seq#Drop(s, n), k - n) == Seq#Index(s, k));
-
-axiom (forall s: Seq, t: Seq, n: int :: 
-  { Seq#Take(Seq#Append(s, t), n) } { Seq#Drop(Seq#Append(s, t), n) } 
-  n == Seq#Length(s)
-     ==> Seq#Take(Seq#Append(s, t), n) == s && Seq#Drop(Seq#Append(s, t), n) == t);
-
-axiom (forall s: Seq, i: int, v: Box, n: int :: 
-  { Seq#Take(Seq#Update(s, i, v), n) } 
-  0 <= i && i < n && n <= Seq#Length(s)
-     ==> Seq#Take(Seq#Update(s, i, v), n) == Seq#Update(Seq#Take(s, n), i, v));
-
-axiom (forall s: Seq, i: int, v: Box, n: int :: 
-  { Seq#Take(Seq#Update(s, i, v), n) } 
-  n <= i && i < Seq#Length(s)
-     ==> Seq#Take(Seq#Update(s, i, v), n) == Seq#Take(s, n));
-
-axiom (forall s: Seq, i: int, v: Box, n: int :: 
-  { Seq#Drop(Seq#Update(s, i, v), n) } 
-  0 <= n && n <= i && i < Seq#Length(s)
-     ==> Seq#Drop(Seq#Update(s, i, v), n) == Seq#Update(Seq#Drop(s, n), i - n, v));
-
-axiom (forall s: Seq, i: int, v: Box, n: int :: 
-  { Seq#Drop(Seq#Update(s, i, v), n) } 
-  0 <= i && i < n && n <= Seq#Length(s)
-     ==> Seq#Drop(Seq#Update(s, i, v), n) == Seq#Drop(s, n));
-
-axiom (forall s: Seq, v: Box, n: int :: 
-  { Seq#Drop(Seq#Build(s, v), n) } 
-  0 <= n && n <= Seq#Length(s)
-     ==> Seq#Drop(Seq#Build(s, v), n) == Seq#Build(Seq#Drop(s, n), v));
-
-axiom (forall s: Seq, n: int :: { Seq#Drop(s, n) } n == 0 ==> Seq#Drop(s, n) == s);
-
-axiom (forall s: Seq, n: int :: 
-  { Seq#Take(s, n) } 
-  n == 0 ==> Seq#Take(s, n) == Seq#Empty());
-
-axiom (forall s: Seq, m: int, n: int :: 
-  { Seq#Drop(Seq#Drop(s, m), n) } 
-  0 <= m && 0 <= n && m + n <= Seq#Length(s)
-     ==> Seq#Drop(Seq#Drop(s, m), n) == Seq#Drop(s, m + n));
-
-axiom (forall s: Seq, bx: Box, t: Ty :: 
-  { $Is(Seq#Build(s, bx), TSeq(t)) } 
-  $Is(s, TSeq(t)) && $IsBox(bx, t) ==> $Is(Seq#Build(s, bx), TSeq(t)));
-
 revealed function Seq#Create(ty: Ty, heap: Heap, len: int, init: HandleType) : Seq;
-
-axiom (forall ty: Ty, heap: Heap, len: int, init: HandleType :: 
-  { Seq#Length(Seq#Create(ty, heap, len, init): Seq) } 
-  $IsGoodHeap(heap) && 0 <= len
-     ==> Seq#Length(Seq#Create(ty, heap, len, init): Seq) == len);
-
-axiom (forall ty: Ty, heap: Heap, len: int, init: HandleType, i: int :: 
-  { Seq#Index(Seq#Create(ty, heap, len, init), i) } 
-  $IsGoodHeap(heap) && 0 <= i && i < len
-     ==> Seq#Index(Seq#Create(ty, heap, len, init), i)
-       == Apply1(TInt, ty, heap, init, $Box(i)));
 
 revealed function Seq#FromArray(h: Heap, a: ref) : Seq;
 
-axiom (forall h: Heap, a: ref :: 
-  { Seq#Length(Seq#FromArray(h, a)) } 
-  Seq#Length(Seq#FromArray(h, a)) == _System.array.Length(a));
-
-axiom (forall h: Heap, a: ref :: 
-  { Seq#FromArray(h, a) } 
-  (forall i: int :: 
-    { read(h, a, IndexField(i)) } { Seq#Index(Seq#FromArray(h, a): Seq, i) } 
-    0 <= i && i < Seq#Length(Seq#FromArray(h, a))
-       ==> Seq#Index(Seq#FromArray(h, a), i) == read(h, a, IndexField(i))));
-
-axiom (forall h: Heap, i: int, v: Box, a: ref :: 
-  { Seq#FromArray(update(h, a, IndexField(i), v), a) } 
-  0 <= i && i < _System.array.Length(a)
-     ==> Seq#FromArray(update(h, a, IndexField(i), v), a)
-       == Seq#Update(Seq#FromArray(h, a), i, v));
-
-axiom (forall h: Heap, a: ref, n0: int, n1: int :: 
-  { Seq#Take(Seq#FromArray(h, a), n0), Seq#Take(Seq#FromArray(h, a), n1) } 
-  n0 + 1 == n1 && 0 <= n0 && n1 <= _System.array.Length(a)
-     ==> Seq#Take(Seq#FromArray(h, a), n1)
-       == Seq#Build(Seq#Take(Seq#FromArray(h, a), n0), read(h, a, IndexField(n0): Field)));
-
 revealed function Seq#Rank(Seq) : int;
-
-axiom (forall s: Seq, i: int :: 
-  { DtRank($Unbox(Seq#Index(s, i)): DatatypeType) } 
-  0 <= i && i < Seq#Length(s)
-     ==> DtRank($Unbox(Seq#Index(s, i)): DatatypeType) < Seq#Rank(s));
-
-axiom (forall s: Seq, i: int :: 
-  { Seq#Rank(Seq#Drop(s, i)) } 
-  0 < i && i <= Seq#Length(s) ==> Seq#Rank(Seq#Drop(s, i)) < Seq#Rank(s));
-
-axiom (forall s: Seq, i: int :: 
-  { Seq#Rank(Seq#Take(s, i)) } 
-  0 <= i && i < Seq#Length(s) ==> Seq#Rank(Seq#Take(s, i)) < Seq#Rank(s));
-
-axiom (forall s: Seq, i: int, j: int :: 
-  { Seq#Rank(Seq#Append(Seq#Take(s, i), Seq#Drop(s, j))) } 
-  0 <= i && i < j && j <= Seq#Length(s)
-     ==> Seq#Rank(Seq#Append(Seq#Take(s, i), Seq#Drop(s, j))) < Seq#Rank(s));
 
 type Map;
 
-revealed function Map#Domain(Map) : Set;
-
-revealed function Map#Elements(Map) : [Box]Box;
-
-revealed function Map#Card(Map) : int;
-
-axiom (forall m: Map :: { Map#Card(m) } 0 <= Map#Card(m));
-
-axiom (forall m: Map :: { Map#Card(m) } Map#Card(m) == 0 <==> m == Map#Empty());
-
-axiom (forall m: Map :: 
-  { Map#Domain(m) } 
-  m == Map#Empty() || (exists k: Box :: Set#IsMember(Map#Domain(m), k)));
-
-axiom (forall m: Map :: 
-  { Map#Values(m) } 
-  m == Map#Empty() || (exists v: Box :: Set#IsMember(Map#Values(m), v)));
-
-axiom (forall m: Map :: 
-  { Map#Items(m) } 
-  m == Map#Empty()
-     || (exists k: Box, v: Box :: 
-      Set#IsMember(Map#Items(m), $Box(#_System._tuple#2._#Make2(k, v)))));
-
-axiom (forall m: Map :: 
-  { Set#Card(Map#Domain(m)) } { Map#Card(m) } 
-  Set#Card(Map#Domain(m)) == Map#Card(m));
-
-axiom (forall m: Map :: 
-  { Set#Card(Map#Values(m)) } { Map#Card(m) } 
-  Set#Card(Map#Values(m)) <= Map#Card(m));
-
-axiom (forall m: Map :: 
-  { Set#Card(Map#Items(m)) } { Map#Card(m) } 
-  Set#Card(Map#Items(m)) == Map#Card(m));
-
-revealed function Map#Values(Map) : Set;
-
-axiom (forall m: Map, v: Box :: 
-  { Set#IsMember(Map#Values(m), v) } 
-  Set#IsMember(Map#Values(m), v)
-     == (exists u: Box :: 
-      { Set#IsMember(Map#Domain(m), u) } { Map#Elements(m)[u] } 
-      Set#IsMember(Map#Domain(m), u) && v == Map#Elements(m)[u]));
-
-revealed function Map#Items(Map) : Set;
+type IMap;
 
 revealed function #_System._tuple#2._#Make2(Box, Box) : DatatypeType;
 
@@ -1432,222 +589,49 @@ revealed function _System.Tuple2._0(DatatypeType) : Box;
 
 revealed function _System.Tuple2._1(DatatypeType) : Box;
 
-axiom (forall m: Map, item: Box :: 
-  { Set#IsMember(Map#Items(m), item) } 
-  Set#IsMember(Map#Items(m), item)
-     <==> Set#IsMember(Map#Domain(m), _System.Tuple2._0($Unbox(item)))
-       && Map#Elements(m)[_System.Tuple2._0($Unbox(item))]
-         == _System.Tuple2._1($Unbox(item)));
+revealed function Map#Domain(Map) : Set;
+
+revealed function Map#Elements(Map) : [Box]Box;
+
+revealed function Map#Card(Map) : int;
+
+revealed function Map#Values(Map) : Set;
+
+revealed function Map#Items(Map) : Set;
 
 revealed function Map#Empty() : Map;
 
-axiom (forall u: Box :: 
-  { Set#IsMember(Map#Domain(Map#Empty(): Map), u) } 
-  !Set#IsMember(Map#Domain(Map#Empty(): Map), u));
-
 revealed function Map#Glue(Set, [Box]Box, Ty) : Map;
-
-axiom (forall a: Set, b: [Box]Box, t: Ty :: 
-  { Map#Domain(Map#Glue(a, b, t)) } 
-  Map#Domain(Map#Glue(a, b, t)) == a);
-
-axiom (forall a: Set, b: [Box]Box, t: Ty :: 
-  { Map#Elements(Map#Glue(a, b, t)) } 
-  Map#Elements(Map#Glue(a, b, t)) == b);
-
-axiom (forall a: Set, b: [Box]Box, t0: Ty, t1: Ty :: 
-  { Map#Glue(a, b, TMap(t0, t1)) } 
-  (forall bx: Box :: Set#IsMember(a, bx) ==> $IsBox(bx, t0) && $IsBox(b[bx], t1))
-     ==> $Is(Map#Glue(a, b, TMap(t0, t1)), TMap(t0, t1)));
 
 revealed function Map#Build(Map, Box, Box) : Map;
 
-axiom (forall m: Map, u: Box, u': Box, v: Box :: 
-  { Set#IsMember(Map#Domain(Map#Build(m, u, v)), u') } 
-    { Map#Elements(Map#Build(m, u, v))[u'] } 
-  (u' == u
-       ==> Set#IsMember(Map#Domain(Map#Build(m, u, v)), u')
-         && Map#Elements(Map#Build(m, u, v))[u'] == v)
-     && (u' != u
-       ==> Set#IsMember(Map#Domain(Map#Build(m, u, v)), u')
-           == Set#IsMember(Map#Domain(m), u')
-         && Map#Elements(Map#Build(m, u, v))[u'] == Map#Elements(m)[u']));
-
-axiom (forall m: Map, u: Box, v: Box :: 
-  { Map#Card(Map#Build(m, u, v)) } 
-  Set#IsMember(Map#Domain(m), u) ==> Map#Card(Map#Build(m, u, v)) == Map#Card(m));
-
-axiom (forall m: Map, u: Box, v: Box :: 
-  { Map#Card(Map#Build(m, u, v)) } 
-  !Set#IsMember(Map#Domain(m), u)
-     ==> Map#Card(Map#Build(m, u, v)) == Map#Card(m) + 1);
-
 revealed function Map#Merge(Map, Map) : Map;
-
-axiom (forall m: Map, n: Map :: 
-  { Map#Domain(Map#Merge(m, n)) } 
-  Map#Domain(Map#Merge(m, n)) == Set#Union(Map#Domain(m), Map#Domain(n)));
-
-axiom (forall m: Map, n: Map, u: Box :: 
-  { Map#Elements(Map#Merge(m, n))[u] } 
-  Set#IsMember(Map#Domain(Map#Merge(m, n)), u)
-     ==> (!Set#IsMember(Map#Domain(n), u)
-         ==> Map#Elements(Map#Merge(m, n))[u] == Map#Elements(m)[u])
-       && (Set#IsMember(Map#Domain(n), u)
-         ==> Map#Elements(Map#Merge(m, n))[u] == Map#Elements(n)[u]));
 
 revealed function Map#Subtract(Map, Set) : Map;
 
-axiom (forall m: Map, s: Set :: 
-  { Map#Domain(Map#Subtract(m, s)) } 
-  Map#Domain(Map#Subtract(m, s)) == Set#Difference(Map#Domain(m), s));
-
-axiom (forall m: Map, s: Set, u: Box :: 
-  { Map#Elements(Map#Subtract(m, s))[u] } 
-  Set#IsMember(Map#Domain(Map#Subtract(m, s)), u)
-     ==> Map#Elements(Map#Subtract(m, s))[u] == Map#Elements(m)[u]);
-
 revealed function Map#Equal(Map, Map) : bool;
 
-axiom (forall m: Map, m': Map :: 
-  { Map#Equal(m, m') } 
-  Map#Equal(m, m')
-     <==> (forall u: Box :: 
-        Set#IsMember(Map#Domain(m), u) == Set#IsMember(Map#Domain(m'), u))
-       && (forall u: Box :: 
-        Set#IsMember(Map#Domain(m), u) ==> Map#Elements(m)[u] == Map#Elements(m')[u]));
-
-axiom (forall m: Map, m': Map :: { Map#Equal(m, m') } Map#Equal(m, m') ==> m == m');
-
 revealed function Map#Disjoint(Map, Map) : bool;
-
-axiom (forall m: Map, m': Map :: 
-  { Map#Disjoint(m, m') } 
-  Map#Disjoint(m, m')
-     <==> (forall o: Box :: 
-      { Set#IsMember(Map#Domain(m), o) } { Set#IsMember(Map#Domain(m'), o) } 
-      !Set#IsMember(Map#Domain(m), o) || !Set#IsMember(Map#Domain(m'), o)));
-
-type IMap;
 
 revealed function IMap#Domain(IMap) : ISet;
 
 revealed function IMap#Elements(IMap) : [Box]Box;
 
-axiom (forall m: IMap :: 
-  { IMap#Domain(m) } 
-  m == IMap#Empty() || (exists k: Box :: IMap#Domain(m)[k]));
-
-axiom (forall m: IMap :: 
-  { IMap#Values(m) } 
-  m == IMap#Empty() || (exists v: Box :: IMap#Values(m)[v]));
-
-axiom (forall m: IMap :: 
-  { IMap#Items(m) } 
-  m == IMap#Empty()
-     || (exists k: Box, v: Box :: IMap#Items(m)[$Box(#_System._tuple#2._#Make2(k, v))]));
-
-axiom (forall m: IMap :: 
-  { IMap#Domain(m) } 
-  m == IMap#Empty() <==> IMap#Domain(m) == ISet#Empty());
-
-axiom (forall m: IMap :: 
-  { IMap#Values(m) } 
-  m == IMap#Empty() <==> IMap#Values(m) == ISet#Empty());
-
-axiom (forall m: IMap :: 
-  { IMap#Items(m) } 
-  m == IMap#Empty() <==> IMap#Items(m) == ISet#Empty());
-
 revealed function IMap#Values(IMap) : ISet;
-
-axiom (forall m: IMap, v: Box :: 
-  { IMap#Values(m)[v] } 
-  IMap#Values(m)[v]
-     == (exists u: Box :: 
-      { IMap#Domain(m)[u] } { IMap#Elements(m)[u] } 
-      IMap#Domain(m)[u] && v == IMap#Elements(m)[u]));
 
 revealed function IMap#Items(IMap) : ISet;
 
-axiom (forall m: IMap, item: Box :: 
-  { IMap#Items(m)[item] } 
-  IMap#Items(m)[item]
-     <==> IMap#Domain(m)[_System.Tuple2._0($Unbox(item))]
-       && IMap#Elements(m)[_System.Tuple2._0($Unbox(item))]
-         == _System.Tuple2._1($Unbox(item)));
-
 revealed function IMap#Empty() : IMap;
-
-axiom (forall u: Box :: 
-  { IMap#Domain(IMap#Empty(): IMap)[u] } 
-  !IMap#Domain(IMap#Empty(): IMap)[u]);
 
 revealed function IMap#Glue([Box]bool, [Box]Box, Ty) : IMap;
 
-axiom (forall a: [Box]bool, b: [Box]Box, t: Ty :: 
-  { IMap#Domain(IMap#Glue(a, b, t)) } 
-  IMap#Domain(IMap#Glue(a, b, t)) == a);
-
-axiom (forall a: [Box]bool, b: [Box]Box, t: Ty :: 
-  { IMap#Elements(IMap#Glue(a, b, t)) } 
-  IMap#Elements(IMap#Glue(a, b, t)) == b);
-
-axiom (forall a: [Box]bool, b: [Box]Box, t0: Ty, t1: Ty :: 
-  { IMap#Glue(a, b, TIMap(t0, t1)) } 
-  (forall bx: Box :: a[bx] ==> $IsBox(bx, t0) && $IsBox(b[bx], t1))
-     ==> $Is(IMap#Glue(a, b, TIMap(t0, t1)), TIMap(t0, t1)));
-
 revealed function IMap#Build(IMap, Box, Box) : IMap;
-
-axiom (forall m: IMap, u: Box, u': Box, v: Box :: 
-  { IMap#Domain(IMap#Build(m, u, v))[u'] } 
-    { IMap#Elements(IMap#Build(m, u, v))[u'] } 
-  (u' == u
-       ==> IMap#Domain(IMap#Build(m, u, v))[u']
-         && IMap#Elements(IMap#Build(m, u, v))[u'] == v)
-     && (u' != u
-       ==> IMap#Domain(IMap#Build(m, u, v))[u'] == IMap#Domain(m)[u']
-         && IMap#Elements(IMap#Build(m, u, v))[u'] == IMap#Elements(m)[u']));
 
 revealed function IMap#Equal(IMap, IMap) : bool;
 
-axiom (forall m: IMap, m': IMap :: 
-  { IMap#Equal(m, m') } 
-  IMap#Equal(m, m')
-     <==> (forall u: Box :: IMap#Domain(m)[u] == IMap#Domain(m')[u])
-       && (forall u: Box :: 
-        IMap#Domain(m)[u] ==> IMap#Elements(m)[u] == IMap#Elements(m')[u]));
-
-axiom (forall m: IMap, m': IMap :: 
-  { IMap#Equal(m, m') } 
-  IMap#Equal(m, m') ==> m == m');
-
 revealed function IMap#Merge(IMap, IMap) : IMap;
 
-axiom (forall m: IMap, n: IMap :: 
-  { IMap#Domain(IMap#Merge(m, n)) } 
-  IMap#Domain(IMap#Merge(m, n)) == ISet#Union(IMap#Domain(m), IMap#Domain(n)));
-
-axiom (forall m: IMap, n: IMap, u: Box :: 
-  { IMap#Elements(IMap#Merge(m, n))[u] } 
-  IMap#Domain(IMap#Merge(m, n))[u]
-     ==> (!IMap#Domain(n)[u]
-         ==> IMap#Elements(IMap#Merge(m, n))[u] == IMap#Elements(m)[u])
-       && (IMap#Domain(n)[u]
-         ==> IMap#Elements(IMap#Merge(m, n))[u] == IMap#Elements(n)[u]));
-
 revealed function IMap#Subtract(IMap, Set) : IMap;
-
-axiom (forall m: IMap, s: Set :: 
-  { IMap#Domain(IMap#Subtract(m, s)) } 
-  IMap#Domain(IMap#Subtract(m, s))
-     == ISet#Difference(IMap#Domain(m), ISet#FromSet(s)));
-
-axiom (forall m: IMap, s: Set, u: Box :: 
-  { IMap#Elements(IMap#Subtract(m, s))[u] } 
-  IMap#Domain(IMap#Subtract(m, s))[u]
-     ==> IMap#Elements(IMap#Subtract(m, s))[u] == IMap#Elements(m)[u]);
 
 revealed function INTERNAL_add_boogie(x: int, y: int) : int
 uses {
@@ -1891,174 +875,6 @@ axiom (forall #$T0: Ty, #$R: Ty, bx: Box ::
      ==> $Box($Unbox(bx): HandleType) == bx
        && $Is($Unbox(bx): HandleType, Tclass._System.___hFunc1(#$T0, #$R)));
 
-function Handle1([Heap,Box]Box, [Heap,Box]bool, [Heap,Box]Set) : HandleType;
-
-function Requires1(Ty, Ty, Heap, HandleType, Box) : bool;
-
-function Reads1(Ty, Ty, Heap, HandleType, Box) : Set;
-
-axiom (forall t0: Ty, 
-    t1: Ty, 
-    heap: Heap, 
-    h: [Heap,Box]Box, 
-    r: [Heap,Box]bool, 
-    rd: [Heap,Box]Set, 
-    bx0: Box :: 
-  { Apply1(t0, t1, heap, Handle1(h, r, rd), bx0) } 
-  Apply1(t0, t1, heap, Handle1(h, r, rd), bx0) == h[heap, bx0]);
-
-axiom (forall t0: Ty, 
-    t1: Ty, 
-    heap: Heap, 
-    h: [Heap,Box]Box, 
-    r: [Heap,Box]bool, 
-    rd: [Heap,Box]Set, 
-    bx0: Box :: 
-  { Requires1(t0, t1, heap, Handle1(h, r, rd), bx0) } 
-  r[heap, bx0] ==> Requires1(t0, t1, heap, Handle1(h, r, rd), bx0));
-
-axiom (forall t0: Ty, 
-    t1: Ty, 
-    heap: Heap, 
-    h: [Heap,Box]Box, 
-    r: [Heap,Box]bool, 
-    rd: [Heap,Box]Set, 
-    bx0: Box, 
-    bx: Box :: 
-  { Set#IsMember(Reads1(t0, t1, heap, Handle1(h, r, rd), bx0), bx) } 
-  Set#IsMember(Reads1(t0, t1, heap, Handle1(h, r, rd), bx0), bx)
-     == Set#IsMember(rd[heap, bx0], bx));
-
-function {:inline} Requires1#canCall(t0: Ty, t1: Ty, heap: Heap, f: HandleType, bx0: Box) : bool
-{
-  true
-}
-
-function {:inline} Reads1#canCall(t0: Ty, t1: Ty, heap: Heap, f: HandleType, bx0: Box) : bool
-{
-  true
-}
-
-// frame axiom for Reads1
-axiom (forall t0: Ty, t1: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box :: 
-  { $HeapSucc(h0, h1), Reads1(t0, t1, h1, f, bx0) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $Is(f, Tclass._System.___hFunc1(t0, t1))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads1(t0, t1, h0, f, bx0), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Reads1(t0, t1, h0, f, bx0) == Reads1(t0, t1, h1, f, bx0));
-
-// frame axiom for Reads1
-axiom (forall t0: Ty, t1: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box :: 
-  { $HeapSucc(h0, h1), Reads1(t0, t1, h1, f, bx0) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $Is(f, Tclass._System.___hFunc1(t0, t1))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads1(t0, t1, h1, f, bx0), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Reads1(t0, t1, h0, f, bx0) == Reads1(t0, t1, h1, f, bx0));
-
-// frame axiom for Requires1
-axiom (forall t0: Ty, t1: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box :: 
-  { $HeapSucc(h0, h1), Requires1(t0, t1, h1, f, bx0) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $Is(f, Tclass._System.___hFunc1(t0, t1))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads1(t0, t1, h0, f, bx0), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Requires1(t0, t1, h0, f, bx0) == Requires1(t0, t1, h1, f, bx0));
-
-// frame axiom for Requires1
-axiom (forall t0: Ty, t1: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box :: 
-  { $HeapSucc(h0, h1), Requires1(t0, t1, h1, f, bx0) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $Is(f, Tclass._System.___hFunc1(t0, t1))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads1(t0, t1, h1, f, bx0), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Requires1(t0, t1, h0, f, bx0) == Requires1(t0, t1, h1, f, bx0));
-
-// frame axiom for Apply1
-axiom (forall t0: Ty, t1: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box :: 
-  { $HeapSucc(h0, h1), Apply1(t0, t1, h1, f, bx0) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $Is(f, Tclass._System.___hFunc1(t0, t1))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads1(t0, t1, h0, f, bx0), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Apply1(t0, t1, h0, f, bx0) == Apply1(t0, t1, h1, f, bx0));
-
-// frame axiom for Apply1
-axiom (forall t0: Ty, t1: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box :: 
-  { $HeapSucc(h0, h1), Apply1(t0, t1, h1, f, bx0) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $Is(f, Tclass._System.___hFunc1(t0, t1))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads1(t0, t1, h1, f, bx0), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Apply1(t0, t1, h0, f, bx0) == Apply1(t0, t1, h1, f, bx0));
-
-// empty-reads property for Reads1 
-axiom (forall t0: Ty, t1: Ty, heap: Heap, f: HandleType, bx0: Box :: 
-  { Reads1(t0, t1, $OneHeap, f, bx0), $IsGoodHeap(heap) } 
-    { Reads1(t0, t1, heap, f, bx0) } 
-  $IsGoodHeap(heap) && $IsBox(bx0, t0) && $Is(f, Tclass._System.___hFunc1(t0, t1))
-     ==> (Set#Equal(Reads1(t0, t1, $OneHeap, f, bx0), Set#Empty(): Set)
-       <==> Set#Equal(Reads1(t0, t1, heap, f, bx0), Set#Empty(): Set)));
-
-// empty-reads property for Requires1
-axiom (forall t0: Ty, t1: Ty, heap: Heap, f: HandleType, bx0: Box :: 
-  { Requires1(t0, t1, $OneHeap, f, bx0), $IsGoodHeap(heap) } 
-    { Requires1(t0, t1, heap, f, bx0) } 
-  $IsGoodHeap(heap)
-       && 
-      $IsBox(bx0, t0)
-       && $Is(f, Tclass._System.___hFunc1(t0, t1))
-       && Set#Equal(Reads1(t0, t1, $OneHeap, f, bx0), Set#Empty(): Set)
-     ==> Requires1(t0, t1, $OneHeap, f, bx0) == Requires1(t0, t1, heap, f, bx0));
-
-axiom (forall f: HandleType, t0: Ty, t1: Ty, u0: Ty, u1: Ty :: 
-  { $Is(f, Tclass._System.___hFunc1(t0, t1)), $Is(f, Tclass._System.___hFunc1(u0, u1)) } 
-  $Is(f, Tclass._System.___hFunc1(t0, t1))
-       && (forall bx: Box :: 
-        { $IsBox(bx, u0) } { $IsBox(bx, t0) } 
-        $IsBox(bx, u0) ==> $IsBox(bx, t0))
-       && (forall bx: Box :: 
-        { $IsBox(bx, t1) } { $IsBox(bx, u1) } 
-        $IsBox(bx, t1) ==> $IsBox(bx, u1))
-     ==> $Is(f, Tclass._System.___hFunc1(u0, u1)));
-
 function Tclass._System.___hPartialFunc1(Ty, Ty) : Ty;
 
 const unique Tagclass._System.___hPartialFunc1: TyTag;
@@ -2178,138 +994,6 @@ axiom (forall #$R: Ty, bx: Box ::
   $IsBox(bx, Tclass._System.___hFunc0(#$R))
      ==> $Box($Unbox(bx): HandleType) == bx
        && $Is($Unbox(bx): HandleType, Tclass._System.___hFunc0(#$R)));
-
-function Handle0([Heap]Box, [Heap]bool, [Heap]Set) : HandleType;
-
-function Apply0(Ty, Heap, HandleType) : Box;
-
-function Requires0(Ty, Heap, HandleType) : bool;
-
-function Reads0(Ty, Heap, HandleType) : Set;
-
-axiom (forall t0: Ty, heap: Heap, h: [Heap]Box, r: [Heap]bool, rd: [Heap]Set :: 
-  { Apply0(t0, heap, Handle0(h, r, rd)) } 
-  Apply0(t0, heap, Handle0(h, r, rd)) == h[heap]);
-
-axiom (forall t0: Ty, heap: Heap, h: [Heap]Box, r: [Heap]bool, rd: [Heap]Set :: 
-  { Requires0(t0, heap, Handle0(h, r, rd)) } 
-  r[heap] ==> Requires0(t0, heap, Handle0(h, r, rd)));
-
-axiom (forall t0: Ty, heap: Heap, h: [Heap]Box, r: [Heap]bool, rd: [Heap]Set, bx: Box :: 
-  { Set#IsMember(Reads0(t0, heap, Handle0(h, r, rd)), bx) } 
-  Set#IsMember(Reads0(t0, heap, Handle0(h, r, rd)), bx)
-     == Set#IsMember(rd[heap], bx));
-
-function {:inline} Requires0#canCall(t0: Ty, heap: Heap, f: HandleType) : bool
-{
-  true
-}
-
-function {:inline} Reads0#canCall(t0: Ty, heap: Heap, f: HandleType) : bool
-{
-  true
-}
-
-// frame axiom for Reads0
-axiom (forall t0: Ty, h0: Heap, h1: Heap, f: HandleType :: 
-  { $HeapSucc(h0, h1), Reads0(t0, h1, f) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && $Is(f, Tclass._System.___hFunc0(t0))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads0(t0, h0, f), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Reads0(t0, h0, f) == Reads0(t0, h1, f));
-
-// frame axiom for Reads0
-axiom (forall t0: Ty, h0: Heap, h1: Heap, f: HandleType :: 
-  { $HeapSucc(h0, h1), Reads0(t0, h1, f) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && $Is(f, Tclass._System.___hFunc0(t0))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads0(t0, h1, f), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Reads0(t0, h0, f) == Reads0(t0, h1, f));
-
-// frame axiom for Requires0
-axiom (forall t0: Ty, h0: Heap, h1: Heap, f: HandleType :: 
-  { $HeapSucc(h0, h1), Requires0(t0, h1, f) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && $Is(f, Tclass._System.___hFunc0(t0))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads0(t0, h0, f), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Requires0(t0, h0, f) == Requires0(t0, h1, f));
-
-// frame axiom for Requires0
-axiom (forall t0: Ty, h0: Heap, h1: Heap, f: HandleType :: 
-  { $HeapSucc(h0, h1), Requires0(t0, h1, f) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && $Is(f, Tclass._System.___hFunc0(t0))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads0(t0, h1, f), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Requires0(t0, h0, f) == Requires0(t0, h1, f));
-
-// frame axiom for Apply0
-axiom (forall t0: Ty, h0: Heap, h1: Heap, f: HandleType :: 
-  { $HeapSucc(h0, h1), Apply0(t0, h1, f) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && $Is(f, Tclass._System.___hFunc0(t0))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads0(t0, h0, f), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Apply0(t0, h0, f) == Apply0(t0, h1, f));
-
-// frame axiom for Apply0
-axiom (forall t0: Ty, h0: Heap, h1: Heap, f: HandleType :: 
-  { $HeapSucc(h0, h1), Apply0(t0, h1, f) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && $Is(f, Tclass._System.___hFunc0(t0))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads0(t0, h1, f), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Apply0(t0, h0, f) == Apply0(t0, h1, f));
-
-// empty-reads property for Reads0 
-axiom (forall t0: Ty, heap: Heap, f: HandleType :: 
-  { Reads0(t0, $OneHeap, f), $IsGoodHeap(heap) } { Reads0(t0, heap, f) } 
-  $IsGoodHeap(heap) && $Is(f, Tclass._System.___hFunc0(t0))
-     ==> (Set#Equal(Reads0(t0, $OneHeap, f), Set#Empty(): Set)
-       <==> Set#Equal(Reads0(t0, heap, f), Set#Empty(): Set)));
-
-// empty-reads property for Requires0
-axiom (forall t0: Ty, heap: Heap, f: HandleType :: 
-  { Requires0(t0, $OneHeap, f), $IsGoodHeap(heap) } { Requires0(t0, heap, f) } 
-  $IsGoodHeap(heap)
-       && $Is(f, Tclass._System.___hFunc0(t0))
-       && Set#Equal(Reads0(t0, $OneHeap, f), Set#Empty(): Set)
-     ==> Requires0(t0, $OneHeap, f) == Requires0(t0, heap, f));
-
-axiom (forall f: HandleType, t0: Ty, u0: Ty :: 
-  { $Is(f, Tclass._System.___hFunc0(t0)), $Is(f, Tclass._System.___hFunc0(u0)) } 
-  $Is(f, Tclass._System.___hFunc0(t0))
-       && (forall bx: Box :: 
-        { $IsBox(bx, t0) } { $IsBox(bx, u0) } 
-        $IsBox(bx, t0) ==> $IsBox(bx, u0))
-     ==> $Is(f, Tclass._System.___hFunc0(u0)));
 
 function Tclass._System.___hPartialFunc0(Ty) : Ty;
 
@@ -2615,197 +1299,6 @@ axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty, bx: Box ::
   $IsBox(bx, Tclass._System.___hFunc2(#$T0, #$T1, #$R))
      ==> $Box($Unbox(bx): HandleType) == bx
        && $Is($Unbox(bx): HandleType, Tclass._System.___hFunc2(#$T0, #$T1, #$R)));
-
-function Handle2([Heap,Box,Box]Box, [Heap,Box,Box]bool, [Heap,Box,Box]Set) : HandleType;
-
-function Apply2(Ty, Ty, Ty, Heap, HandleType, Box, Box) : Box;
-
-function Requires2(Ty, Ty, Ty, Heap, HandleType, Box, Box) : bool;
-
-function Reads2(Ty, Ty, Ty, Heap, HandleType, Box, Box) : Set;
-
-axiom (forall t0: Ty, 
-    t1: Ty, 
-    t2: Ty, 
-    heap: Heap, 
-    h: [Heap,Box,Box]Box, 
-    r: [Heap,Box,Box]bool, 
-    rd: [Heap,Box,Box]Set, 
-    bx0: Box, 
-    bx1: Box :: 
-  { Apply2(t0, t1, t2, heap, Handle2(h, r, rd), bx0, bx1) } 
-  Apply2(t0, t1, t2, heap, Handle2(h, r, rd), bx0, bx1) == h[heap, bx0, bx1]);
-
-axiom (forall t0: Ty, 
-    t1: Ty, 
-    t2: Ty, 
-    heap: Heap, 
-    h: [Heap,Box,Box]Box, 
-    r: [Heap,Box,Box]bool, 
-    rd: [Heap,Box,Box]Set, 
-    bx0: Box, 
-    bx1: Box :: 
-  { Requires2(t0, t1, t2, heap, Handle2(h, r, rd), bx0, bx1) } 
-  r[heap, bx0, bx1] ==> Requires2(t0, t1, t2, heap, Handle2(h, r, rd), bx0, bx1));
-
-axiom (forall t0: Ty, 
-    t1: Ty, 
-    t2: Ty, 
-    heap: Heap, 
-    h: [Heap,Box,Box]Box, 
-    r: [Heap,Box,Box]bool, 
-    rd: [Heap,Box,Box]Set, 
-    bx0: Box, 
-    bx1: Box, 
-    bx: Box :: 
-  { Set#IsMember(Reads2(t0, t1, t2, heap, Handle2(h, r, rd), bx0, bx1), bx) } 
-  Set#IsMember(Reads2(t0, t1, t2, heap, Handle2(h, r, rd), bx0, bx1), bx)
-     == Set#IsMember(rd[heap, bx0, bx1], bx));
-
-function {:inline} Requires2#canCall(t0: Ty, t1: Ty, t2: Ty, heap: Heap, f: HandleType, bx0: Box, bx1: Box) : bool
-{
-  true
-}
-
-function {:inline} Reads2#canCall(t0: Ty, t1: Ty, t2: Ty, heap: Heap, f: HandleType, bx0: Box, bx1: Box) : bool
-{
-  true
-}
-
-// frame axiom for Reads2
-axiom (forall t0: Ty, t1: Ty, t2: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box, bx1: Box :: 
-  { $HeapSucc(h0, h1), Reads2(t0, t1, t2, h1, f, bx0, bx1) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $IsBox(bx1, t1)
-       && $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads2(t0, t1, t2, h0, f, bx0, bx1), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Reads2(t0, t1, t2, h0, f, bx0, bx1) == Reads2(t0, t1, t2, h1, f, bx0, bx1));
-
-// frame axiom for Reads2
-axiom (forall t0: Ty, t1: Ty, t2: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box, bx1: Box :: 
-  { $HeapSucc(h0, h1), Reads2(t0, t1, t2, h1, f, bx0, bx1) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $IsBox(bx1, t1)
-       && $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads2(t0, t1, t2, h1, f, bx0, bx1), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Reads2(t0, t1, t2, h0, f, bx0, bx1) == Reads2(t0, t1, t2, h1, f, bx0, bx1));
-
-// frame axiom for Requires2
-axiom (forall t0: Ty, t1: Ty, t2: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box, bx1: Box :: 
-  { $HeapSucc(h0, h1), Requires2(t0, t1, t2, h1, f, bx0, bx1) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $IsBox(bx1, t1)
-       && $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads2(t0, t1, t2, h0, f, bx0, bx1), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Requires2(t0, t1, t2, h0, f, bx0, bx1) == Requires2(t0, t1, t2, h1, f, bx0, bx1));
-
-// frame axiom for Requires2
-axiom (forall t0: Ty, t1: Ty, t2: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box, bx1: Box :: 
-  { $HeapSucc(h0, h1), Requires2(t0, t1, t2, h1, f, bx0, bx1) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $IsBox(bx1, t1)
-       && $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads2(t0, t1, t2, h1, f, bx0, bx1), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Requires2(t0, t1, t2, h0, f, bx0, bx1) == Requires2(t0, t1, t2, h1, f, bx0, bx1));
-
-// frame axiom for Apply2
-axiom (forall t0: Ty, t1: Ty, t2: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box, bx1: Box :: 
-  { $HeapSucc(h0, h1), Apply2(t0, t1, t2, h1, f, bx0, bx1) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $IsBox(bx1, t1)
-       && $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads2(t0, t1, t2, h0, f, bx0, bx1), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Apply2(t0, t1, t2, h0, f, bx0, bx1) == Apply2(t0, t1, t2, h1, f, bx0, bx1));
-
-// frame axiom for Apply2
-axiom (forall t0: Ty, t1: Ty, t2: Ty, h0: Heap, h1: Heap, f: HandleType, bx0: Box, bx1: Box :: 
-  { $HeapSucc(h0, h1), Apply2(t0, t1, t2, h1, f, bx0, bx1) } 
-  $HeapSucc(h0, h1)
-       && 
-      $IsGoodHeap(h0)
-       && $IsGoodHeap(h1)
-       && 
-      $IsBox(bx0, t0)
-       && $IsBox(bx1, t1)
-       && $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-       && (forall o: ref, fld: Field :: 
-        o != null && Set#IsMember(Reads2(t0, t1, t2, h1, f, bx0, bx1), $Box(o))
-           ==> read(h0, o, fld) == read(h1, o, fld))
-     ==> Apply2(t0, t1, t2, h0, f, bx0, bx1) == Apply2(t0, t1, t2, h1, f, bx0, bx1));
-
-// empty-reads property for Reads2 
-axiom (forall t0: Ty, t1: Ty, t2: Ty, heap: Heap, f: HandleType, bx0: Box, bx1: Box :: 
-  { Reads2(t0, t1, t2, $OneHeap, f, bx0, bx1), $IsGoodHeap(heap) } 
-    { Reads2(t0, t1, t2, heap, f, bx0, bx1) } 
-  $IsGoodHeap(heap)
-       && 
-      $IsBox(bx0, t0)
-       && $IsBox(bx1, t1)
-       && $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-     ==> (Set#Equal(Reads2(t0, t1, t2, $OneHeap, f, bx0, bx1), Set#Empty(): Set)
-       <==> Set#Equal(Reads2(t0, t1, t2, heap, f, bx0, bx1), Set#Empty(): Set)));
-
-// empty-reads property for Requires2
-axiom (forall t0: Ty, t1: Ty, t2: Ty, heap: Heap, f: HandleType, bx0: Box, bx1: Box :: 
-  { Requires2(t0, t1, t2, $OneHeap, f, bx0, bx1), $IsGoodHeap(heap) } 
-    { Requires2(t0, t1, t2, heap, f, bx0, bx1) } 
-  $IsGoodHeap(heap)
-       && 
-      $IsBox(bx0, t0)
-       && $IsBox(bx1, t1)
-       && $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-       && Set#Equal(Reads2(t0, t1, t2, $OneHeap, f, bx0, bx1), Set#Empty(): Set)
-     ==> Requires2(t0, t1, t2, $OneHeap, f, bx0, bx1)
-       == Requires2(t0, t1, t2, heap, f, bx0, bx1));
-
-axiom (forall f: HandleType, t0: Ty, t1: Ty, t2: Ty, u0: Ty, u1: Ty, u2: Ty :: 
-  { $Is(f, Tclass._System.___hFunc2(t0, t1, t2)), $Is(f, Tclass._System.___hFunc2(u0, u1, u2)) } 
-  $Is(f, Tclass._System.___hFunc2(t0, t1, t2))
-       && (forall bx: Box :: 
-        { $IsBox(bx, u0) } { $IsBox(bx, t0) } 
-        $IsBox(bx, u0) ==> $IsBox(bx, t0))
-       && (forall bx: Box :: 
-        { $IsBox(bx, u1) } { $IsBox(bx, t1) } 
-        $IsBox(bx, u1) ==> $IsBox(bx, t1))
-       && (forall bx: Box :: 
-        { $IsBox(bx, t2) } { $IsBox(bx, u2) } 
-        $IsBox(bx, t2) ==> $IsBox(bx, u2))
-     ==> $Is(f, Tclass._System.___hFunc2(u0, u1, u2)));
 
 function Tclass._System.___hPartialFunc2(Ty, Ty, Ty) : Ty;
 

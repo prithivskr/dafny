@@ -45,6 +45,7 @@
   <ItemGroup>
     <Content Include="DafnyPrelude.bpl" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="DafnyPrelude.qf.bpl" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="DafnyPrelude.p3.bpl" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

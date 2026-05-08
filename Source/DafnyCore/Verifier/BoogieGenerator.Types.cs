@@ -29,6 +29,10 @@ public partial class BoogieGenerator {
 
   private void AddArrowTypeAxioms(ArrowTypeDecl ad) {
     Contract.Requires(ad != null);
+    if (options.Get(CommonOptionBag.Prelude3)) {
+      return;
+    }
+
     var arity = ad.Arity;
     var tok = ad.Origin;
 

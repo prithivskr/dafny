@@ -727,8 +727,11 @@ namespace Microsoft.Dafny {
       if (preludePath == null) {
         //using (System.IO.Stream stream = Cce.NonNull( System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("DafnyPrelude.bpl")) // Use this once Spec#/VSIP supports designating a non-.resx project item as an embedded resource
         string codebase = Cce.NonNull(System.IO.Path.GetDirectoryName(Cce.NonNull(System.Reflection.Assembly.GetExecutingAssembly().Location)));
-        preludePath = System.IO.Path.Combine(codebase,
-          options.Get(CommonOptionBag.QuantifierFreeFrames) ? "DafnyPrelude.qf.bpl" : "DafnyPrelude.bpl");
+        var preludeFile =
+          options.Get(CommonOptionBag.Prelude3) ? "DafnyPrelude.p3.bpl" :
+          options.Get(CommonOptionBag.QuantifierFreeFrames) ? "DafnyPrelude.qf.bpl" :
+          "DafnyPrelude.bpl";
+        preludePath = System.IO.Path.Combine(codebase, preludeFile);
       }
 
       var defines = new List<string>();

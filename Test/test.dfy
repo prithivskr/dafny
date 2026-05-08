@@ -4,7 +4,6 @@ datatype List = Nil | Cons(head: int, tail: List)
 // Recursive function with QF pre/post
 // (recursive body, but spec is QF)
 function ListLength(l: List): nat
-  decreases l
 {
   match l
   case Nil => 0
