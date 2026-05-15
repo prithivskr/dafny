@@ -109,6 +109,15 @@ namespace Microsoft.Dafny {
           return;
         }
 
+        // QF mode: the universal $Is axiom for reference types is dropped.
+        // $Is facts are established locally:
+        //   (a) via `where` clauses on procedure in-parameters (GetWhereClause returns MkIs for ref types),
+        //   (b) via `assume $nw != null && $Is($nw, type)` at each allocation site (SelectAllocateObject).
+        // Keeping a global `forall $o :: $Is($o, TClassA(G)) <=> ...` would reintroduce quantifiers.
+        if (UseQuantifierFreeFrames && !is_alloc) {
+          return;
+        }
+
         var vars = MkTyParamBinders(GetTypeParams(c), out var tyexprs);
 
         var o = BplBoundVar("$o", Predef.RefType, vars);

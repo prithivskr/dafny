@@ -198,42 +198,44 @@ function $IsAllocBox(Box,Ty,Heap): bool;
 
 axiom (forall bx : Box ::
     { $IsBox(bx, TInt) }
-    ( $IsBox(bx, TInt) ==> $Box($Unbox(bx) : int) == bx && $Is($Unbox(bx) : int, TInt)));
+    ( $IsBox(bx, TInt) ==> $Box($Unbox(bx) : int) == bx));
 axiom (forall bx : Box ::
     { $IsBox(bx, TReal) }
-    ( $IsBox(bx, TReal) ==> $Box($Unbox(bx) : real) == bx && $Is($Unbox(bx) : real, TReal)));
+    ( $IsBox(bx, TReal) ==> $Box($Unbox(bx) : real) == bx));
 axiom (forall bx : Box ::
     { $IsBox(bx, TBool) }
-    ( $IsBox(bx, TBool) ==> $Box($Unbox(bx) : bool) == bx && $Is($Unbox(bx) : bool, TBool)));
+    ( $IsBox(bx, TBool) ==> $Box($Unbox(bx) : bool) == bx));
 axiom (forall bx : Box ::
     { $IsBox(bx, TChar) }
-    ( $IsBox(bx, TChar) ==> $Box($Unbox(bx) : char) == bx && $Is($Unbox(bx) : char, TChar)));
-
+    ( $IsBox(bx, TChar) ==> $Box($Unbox(bx) : char) == bx));
 // Since each bitvector type is a separate type in Boogie, the Box/Unbox axioms for bitvectors are
 // generated programmatically. Except, Bv0 is given here.
 axiom (forall bx : Box ::
     { $IsBox(bx, TBitvector(0)) }
-    ( $IsBox(bx, TBitvector(0)) ==> $Box($Unbox(bx) : Bv0) == bx && $Is($Unbox(bx) : Bv0, TBitvector(0))));
+    ( $IsBox(bx, TBitvector(0)) ==> $Box($Unbox(bx) : Bv0) == bx));
 
 axiom (forall bx : Box, t : Ty ::
     { $IsBox(bx, TSet(t)) }
-    ( $IsBox(bx, TSet(t)) ==> $Box($Unbox(bx) : Set) == bx && $Is($Unbox(bx) : Set, TSet(t))));
+    ( $IsBox(bx, TSet(t)) ==> $Box($Unbox(bx) : Set) == bx));
 axiom (forall bx : Box, t : Ty ::
     { $IsBox(bx, TISet(t)) }
-    ( $IsBox(bx, TISet(t)) ==> $Box($Unbox(bx) : ISet) == bx && $Is($Unbox(bx) : ISet, TISet(t))));
+    ( $IsBox(bx, TISet(t)) ==> $Box($Unbox(bx) : ISet) == bx));
 axiom (forall bx : Box, t : Ty ::
     { $IsBox(bx, TMultiSet(t)) }
-    ( $IsBox(bx, TMultiSet(t)) ==> $Box($Unbox(bx) : MultiSet) == bx && $Is($Unbox(bx) : MultiSet, TMultiSet(t))));
+    ( $IsBox(bx, TMultiSet(t)) ==> $Box($Unbox(bx) : MultiSet) == bx));
 axiom (forall bx : Box, t : Ty ::
     { $IsBox(bx, TSeq(t)) }
-    ( $IsBox(bx, TSeq(t)) ==> $Box($Unbox(bx) : Seq) == bx && $Is($Unbox(bx) : Seq, TSeq(t))));
+    ( $IsBox(bx, TSeq(t)) ==> $Box($Unbox(bx) : Seq) == bx));
 axiom (forall bx : Box, s : Ty, t : Ty ::
     { $IsBox(bx, TMap(s, t)) }
-    ( $IsBox(bx, TMap(s, t)) ==> $Box($Unbox(bx) : Map) == bx && $Is($Unbox(bx) : Map, TMap(s, t))));
+    ( $IsBox(bx, TMap(s, t)) ==> $Box($Unbox(bx) : Map) == bx));
 axiom (forall bx : Box, s : Ty, t : Ty ::
     { $IsBox(bx, TIMap(s, t)) }
-    ( $IsBox(bx, TIMap(s, t)) ==> $Box($Unbox(bx) : IMap) == bx && $Is($Unbox(bx) : IMap, TIMap(s, t))));
+    ( $IsBox(bx, TIMap(s, t)) ==> $Box($Unbox(bx) : IMap) == bx));
 
+// Bridge: $IsBox($Box(v), t) <==> $Is(v, t).
+// Kept in QF mode: this is a definitional equation, not a background search trigger.
+// It lets the solver convert between the boxed and unboxed $Is views at known call sites.
 axiom (forall<T> v : T, t : Ty ::
     { $IsBox($Box(v), t) }
     ( $IsBox($Box(v), t) <==> $Is(v,t) ));
@@ -245,16 +247,15 @@ axiom (forall<T> v : T, t : Ty ::
 // Type-argument to $Is is the /representation type/,
 // the second value argument to $Is is the actual type.
 function $Is<T>(T,Ty): bool;           // no heap for now
-axiom(forall v : int  :: { $Is(v,TInt) }  $Is(v,TInt));
-axiom(forall v : real :: { $Is(v,TReal) } $Is(v,TReal));
-axiom(forall v : bool :: { $Is(v,TBool) } $Is(v,TBool));
-axiom(forall v : char :: { $Is(v,TChar) } $Is(v,TChar));
-axiom(forall v : Field :: { $Is(v,TField) } $Is(v,TField));
-axiom(forall v : ORDINAL :: { $Is(v,TORDINAL) } $Is(v,TORDINAL));
 
-// Since every bitvector type is a separate type in Boogie, the $Is/$IsAlloc axioms
-// for bitvectors are generated programatically. Except, TBitvector(0) is given here.
-axiom (forall v: Bv0 :: { $Is(v, TBitvector(0)) } $Is(v, TBitvector(0)));
+// QF mode: $Is is declared as an uninterpreted predicate — no background axioms assert
+// its truth for any type. Type symbols (TInt, TBool, TSet, etc.) are declared above but
+// not axiomatized here. $Is membership is established exclusively through:
+//   (a) `where` clauses on procedure in-parameters (via GetWhereClause in the translator), and
+//   (b) explicit `assume $Is(...)` statements at object allocation sites.
+// The structural axioms below (for Set, Seq, Map, etc.) define what $Is(v, TSet(t)) means
+// in terms of element membership, and are retained as they are structural definitions,
+// not background membership assertions 
 
 axiom (forall v: Set, t0: Ty :: { $Is(v, TSet(t0)) }
   $Is(v, TSet(t0)) <==>

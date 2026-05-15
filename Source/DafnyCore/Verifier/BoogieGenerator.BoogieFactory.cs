@@ -913,7 +913,7 @@ namespace Microsoft.Dafny {
       if (ePrime != null) {
         exprs.Add(ePrime);
       }
-      if (optionalHeap != null) {
+      if (optionalHeap != null && !boogieGenerator.UseQuantifierFreeFrames) {
         exprs.Add(boogieGenerator.FunctionCall(tok, BuiltinFunction.IsGoodHeap, null, optionalHeap));
       }
       return new Bpl.Trigger(tok, true, exprs);

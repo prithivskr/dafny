@@ -134,27 +134,11 @@ type char;
 
 revealed function char#FromInt(int) : char;
 
-axiom (forall n: int :: 
-  { char#FromInt(n) } 
-  char#IsChar(n) ==> char#ToInt(char#FromInt(n)) == n);
-
 revealed function char#ToInt(char) : int;
-
-axiom (forall ch: char :: 
-  { char#ToInt(ch) } 
-  char#FromInt(char#ToInt(ch)) == ch && char#IsChar(char#ToInt(ch)));
 
 revealed function char#Plus(char, char) : char;
 
-axiom (forall a: char, b: char :: 
-  { char#Plus(a, b) } 
-  char#Plus(a, b) == char#FromInt(char#ToInt(a) + char#ToInt(b)));
-
 revealed function char#Minus(char, char) : char;
-
-axiom (forall a: char, b: char :: 
-  { char#Minus(a, b) } 
-  char#Minus(a, b) == char#FromInt(char#ToInt(a) - char#ToInt(b)));
 
 type ref;
 
@@ -196,47 +180,29 @@ revealed function $IsAllocBox(Box, Ty, Heap) : bool;
 
 axiom (forall bx: Box :: 
   { $IsBox(bx, TInt) } 
-  $IsBox(bx, TInt) ==> $Box($Unbox(bx): int) == bx && $Is($Unbox(bx): int, TInt));
+  $IsBox(bx, TInt) ==> $Box($Unbox(bx): int) == bx);
 
 axiom (forall bx: Box :: 
   { $IsBox(bx, TReal) } 
-  $IsBox(bx, TReal)
-     ==> $Box($Unbox(bx): real) == bx && $Is($Unbox(bx): real, TReal));
+  $IsBox(bx, TReal) ==> $Box($Unbox(bx): real) == bx);
 
 axiom (forall bx: Box :: 
   { $IsBox(bx, TBool) } 
-  $IsBox(bx, TBool)
-     ==> $Box($Unbox(bx): bool) == bx && $Is($Unbox(bx): bool, TBool));
+  $IsBox(bx, TBool) ==> $Box($Unbox(bx): bool) == bx);
 
 axiom (forall bx: Box :: 
   { $IsBox(bx, TChar) } 
-  $IsBox(bx, TChar)
-     ==> $Box($Unbox(bx): char) == bx && $Is($Unbox(bx): char, TChar));
+  $IsBox(bx, TChar) ==> $Box($Unbox(bx): char) == bx);
 
 axiom (forall bx: Box :: 
   { $IsBox(bx, TBitvector(0)) } 
-  $IsBox(bx, TBitvector(0))
-     ==> $Box($Unbox(bx): Bv0) == bx && $Is($Unbox(bx): Bv0, TBitvector(0)));
+  $IsBox(bx, TBitvector(0)) ==> $Box($Unbox(bx): Bv0) == bx);
 
 axiom (forall<T> v: T, t: Ty :: 
   { $IsBox($Box(v), t) } 
   $IsBox($Box(v), t) <==> $Is(v, t));
 
 revealed function $Is<T>(T, Ty) : bool;
-
-axiom (forall v: int :: { $Is(v, TInt) } $Is(v, TInt));
-
-axiom (forall v: real :: { $Is(v, TReal) } $Is(v, TReal));
-
-axiom (forall v: bool :: { $Is(v, TBool) } $Is(v, TBool));
-
-axiom (forall v: char :: { $Is(v, TChar) } $Is(v, TChar));
-
-axiom (forall v: Field :: { $Is(v, TField) } $Is(v, TField));
-
-axiom (forall v: ORDINAL :: { $Is(v, TORDINAL) } $Is(v, TORDINAL));
-
-axiom (forall v: Bv0 :: { $Is(v, TBitvector(0)) } $Is(v, TBitvector(0)));
 
 revealed function $IsAlloc<T>(T, Ty, Heap) : bool;
 
@@ -399,9 +365,10 @@ axiom (forall cl: ClassName, nm: NameFamily ::
 
 revealed function $IsGhostField(Field) : bool;
 
-revealed function _System.array.Length(a: ref) : int;
-
-axiom (forall o: ref :: { _System.array.Length(o) } 0 <= _System.array.Length(o));
+revealed function {:inline} _System.array.Length(a: ref) : int
+{
+  0
+}
 
 revealed function Int(x: real) : int
 uses {
@@ -633,92 +600,74 @@ revealed function IMap#Merge(IMap, IMap) : IMap;
 
 revealed function IMap#Subtract(IMap, Set) : IMap;
 
-revealed function INTERNAL_add_boogie(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: 
-  { INTERNAL_add_boogie(x, y): int } 
-  INTERNAL_add_boogie(x, y): int == x + y);
+revealed function {:inline true} INTERNAL_add_boogie(x: int, y: int) : int
+{
+  x + y
 }
 
-revealed function INTERNAL_sub_boogie(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: 
-  { INTERNAL_sub_boogie(x, y): int } 
-  INTERNAL_sub_boogie(x, y): int == x - y);
+revealed function {:inline true} INTERNAL_sub_boogie(x: int, y: int) : int
+{
+  x - y
 }
 
-revealed function INTERNAL_mul_boogie(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: 
-  { INTERNAL_mul_boogie(x, y): int } 
-  INTERNAL_mul_boogie(x, y): int == x * y);
+revealed function {:inline true} INTERNAL_mul_boogie(x: int, y: int) : int
+{
+  x * y
 }
 
-revealed function INTERNAL_div_boogie(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: 
-  { INTERNAL_div_boogie(x, y): int } 
-  INTERNAL_div_boogie(x, y): int == x div y);
+revealed function {:inline true} INTERNAL_div_boogie(x: int, y: int) : int
+{
+  x div y
 }
 
-revealed function INTERNAL_mod_boogie(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: 
-  { INTERNAL_mod_boogie(x, y): int } 
-  INTERNAL_mod_boogie(x, y): int == x mod y);
+revealed function {:inline true} INTERNAL_mod_boogie(x: int, y: int) : int
+{
+  x mod y
 }
 
-revealed function {:never_pattern true} INTERNAL_lt_boogie(x: int, y: int) : bool
-uses {
-axiom (forall x: int, y: int :: 
-  {:never_pattern true} { INTERNAL_lt_boogie(x, y): bool } 
-  INTERNAL_lt_boogie(x, y): bool == (x < y));
+revealed function {:inline true} INTERNAL_lt_boogie(x: int, y: int) : bool
+{
+  x < y
 }
 
-revealed function {:never_pattern true} INTERNAL_le_boogie(x: int, y: int) : bool
-uses {
-axiom (forall x: int, y: int :: 
-  {:never_pattern true} { INTERNAL_le_boogie(x, y): bool } 
-  INTERNAL_le_boogie(x, y): bool == (x <= y));
+revealed function {:inline true} INTERNAL_le_boogie(x: int, y: int) : bool
+{
+  x <= y
 }
 
-revealed function {:never_pattern true} INTERNAL_gt_boogie(x: int, y: int) : bool
-uses {
-axiom (forall x: int, y: int :: 
-  {:never_pattern true} { INTERNAL_gt_boogie(x, y): bool } 
-  INTERNAL_gt_boogie(x, y): bool == (x > y));
+revealed function {:inline true} INTERNAL_gt_boogie(x: int, y: int) : bool
+{
+  x > y
 }
 
-revealed function {:never_pattern true} INTERNAL_ge_boogie(x: int, y: int) : bool
-uses {
-axiom (forall x: int, y: int :: 
-  {:never_pattern true} { INTERNAL_ge_boogie(x, y): bool } 
-  INTERNAL_ge_boogie(x, y): bool == (x >= y));
+revealed function {:inline true} INTERNAL_ge_boogie(x: int, y: int) : bool
+{
+  x >= y
 }
 
-revealed function Mul(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: { Mul(x, y): int } Mul(x, y): int == x * y);
+revealed function {:inline true} Mul(x: int, y: int) : int
+{
+  x * y
 }
 
-revealed function Div(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: { Div(x, y): int } Div(x, y): int == x div y);
+revealed function {:inline true} Div(x: int, y: int) : int
+{
+  x div y
 }
 
-revealed function Mod(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: { Mod(x, y): int } Mod(x, y): int == x mod y);
+revealed function {:inline true} Mod(x: int, y: int) : int
+{
+  x mod y
 }
 
-revealed function Add(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: { Add(x, y): int } Add(x, y): int == x + y);
+revealed function {:inline true} Add(x: int, y: int) : int
+{
+  x + y
 }
 
-revealed function Sub(x: int, y: int) : int
-uses {
-axiom (forall x: int, y: int :: { Sub(x, y): int } Sub(x, y): int == x - y);
+revealed function {:inline true} Sub(x: int, y: int) : int
+{
+  x - y
 }
 
 function Tclass._System.nat() : Ty
@@ -733,8 +682,7 @@ const unique Tagclass._System.nat: TyTag;
 // Box/unbox axiom for Tclass._System.nat
 axiom (forall bx: Box :: 
   { $IsBox(bx, Tclass._System.nat()) } 
-  $IsBox(bx, Tclass._System.nat())
-     ==> $Box($Unbox(bx): int) == bx && $Is($Unbox(bx): int, Tclass._System.nat()));
+  $IsBox(bx, Tclass._System.nat()) ==> $Box($Unbox(bx): int) == bx);
 
 // $Is axiom for subset type _System.nat
 axiom (forall x#0: int :: 
@@ -742,19 +690,6 @@ axiom (forall x#0: int ::
   $Is(x#0, Tclass._System.nat()) <==> LitInt(0) <= x#0);
 
 const unique class._System.object?: ClassName;
-
-const unique Tagclass._System.object?: TyTag;
-
-// Box/unbox axiom for Tclass._System.object?
-axiom (forall bx: Box :: 
-  { $IsBox(bx, Tclass._System.object?()) } 
-  $IsBox(bx, Tclass._System.object?())
-     ==> $Box($Unbox(bx): ref) == bx && $Is($Unbox(bx): ref, Tclass._System.object?()));
-
-// $Is axiom for trait object
-axiom (forall $o: ref :: 
-  { $Is($o, Tclass._System.object?()) } 
-  $Is($o, Tclass._System.object?()));
 
 function implements$_System.object(ty: Ty) : bool;
 
@@ -770,8 +705,14 @@ const unique Tagclass._System.object: TyTag;
 // Box/unbox axiom for Tclass._System.object
 axiom (forall bx: Box :: 
   { $IsBox(bx, Tclass._System.object()) } 
-  $IsBox(bx, Tclass._System.object())
-     ==> $Box($Unbox(bx): ref) == bx && $Is($Unbox(bx): ref, Tclass._System.object()));
+  $IsBox(bx, Tclass._System.object()) ==> $Box($Unbox(bx): ref) == bx);
+
+const unique Tagclass._System.object?: TyTag;
+
+// Box/unbox axiom for Tclass._System.object?
+axiom (forall bx: Box :: 
+  { $IsBox(bx, Tclass._System.object?()) } 
+  $IsBox(bx, Tclass._System.object?()) ==> $Box($Unbox(bx): ref) == bx);
 
 // $Is axiom for non-null type _System.object
 axiom (forall c#0: ref :: 
@@ -780,37 +721,6 @@ axiom (forall c#0: ref ::
      <==> $Is(c#0, Tclass._System.object?()) && c#0 != null);
 
 const unique class._System.array?: ClassName;
-
-function Tclass._System.array?(Ty) : Ty;
-
-const unique Tagclass._System.array?: TyTag;
-
-// Tclass._System.array? Tag
-axiom (forall _System.array$arg: Ty :: 
-  { Tclass._System.array?(_System.array$arg) } 
-  Tag(Tclass._System.array?(_System.array$arg)) == Tagclass._System.array?
-     && TagFamily(Tclass._System.array?(_System.array$arg)) == tytagFamily$array);
-
-function Tclass._System.array?_0(Ty) : Ty;
-
-// Tclass._System.array? injectivity 0
-axiom (forall _System.array$arg: Ty :: 
-  { Tclass._System.array?(_System.array$arg) } 
-  Tclass._System.array?_0(Tclass._System.array?(_System.array$arg))
-     == _System.array$arg);
-
-// Box/unbox axiom for Tclass._System.array?
-axiom (forall _System.array$arg: Ty, bx: Box :: 
-  { $IsBox(bx, Tclass._System.array?(_System.array$arg)) } 
-  $IsBox(bx, Tclass._System.array?(_System.array$arg))
-     ==> $Box($Unbox(bx): ref) == bx
-       && $Is($Unbox(bx): ref, Tclass._System.array?(_System.array$arg)));
-
-// $Is axiom for array type array
-axiom (forall _System.array$arg: Ty, $o: ref :: 
-  { $Is($o, Tclass._System.array?(_System.array$arg)) } 
-  $Is($o, Tclass._System.array?(_System.array$arg))
-     <==> $o == null || dtype($o) == Tclass._System.array?(_System.array$arg));
 
 function Tclass._System.array(Ty) : Ty;
 
@@ -834,8 +744,31 @@ axiom (forall _System.array$arg: Ty ::
 axiom (forall _System.array$arg: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.array(_System.array$arg)) } 
   $IsBox(bx, Tclass._System.array(_System.array$arg))
-     ==> $Box($Unbox(bx): ref) == bx
-       && $Is($Unbox(bx): ref, Tclass._System.array(_System.array$arg)));
+     ==> $Box($Unbox(bx): ref) == bx);
+
+function Tclass._System.array?(Ty) : Ty;
+
+const unique Tagclass._System.array?: TyTag;
+
+// Tclass._System.array? Tag
+axiom (forall _System.array$arg: Ty :: 
+  { Tclass._System.array?(_System.array$arg) } 
+  Tag(Tclass._System.array?(_System.array$arg)) == Tagclass._System.array?
+     && TagFamily(Tclass._System.array?(_System.array$arg)) == tytagFamily$array);
+
+function Tclass._System.array?_0(Ty) : Ty;
+
+// Tclass._System.array? injectivity 0
+axiom (forall _System.array$arg: Ty :: 
+  { Tclass._System.array?(_System.array$arg) } 
+  Tclass._System.array?_0(Tclass._System.array?(_System.array$arg))
+     == _System.array$arg);
+
+// Box/unbox axiom for Tclass._System.array?
+axiom (forall _System.array$arg: Ty, bx: Box :: 
+  { $IsBox(bx, Tclass._System.array?(_System.array$arg)) } 
+  $IsBox(bx, Tclass._System.array?(_System.array$arg))
+     ==> $Box($Unbox(bx): ref) == bx);
 
 // $Is axiom for non-null type _System.array
 axiom (forall _System.array$arg: Ty, c#0: ref :: 
@@ -872,8 +805,7 @@ axiom (forall #$T0: Ty, #$R: Ty ::
 axiom (forall #$T0: Ty, #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hFunc1(#$T0, #$R)) } 
   $IsBox(bx, Tclass._System.___hFunc1(#$T0, #$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hFunc1(#$T0, #$R)));
+     ==> $Box($Unbox(bx): HandleType) == bx);
 
 function Tclass._System.___hPartialFunc1(Ty, Ty) : Ty;
 
@@ -907,8 +839,7 @@ axiom (forall #$T0: Ty, #$R: Ty ::
 axiom (forall #$T0: Ty, #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hPartialFunc1(#$T0, #$R)) } 
   $IsBox(bx, Tclass._System.___hPartialFunc1(#$T0, #$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hPartialFunc1(#$T0, #$R)));
+     ==> $Box($Unbox(bx): HandleType) == bx);
 
 // $Is axiom for subset type _System._#PartialFunc1
 axiom (forall #$T0: Ty, #$R: Ty, f#0: HandleType :: 
@@ -948,8 +879,7 @@ axiom (forall #$T0: Ty, #$R: Ty ::
 axiom (forall #$T0: Ty, #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hTotalFunc1(#$T0, #$R)) } 
   $IsBox(bx, Tclass._System.___hTotalFunc1(#$T0, #$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hTotalFunc1(#$T0, #$R)));
+     ==> $Box($Unbox(bx): HandleType) == bx);
 
 // $Is axioms for subset type _System._#TotalFunc1
 axiom (forall #$T0: Ty, #$R: Ty, f#0: HandleType :: 
@@ -991,9 +921,7 @@ axiom (forall #$R: Ty ::
 // Box/unbox axiom for Tclass._System.___hFunc0
 axiom (forall #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hFunc0(#$R)) } 
-  $IsBox(bx, Tclass._System.___hFunc0(#$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hFunc0(#$R)));
+  $IsBox(bx, Tclass._System.___hFunc0(#$R)) ==> $Box($Unbox(bx): HandleType) == bx);
 
 function Tclass._System.___hPartialFunc0(Ty) : Ty;
 
@@ -1016,8 +944,7 @@ axiom (forall #$R: Ty ::
 axiom (forall #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hPartialFunc0(#$R)) } 
   $IsBox(bx, Tclass._System.___hPartialFunc0(#$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hPartialFunc0(#$R)));
+     ==> $Box($Unbox(bx): HandleType) == bx);
 
 // $Is axiom for subset type _System._#PartialFunc0
 axiom (forall #$R: Ty, f#0: HandleType :: 
@@ -1047,8 +974,7 @@ axiom (forall #$R: Ty ::
 axiom (forall #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hTotalFunc0(#$R)) } 
   $IsBox(bx, Tclass._System.___hTotalFunc0(#$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hTotalFunc0(#$R)));
+     ==> $Box($Unbox(bx): HandleType) == bx);
 
 // $Is axioms for subset type _System._#TotalFunc0
 axiom (forall #$R: Ty, f#0: HandleType :: 
@@ -1119,9 +1045,7 @@ axiom (forall _System._tuple#2$T0: Ty, _System._tuple#2$T1: Ty ::
 axiom (forall _System._tuple#2$T0: Ty, _System._tuple#2$T1: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.Tuple2(_System._tuple#2$T0, _System._tuple#2$T1)) } 
   $IsBox(bx, Tclass._System.Tuple2(_System._tuple#2$T0, _System._tuple#2$T1))
-     ==> $Box($Unbox(bx): DatatypeType) == bx
-       && $Is($Unbox(bx): DatatypeType, 
-        Tclass._System.Tuple2(_System._tuple#2$T0, _System._tuple#2$T1)));
+     ==> $Box($Unbox(bx): DatatypeType) == bx);
 
 // Constructor $Is
 axiom (forall _System._tuple#2$T0: Ty, _System._tuple#2$T1: Ty, a#2#0#0: Box, a#2#1#0: Box :: 
@@ -1230,9 +1154,7 @@ const unique Tagclass._System.Tuple0: TyTag;
 // Box/unbox axiom for Tclass._System.Tuple0
 axiom (forall bx: Box :: 
   { $IsBox(bx, Tclass._System.Tuple0()) } 
-  $IsBox(bx, Tclass._System.Tuple0())
-     ==> $Box($Unbox(bx): DatatypeType) == bx
-       && $Is($Unbox(bx): DatatypeType, Tclass._System.Tuple0()));
+  $IsBox(bx, Tclass._System.Tuple0()) ==> $Box($Unbox(bx): DatatypeType) == bx);
 
 // Depth-one case-split function
 function $IsA#_System.Tuple0(DatatypeType) : bool;
@@ -1297,8 +1219,7 @@ axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty ::
 axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hFunc2(#$T0, #$T1, #$R)) } 
   $IsBox(bx, Tclass._System.___hFunc2(#$T0, #$T1, #$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hFunc2(#$T0, #$T1, #$R)));
+     ==> $Box($Unbox(bx): HandleType) == bx);
 
 function Tclass._System.___hPartialFunc2(Ty, Ty, Ty) : Ty;
 
@@ -1340,8 +1261,7 @@ axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty ::
 axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hPartialFunc2(#$T0, #$T1, #$R)) } 
   $IsBox(bx, Tclass._System.___hPartialFunc2(#$T0, #$T1, #$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hPartialFunc2(#$T0, #$T1, #$R)));
+     ==> $Box($Unbox(bx): HandleType) == bx);
 
 // $Is axiom for subset type _System._#PartialFunc2
 axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty, f#0: HandleType :: 
@@ -1392,8 +1312,7 @@ axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty ::
 axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty, bx: Box :: 
   { $IsBox(bx, Tclass._System.___hTotalFunc2(#$T0, #$T1, #$R)) } 
   $IsBox(bx, Tclass._System.___hTotalFunc2(#$T0, #$T1, #$R))
-     ==> $Box($Unbox(bx): HandleType) == bx
-       && $Is($Unbox(bx): HandleType, Tclass._System.___hTotalFunc2(#$T0, #$T1, #$R)));
+     ==> $Box($Unbox(bx): HandleType) == bx);
 
 // $Is axioms for subset type _System._#TotalFunc2
 axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty, f#0: HandleType :: 
@@ -1449,9 +1368,7 @@ const unique Tagclass._module.List: TyTag;
 // Box/unbox axiom for Tclass._module.List
 axiom (forall bx: Box :: 
   { $IsBox(bx, Tclass._module.List()) } 
-  $IsBox(bx, Tclass._module.List())
-     ==> $Box($Unbox(bx): DatatypeType) == bx
-       && $Is($Unbox(bx): DatatypeType, Tclass._module.List()));
+  $IsBox(bx, Tclass._module.List()) ==> $Box($Unbox(bx): DatatypeType) == bx);
 
 // consequence axiom for _module.__default.ListLength
 axiom (forall $ly: LayerType, l#0: DatatypeType :: 
@@ -2062,8 +1979,7 @@ const unique Tagclass._module.Counter: TyTag;
 // Box/unbox axiom for Tclass._module.Counter
 axiom (forall bx: Box :: 
   { $IsBox(bx, Tclass._module.Counter()) } 
-  $IsBox(bx, Tclass._module.Counter())
-     ==> $Box($Unbox(bx): ref) == bx && $Is($Unbox(bx): ref, Tclass._module.Counter()));
+  $IsBox(bx, Tclass._module.Counter()) ==> $Box($Unbox(bx): ref) == bx);
 
 procedure {:verboseName "FillAndCount (well-formedness)"} CheckWellFormed$$_module.__default.FillAndCount(c#0: ref
        where $Is(c#0, Tclass._module.Counter()) && (c#0 == null || $Alloc[c#0]), 
@@ -2416,27 +2332,6 @@ const unique class._module.List: ClassName;
 
 const unique class._module.Counter?: ClassName;
 
-function Tclass._module.Counter?() : Ty
-uses {
-// Tclass._module.Counter? Tag
-axiom Tag(Tclass._module.Counter?()) == Tagclass._module.Counter?
-   && TagFamily(Tclass._module.Counter?()) == tytagFamily$Counter;
-}
-
-const unique Tagclass._module.Counter?: TyTag;
-
-// Box/unbox axiom for Tclass._module.Counter?
-axiom (forall bx: Box :: 
-  { $IsBox(bx, Tclass._module.Counter?()) } 
-  $IsBox(bx, Tclass._module.Counter?())
-     ==> $Box($Unbox(bx): ref) == bx && $Is($Unbox(bx): ref, Tclass._module.Counter?()));
-
-// $Is axiom for class Counter
-axiom (forall $o: ref :: 
-  { $Is($o, Tclass._module.Counter?()) } 
-  $Is($o, Tclass._module.Counter?())
-     <==> $o == null || dtype($o) == Tclass._module.Counter?());
-
 const _module.Counter.value: Field
 uses {
 axiom FDim(_module.Counter.value) == 0
@@ -2488,6 +2383,20 @@ procedure {:verboseName "Counter._ctor (correctness)"} Impl$$_module.Counter.__c
   ensures {:id "id120"} $Unbox(read($Heap, this, _module.Counter.limit)): int == lim#0;
 
 
+
+function Tclass._module.Counter?() : Ty
+uses {
+// Tclass._module.Counter? Tag
+axiom Tag(Tclass._module.Counter?()) == Tagclass._module.Counter?
+   && TagFamily(Tclass._module.Counter?()) == tytagFamily$Counter;
+}
+
+const unique Tagclass._module.Counter?: TyTag;
+
+// Box/unbox axiom for Tclass._module.Counter?
+axiom (forall bx: Box :: 
+  { $IsBox(bx, Tclass._module.Counter?()) } 
+  $IsBox(bx, Tclass._module.Counter?()) ==> $Box($Unbox(bx): ref) == bx);
 
 implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Counter._ctor (correctness)"} Impl$$_module.Counter.__ctor(lim#0: int) returns (this: ref, $_reverifyPost: bool)
 {

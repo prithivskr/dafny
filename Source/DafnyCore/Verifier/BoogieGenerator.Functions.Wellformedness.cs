@@ -391,18 +391,20 @@ public partial class BoogieGenerator {
       var inParams = new List<Variable>();
       if (!f.IsStatic) {
         var th = new Bpl.IdentifierExpr(f.Origin, "this", generator.TrReceiverType(f));
+        var useAlloc = generator.UseQuantifierFreeFrames ? NOALLOC : ISALLOC;
         Expr wh = BplAnd(
           generator.ReceiverNotNull(th),
-          (f is TwoStateFunction ? etran.Old : etran).GoodRef(f.Origin, th, ModuleResolver.GetReceiverType(f.Origin, f)));
+          (f is TwoStateFunction ? etran.Old : etran).GoodRef(f.Origin, th, ModuleResolver.GetReceiverType(f.Origin, f), useAlloc));
         Bpl.Formal thVar = new Bpl.Formal(f.Origin, new TypedIdent(f.Origin, "this", generator.TrReceiverType(f), wh), true);
         inParams.Add(thVar);
       }
 
       foreach (Formal parameter in f.Ins) {
         Bpl.Type varType = generator.TrType(parameter.Type);
+        var useAlloc = generator.UseQuantifierFreeFrames ? NOALLOC : (f is TwoStateFunction ? ISALLOC : NOALLOC);
         Expr wh = generator.GetWhereClause(parameter.Origin,
           new Bpl.IdentifierExpr(parameter.Origin, parameter.AssignUniqueName(f.IdGenerator), varType), parameter.Type,
-          parameter.IsOld ? etran.Old : etran, f is TwoStateFunction ? ISALLOC : NOALLOC);
+          parameter.IsOld ? etran.Old : etran, useAlloc);
         inParams.Add(new Bpl.Formal(parameter.Origin,
           new TypedIdent(parameter.Origin, parameter.AssignUniqueName(f.IdGenerator), varType, wh), true));
       }

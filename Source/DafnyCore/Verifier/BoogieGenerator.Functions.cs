@@ -384,9 +384,10 @@ public partial class BoogieGenerator {
 
       // add well-typedness conjunct to antecedent
       Type thisType = ModuleResolver.GetReceiverType(f.Origin, f);
+      var useAlloc = UseQuantifierFreeFrames ? NOALLOC : ISALLOC;
       Bpl.Expr wh = BplAnd(
         ReceiverNotNull(bvThisIdExpr),
-        (f is TwoStateFunction ? etran.Old : etran).GoodRef(f.Origin, bvThisIdExpr, thisType));
+        (f is TwoStateFunction ? etran.Old : etran).GoodRef(f.Origin, bvThisIdExpr, thisType, useAlloc));
       ante = BplAnd(ante, wh);
     }
 
@@ -438,7 +439,9 @@ public partial class BoogieGenerator {
       foreach (var formal in f.Ins) {
         if (formal.IsOld) {
           var dafnyFormalIdExpr = new IdentifierExpr(formal.Origin, formal);
-          preRA = BplAnd(preRA, MkIsAlloc(etran.TrExpr(dafnyFormalIdExpr), formal.Type, etran.Old.HeapExpr));
+          if (!UseQuantifierFreeFrames) {
+            preRA = BplAnd(preRA, MkIsAlloc(etran.TrExpr(dafnyFormalIdExpr), formal.Type, etran.Old.HeapExpr));
+          }
         }
 
         index++;

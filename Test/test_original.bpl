@@ -2919,210 +2919,345 @@ const unique class._System.Tuple0: ClassName;
 
 const unique class._module.__default: ClassName;
 
-function Tclass._module.Cell() : Ty
+// function declaration for _module._default.ListLength
+function _module.__default.ListLength($ly: LayerType, l#0: DatatypeType) : int;
+
+function _module.__default.ListLength#canCall(l#0: DatatypeType) : bool;
+
+// layer synonym axiom
+axiom (forall $ly: LayerType, l#0: DatatypeType :: 
+  { _module.__default.ListLength($LS($ly), l#0) } 
+  _module.__default.ListLength($LS($ly), l#0)
+     == _module.__default.ListLength($ly, l#0));
+
+// fuel synonym axiom
+axiom (forall $ly: LayerType, l#0: DatatypeType :: 
+  { _module.__default.ListLength(AsFuelBottom($ly), l#0) } 
+  _module.__default.ListLength($ly, l#0) == _module.__default.ListLength($LZ, l#0));
+
+function Tclass._module.List() : Ty
 uses {
-// Tclass._module.Cell Tag
-axiom Tag(Tclass._module.Cell()) == Tagclass._module.Cell
-   && TagFamily(Tclass._module.Cell()) == tytagFamily$Cell;
+// Tclass._module.List Tag
+axiom Tag(Tclass._module.List()) == Tagclass._module.List
+   && TagFamily(Tclass._module.List()) == tytagFamily$List;
 }
 
-const unique Tagclass._module.Cell: TyTag;
+const unique Tagclass._module.List: TyTag;
 
-// Box/unbox axiom for Tclass._module.Cell
+// Box/unbox axiom for Tclass._module.List
 axiom (forall bx: Box :: 
-  { $IsBox(bx, Tclass._module.Cell()) } 
-  $IsBox(bx, Tclass._module.Cell())
-     ==> $Box($Unbox(bx): ref) == bx && $Is($Unbox(bx): ref, Tclass._module.Cell()));
+  { $IsBox(bx, Tclass._module.List()) } 
+  $IsBox(bx, Tclass._module.List())
+     ==> $Box($Unbox(bx): DatatypeType) == bx
+       && $Is($Unbox(bx): DatatypeType, Tclass._module.List()));
 
-procedure {:verboseName "UpdateCells (well-formedness)"} CheckWellFormed$$_module.__default.UpdateCells(a#0: ref
-       where $Is(a#0, Tclass._module.Cell()) && $IsAlloc(a#0, Tclass._module.Cell(), $Heap), 
-    b#0: ref
-       where $Is(b#0, Tclass._module.Cell()) && $IsAlloc(b#0, Tclass._module.Cell(), $Heap))
-   returns (sum#0: int);
+// consequence axiom for _module.__default.ListLength
+axiom (forall $ly: LayerType, l#0: DatatypeType :: 
+  { _module.__default.ListLength($ly, l#0) } 
+  _module.__default.ListLength#canCall(l#0)
+     ==> LitInt(0) <= _module.__default.ListLength($ly, l#0));
+
+function _module.__default.ListLength#requires(LayerType, DatatypeType) : bool;
+
+// #requires axiom for _module.__default.ListLength
+axiom (forall $ly: LayerType, l#0: DatatypeType :: 
+  { _module.__default.ListLength#requires($ly, l#0) } 
+  $Is(l#0, Tclass._module.List())
+     ==> _module.__default.ListLength#requires($ly, l#0) == true);
+
+// #requires ==> #canCall for _module.__default.ListLength
+axiom (forall $ly: LayerType, l#0: DatatypeType :: 
+  { _module.__default.ListLength#requires($ly, l#0) } 
+  _module.__default.ListLength#requires($ly, l#0)
+     ==> _module.__default.ListLength#canCall(l#0));
+
+// definition axiom for _module.__default.ListLength (revealed)
+axiom {:id "id0"} (forall $ly: LayerType, l#0: DatatypeType :: 
+  { _module.__default.ListLength($LS($ly), l#0) } 
+  _module.__default.ListLength#canCall(l#0)
+     ==> (!_module.List.Nil_q(l#0)
+         ==> (var t#1 := _module.List.tail(l#0); _module.__default.ListLength#canCall(t#1)))
+       && _module.__default.ListLength($LS($ly), l#0)
+         == (if _module.List.Nil_q(l#0)
+           then 0
+           else (var t#0 := _module.List.tail(l#0); 1 + _module.__default.ListLength($ly, t#0))));
+
+// definition axiom for _module.__default.ListLength for all literals (revealed)
+axiom {:id "id1"} (forall $ly: LayerType, l#0: DatatypeType :: 
+  {:weight 3} { _module.__default.ListLength($LS($ly), Lit(l#0)) } 
+  _module.__default.ListLength#canCall(Lit(l#0))
+     ==> (!Lit(_module.List.Nil_q(Lit(l#0)))
+         ==> (var t#3 := Lit(_module.List.tail(Lit(l#0))); 
+          _module.__default.ListLength#canCall(t#3)))
+       && _module.__default.ListLength($LS($ly), Lit(l#0))
+         == (if _module.List.Nil_q(Lit(l#0))
+           then 0
+           else (var t#2 := Lit(_module.List.tail(Lit(l#0))); 
+            LitInt(1 + _module.__default.ListLength($LS($ly), t#2)))));
+
+procedure {:verboseName "ListLength (well-formedness)"} CheckWellformed$$_module.__default.ListLength(l#0: DatatypeType where $Is(l#0, Tclass._module.List()));
   modifies $Heap;
 
 
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "UpdateCells (well-formedness)"} CheckWellFormed$$_module.__default.UpdateCells(a#0: ref, b#0: ref) returns (sum#0: int)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "ListLength (well-formedness)"} CheckWellformed$$_module.__default.ListLength(l#0: DatatypeType)
+{
+  var $_ReadsFrame: [ref,Field]bool;
+  var _mcc#0#0: int;
+  var _mcc#1#0: DatatypeType;
+  var t#Z#0: DatatypeType;
+  var let#0#0#0: DatatypeType;
+  var ##l#0: DatatypeType;
+
+
+    assume {:captureState "Test/test.dfy(6,9): initial state"} true;
+    $_ReadsFrame := (lambda $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
+    // Check well-formedness of preconditions, and then assume them
+    // Check well-formedness of the reads clause
+    // Check well-formedness of the decreases clause
+    // Check body and ensures clauses
+    if (*)
+    {
+        // Check well-formedness of postcondition and assume false
+        assume LitInt(0) <= _module.__default.ListLength($LS($LZ), l#0);
+        assume false;
+    }
+    else
+    {
+        // Check well-formedness of body and result subset type constraint
+        if (l#0 == #_module.List.Nil())
+        {
+            assume true;
+            assert {:id "id7"} $Is(LitInt(0), Tclass._System.nat());
+            assume {:id "id8"} _module.__default.ListLength($LS($LZ), l#0) == LitInt(0);
+            // CheckWellformedWithResult: any expression
+            assume $Is(_module.__default.ListLength($LS($LZ), l#0), Tclass._System.nat());
+            return;
+        }
+        else if (l#0 == #_module.List.Cons(_mcc#0#0, _mcc#1#0))
+        {
+            assume $Is(_mcc#1#0, Tclass._module.List());
+            havoc t#Z#0;
+            assume true;
+            assume {:id "id2"} let#0#0#0 == _mcc#1#0;
+            // CheckWellformedWithResult: any expression
+            assume $Is(let#0#0#0, Tclass._module.List());
+            assume {:id "id3"} t#Z#0 == let#0#0#0;
+            ##l#0 := t#Z#0;
+            // assume allocatedness for argument to function
+            assume $IsAlloc(##l#0, Tclass._module.List(), $Heap);
+            assume true;
+            assert {:id "id4"} DtRank(##l#0) < DtRank(l#0);
+            assume _module.__default.ListLength#canCall(t#Z#0);
+            assume _module.__default.ListLength#canCall(t#Z#0);
+            assert {:id "id5"} $Is(1 + _module.__default.ListLength($LS($LZ), t#Z#0), Tclass._System.nat());
+            assume {:id "id6"} _module.__default.ListLength($LS($LZ), l#0)
+               == 1 + _module.__default.ListLength($LS($LZ), t#Z#0);
+            // CheckWellformedWithResult: any expression
+            assume $Is(_module.__default.ListLength($LS($LZ), l#0), Tclass._System.nat());
+            return;
+        }
+        else
+        {
+            assume false;
+        }
+
+        assume false;
+    }
+}
+
+
+
+// function declaration for _module._default.ListHead
+function _module.__default.ListHead(l#0: DatatypeType) : int;
+
+function _module.__default.ListHead#canCall(l#0: DatatypeType) : bool;
+
+function _module.__default.ListHead#requires(DatatypeType) : bool;
+
+// #requires axiom for _module.__default.ListHead
+axiom (forall l#0: DatatypeType :: 
+  { _module.__default.ListHead#requires(l#0) } 
+  $Is(l#0, Tclass._module.List())
+     ==> _module.__default.ListHead#requires(l#0)
+       == !_module.List#Equal(l#0, #_module.List.Nil()));
+
+// #requires ==> #canCall for _module.__default.ListHead
+axiom (forall l#0: DatatypeType :: 
+  { _module.__default.ListHead#requires(l#0) } 
+  _module.__default.ListHead#requires(l#0)
+     ==> _module.__default.ListHead#canCall(l#0));
+
+// definition axiom for _module.__default.ListHead (revealed)
+axiom {:id "id9"} (forall l#0: DatatypeType :: 
+  { _module.__default.ListHead(l#0) } 
+  _module.__default.ListHead#canCall(l#0)
+     ==> _module.__default.ListHead(l#0) == _module.List.head(l#0));
+
+// definition axiom for _module.__default.ListHead for all literals (revealed)
+axiom {:id "id10"} (forall l#0: DatatypeType :: 
+  {:weight 3} { _module.__default.ListHead(Lit(l#0)) } 
+  _module.__default.ListHead#canCall(Lit(l#0))
+     ==> _module.__default.ListHead(Lit(l#0)) == LitInt(_module.List.head(Lit(l#0))));
+
+procedure {:verboseName "ListHead (well-formedness)"} CheckWellformed$$_module.__default.ListHead(l#0: DatatypeType where $Is(l#0, Tclass._module.List()));
+  modifies $Heap;
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "ListHead (well-formedness)"} CheckWellformed$$_module.__default.ListHead(l#0: DatatypeType)
+{
+  var $_ReadsFrame: [ref,Field]bool;
+
+
+    assume {:captureState "Test/test.dfy(13,9): initial state"} true;
+    $_ReadsFrame := (lambda $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
+    // Check well-formedness of preconditions, and then assume them
+    assume {:id "id11"} !_module.List#Equal(l#0, #_module.List.Nil());
+    // Check well-formedness of the reads clause
+    // Check well-formedness of the decreases clause
+    // Check body and ensures clauses
+    if (*)
+    {
+        // Check well-formedness of postcondition and assume false
+        assume false;
+    }
+    else
+    {
+        // Check well-formedness of body and result subset type constraint
+        assert {:id "id12"} _module.List.Cons_q(l#0);
+        assume true;
+        assume true;
+        assume {:id "id13"} _module.__default.ListHead(l#0) == _module.List.head(l#0);
+        // CheckWellformedWithResult: any expression
+        assume $Is(_module.__default.ListHead(l#0), TInt);
+        return;
+
+        assume false;
+    }
+}
+
+
+
+procedure {:verboseName "LengthPositive (well-formedness)"} CheckWellFormed$$_module.__default.LengthPositive(l#0: DatatypeType
+       where $Is(l#0, Tclass._module.List())
+         && $IsAlloc(l#0, Tclass._module.List(), $Heap)
+         && $IsA#_module.List(l#0));
+  modifies $Heap;
+
+
+
+procedure {:verboseName "LengthPositive (call)"} Call$$_module.__default.LengthPositive(l#0: DatatypeType
+       where $Is(l#0, Tclass._module.List())
+         && $IsAlloc(l#0, Tclass._module.List(), $Heap)
+         && $IsA#_module.List(l#0));
+  // user-defined preconditions
+  free requires {:always_assume} $IsA#_module.List(l#0);
+  requires {:id "id16"} !_module.List#Equal(l#0, #_module.List.Nil());
+  modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} _module.__default.ListLength#canCall(l#0);
+  ensures {:id "id17"} _module.__default.ListLength($LS($LS($LZ)), l#0) >= LitInt(1);
+  // frame condition: object granularity
+  free ensures (forall $o: ref :: 
+    { $Heap[$o] } 
+    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+       ==> $Heap[$o] == old($Heap)[$o]);
+  // boilerplate
+  free ensures $HeapSuccGhost(old($Heap), $Heap);
+
+
+
+procedure {:verboseName "LengthPositive (correctness)"} Impl$$_module.__default.LengthPositive(l#0: DatatypeType
+       where $Is(l#0, Tclass._module.List())
+         && $IsAlloc(l#0, Tclass._module.List(), $Heap)
+         && $IsA#_module.List(l#0))
+   returns ($_reverifyPost: bool);
+  // user-defined preconditions
+  free requires {:always_assume} $IsA#_module.List(l#0);
+  requires {:id "id18"} !_module.List#Equal(l#0, #_module.List.Nil());
+  modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} _module.__default.ListLength#canCall(l#0);
+  ensures {:id "id19"} _module.__default.ListLength($LS($LS($LZ)), l#0) >= LitInt(1);
+  // frame condition: object granularity
+  free ensures (forall $o: ref :: 
+    { $Heap[$o] } 
+    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+       ==> $Heap[$o] == old($Heap)[$o]);
+  // boilerplate
+  free ensures $HeapSuccGhost(old($Heap), $Heap);
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "LengthPositive (correctness)"} Impl$$_module.__default.LengthPositive(l#0: DatatypeType) returns ($_reverifyPost: bool)
+{
+  var $_ModifiesFrame: [ref,Field]bool;
+
+    // AddMethodImpl: LengthPositive, Impl$$_module.__default.LengthPositive
+    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
+    assume {:captureState "Test/test.dfy(23,0): initial state"} true;
+    $_reverifyPost := false;
+}
+
+
+
+procedure {:verboseName "SumArray (well-formedness)"} CheckWellFormed$$_module.__default.SumArray(a#0: ref
+       where $Is(a#0, Tclass._System.array(TInt))
+         && $IsAlloc(a#0, Tclass._System.array(TInt), $Heap))
+   returns (s#0: int);
+  modifies $Heap;
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "SumArray (well-formedness)"} CheckWellFormed$$_module.__default.SumArray(a#0: ref) returns (s#0: int)
 {
   var $_ModifiesFrame: [ref,Field]bool;
 
 
-    // AddMethodImpl: UpdateCells, CheckWellFormed$$_module.__default.UpdateCells
+    // AddMethodImpl: SumArray, CheckWellFormed$$_module.__default.SumArray
     $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == a#0 || $o == b#0);
-    assume {:captureState "Test/counter.dfy(25,7): initial state"} true;
-    assume {:id "id0"} a#0 != b#0;
-    assert {:id "id1"} a#0 != null;
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
+    assume {:captureState "Test/test.dfy(60,7): initial state"} true;
+    assert {:id "id20"} a#0 != null;
     assume true;
-    assume {:id "id2"} $Unbox(read($Heap, a#0, _module.Cell.value)): int >= LitInt(0);
-    assert {:id "id3"} b#0 != null;
-    assume true;
-    assume {:id "id4"} $Unbox(read($Heap, b#0, _module.Cell.value)): int >= LitInt(0);
+    assume {:id "id21"} _System.array.Length(a#0) >= LitInt(1);
     havoc $Heap;
     assume (forall $o: ref :: 
       { $Heap[$o] } 
       $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
-         ==> $Heap[$o] == old($Heap)[$o] || $o == a#0 || $o == b#0);
+         ==> $Heap[$o] == old($Heap)[$o]);
     assume $HeapSucc(old($Heap), $Heap);
-    havoc sum#0;
-    assume {:captureState "Test/counter.dfy(30,18): post-state"} true;
-    assert {:id "id5"} a#0 != null;
-    assume true;
-    assert {:id "id6"} a#0 != null;
-    assert {:id "id7"} $IsAlloc(a#0, Tclass._module.Cell(), old($Heap));
-    assume true;
-    assume {:id "id8"} $Unbox(read($Heap, a#0, _module.Cell.value)): int
-       == $Unbox(read(old($Heap), a#0, _module.Cell.value)): int + 1;
-    assert {:id "id9"} b#0 != null;
-    assume true;
-    assert {:id "id10"} b#0 != null;
-    assert {:id "id11"} $IsAlloc(b#0, Tclass._module.Cell(), old($Heap));
-    assume true;
-    assume {:id "id12"} $Unbox(read($Heap, b#0, _module.Cell.value)): int
-       == $Unbox(read(old($Heap), b#0, _module.Cell.value)): int + 2;
-    assert {:id "id13"} a#0 != null;
-    assume true;
-    assert {:id "id14"} b#0 != null;
-    assume true;
-    assume {:id "id15"} sum#0
-       == $Unbox(read($Heap, a#0, _module.Cell.value)): int
-         + $Unbox(read($Heap, b#0, _module.Cell.value)): int;
+    havoc s#0;
+    assume {:captureState "Test/test.dfy(62,17): post-state"} true;
+    if (*)
+    {
+        assume {:id "id22"} s#0 >= LitInt(0);
+    }
+    else
+    {
+        assume true;
+        assume {:id "id23"} LitInt(0) > s#0;
+        assume {:id "id24"} s#0 < 0;
+    }
 }
 
 
 
-procedure {:verboseName "UpdateCells (call)"} Call$$_module.__default.UpdateCells(a#0: ref
-       where $Is(a#0, Tclass._module.Cell()) && $IsAlloc(a#0, Tclass._module.Cell(), $Heap), 
-    b#0: ref
-       where $Is(b#0, Tclass._module.Cell()) && $IsAlloc(b#0, Tclass._module.Cell(), $Heap))
-   returns (sum#0: int);
+procedure {:verboseName "SumArray (call)"} Call$$_module.__default.SumArray(a#0: ref
+       where $Is(a#0, Tclass._System.array(TInt))
+         && $IsAlloc(a#0, Tclass._System.array(TInt), $Heap))
+   returns (s#0: int);
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id16"} a#0 != b#0;
-  free requires {:always_assume} true;
-  requires {:id "id17"} $Unbox(read($Heap, a#0, _module.Cell.value)): int >= LitInt(0);
-  free requires {:always_assume} true;
-  requires {:id "id18"} $Unbox(read($Heap, b#0, _module.Cell.value)): int >= LitInt(0);
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
+  requires {:id "id25"} _System.array.Length(a#0) >= LitInt(1);
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id19"} $Unbox(read($Heap, a#0, _module.Cell.value)): int
-     == $Unbox(read(old($Heap), a#0, _module.Cell.value)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id20"} $Unbox(read($Heap, b#0, _module.Cell.value)): int
-     == $Unbox(read(old($Heap), b#0, _module.Cell.value)): int + 2;
-  free ensures {:always_assume} true;
-  ensures {:id "id21"} sum#0
-     == $Unbox(read($Heap, a#0, _module.Cell.value)): int
-       + $Unbox(read($Heap, b#0, _module.Cell.value)): int;
-  // frame condition: object granularity
-  free ensures (forall $o: ref :: 
-    { $Heap[$o] } 
-    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
-       ==> $Heap[$o] == old($Heap)[$o] || $o == a#0 || $o == b#0);
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
-
-
-
-procedure {:verboseName "UpdateCells (correctness)"} Impl$$_module.__default.UpdateCells(a#0: ref
-       where $Is(a#0, Tclass._module.Cell()) && $IsAlloc(a#0, Tclass._module.Cell(), $Heap), 
-    b#0: ref
-       where $Is(b#0, Tclass._module.Cell()) && $IsAlloc(b#0, Tclass._module.Cell(), $Heap))
-   returns (defass#sum#0: bool, sum#0: int, $_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id22"} a#0 != b#0;
-  free requires {:always_assume} true;
-  requires {:id "id23"} $Unbox(read($Heap, a#0, _module.Cell.value)): int >= LitInt(0);
-  free requires {:always_assume} true;
-  requires {:id "id24"} $Unbox(read($Heap, b#0, _module.Cell.value)): int >= LitInt(0);
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  modifies $Heap;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id25"} $Unbox(read($Heap, a#0, _module.Cell.value)): int
-     == $Unbox(read(old($Heap), a#0, _module.Cell.value)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id26"} $Unbox(read($Heap, b#0, _module.Cell.value)): int
-     == $Unbox(read(old($Heap), b#0, _module.Cell.value)): int + 2;
-  free ensures {:always_assume} true;
-  ensures {:id "id27"} sum#0
-     == $Unbox(read($Heap, a#0, _module.Cell.value)): int
-       + $Unbox(read($Heap, b#0, _module.Cell.value)): int;
-  // frame condition: object granularity
-  free ensures (forall $o: ref :: 
-    { $Heap[$o] } 
-    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
-       ==> $Heap[$o] == old($Heap)[$o] || $o == a#0 || $o == b#0);
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "UpdateCells (correctness)"} Impl$$_module.__default.UpdateCells(a#0: ref, b#0: ref)
-   returns (defass#sum#0: bool, sum#0: int, $_reverifyPost: bool)
-{
-  var $_ModifiesFrame: [ref,Field]bool;
-  var $rhs#0: int;
-
-    // AddMethodImpl: UpdateCells, Impl$$_module.__default.UpdateCells
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == a#0 || $o == b#0);
-    assume {:captureState "Test/counter.dfy(33,0): initial state"} true;
-    $_reverifyPost := false;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(34,14)
-    // TrCallStmt: Before ProcessCallStmt
-    assume true;
-    assert {:id "id28"} a#0 != null;
-    assume true;
-    assert {:id "id29"} (forall $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool && $o == a#0
-         ==> $_ModifiesFrame[$o, $f]);
-    call {:id "id30"} Call$$_module.Cell.Increment(a#0);
-    // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/counter.dfy(34,15)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(36,11)
-    assert {:id "id31"} b#0 != null;
-    assume true;
-    assume true;
-    assert {:id "id32"} $_ModifiesFrame[b#0, _module.Cell.value];
-    assert {:id "id33"} b#0 != null;
-    assume true;
-    assume true;
-    $rhs#0 := $Unbox(read($Heap, b#0, _module.Cell.value)): int + 2;
-    $Heap := update($Heap, b#0, _module.Cell.value, $Box($rhs#0));
-    assume $IsGoodHeap($Heap);
-    assume {:captureState "Test/counter.dfy(36,24)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(38,7)
-    assume true;
-    assert {:id "id36"} a#0 != null;
-    assume true;
-    assert {:id "id37"} b#0 != null;
-    assume true;
-    assume true;
-    sum#0 := $Unbox(read($Heap, a#0, _module.Cell.value)): int
-       + $Unbox(read($Heap, b#0, _module.Cell.value)): int;
-    defass#sum#0 := true;
-    assume {:captureState "Test/counter.dfy(38,26)"} true;
-    assert {:id "id39"} defass#sum#0;
-}
-
-
-
-procedure {:verboseName "Main (well-formedness)"} CheckWellFormed$$_module.__default.Main();
-  modifies $Heap;
-
-
-
-procedure {:verboseName "Main (call)"} Call$$_module.__default.Main();
-  modifies $Heap;
+  ensures {:id "id26"} s#0 >= LitInt(0) || s#0 < 0;
   // frame condition: object granularity
   free ensures (forall $o: ref :: 
     { $Heap[$o] } 
@@ -3133,8 +3268,17 @@ procedure {:verboseName "Main (call)"} Call$$_module.__default.Main();
 
 
 
-procedure {:verboseName "Main (correctness)"} Impl$$_module.__default.Main() returns ($_reverifyPost: bool);
+procedure {:verboseName "SumArray (correctness)"} Impl$$_module.__default.SumArray(a#0: ref
+       where $Is(a#0, Tclass._System.array(TInt))
+         && $IsAlloc(a#0, Tclass._System.array(TInt), $Heap))
+   returns (defass#s#0: bool, s#0: int, $_reverifyPost: bool);
+  // user-defined preconditions
+  free requires {:always_assume} true;
+  requires {:id "id27"} _System.array.Length(a#0) >= LitInt(1);
   modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id28"} s#0 >= LitInt(0) || s#0 < 0;
   // frame condition: object granularity
   free ensures (forall $o: ref :: 
     { $Heap[$o] } 
@@ -3145,163 +3289,845 @@ procedure {:verboseName "Main (correctness)"} Impl$$_module.__default.Main() ret
 
 
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Main (correctness)"} Impl$$_module.__default.Main() returns ($_reverifyPost: bool)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "SumArray (correctness)"} Impl$$_module.__default.SumArray(a#0: ref) returns (defass#s#0: bool, s#0: int, $_reverifyPost: bool)
 {
   var $_ModifiesFrame: [ref,Field]bool;
-  var defass#x#0: bool;
-  var x#0: ref
-     where defass#x#0
-       ==> $Is(x#0, Tclass._module.Cell()) && $IsAlloc(x#0, Tclass._module.Cell(), $Heap);
-  var $nw: ref;
-  var v##0: int;
-  var defass#y#0: bool;
-  var y#0: ref
-     where defass#y#0
-       ==> $Is(y#0, Tclass._module.Cell()) && $IsAlloc(y#0, Tclass._module.Cell(), $Heap);
-  var v##1: int;
-  var total#0: int;
-  var $rhs##0: int;
-  var a##0: ref;
-  var b##0: ref;
+  var i#0: int;
+  var $PreLoopHeap$loop#0: Heap;
+  var preLoop$loop#0$defass#s#0: bool;
+  var $decr_init$loop#00: int;
+  var $w$loop#0: bool;
+  var $decr$loop#00: int;
 
-    // AddMethodImpl: Main, Impl$$_module.__default.Main
+    // AddMethodImpl: SumArray, Impl$$_module.__default.SumArray
     $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
       $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
-    assume {:captureState "Test/counter.dfy(42,0): initial state"} true;
+    assume {:captureState "Test/test.dfy(63,0): initial state"} true;
     $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(43,9)
-    assume true;
-    // ----- init call statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(43,12)
-    // TrCallStmt: Before ProcessCallStmt
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    v##0 := LitInt(3);
-    call {:id "id40"} $nw := Call$$_module.Cell.__ctor(v##0);
-    // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/counter.dfy(43,22)"} true;
-    x#0 := $nw;
-    defass#x#0 := true;
-    assume {:captureState "Test/counter.dfy(43,22)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(44,9)
-    assume true;
-    // ----- init call statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(44,12)
-    // TrCallStmt: Before ProcessCallStmt
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    v##1 := LitInt(5);
-    call {:id "id42"} $nw := Call$$_module.Cell.__ctor(v##1);
-    // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/counter.dfy(44,22)"} true;
-    y#0 := $nw;
-    defass#y#0 := true;
-    assume {:captureState "Test/counter.dfy(44,22)"} true;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(46,27)
-    assume true;
-    // TrCallStmt: Adding lhs with type int
-    // TrCallStmt: Before ProcessCallStmt
-    assert {:id "id44"} defass#x#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    a##0 := x#0;
-    assert {:id "id45"} defass#y#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    b##0 := y#0;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(64,5)
     assume true;
     assume true;
-    assert {:id "id46"} (forall $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool && ($o == a##0 || $o == b##0)
-         ==> $_ModifiesFrame[$o, $f]);
-    call {:id "id47"} $rhs##0 := Call$$_module.__default.UpdateCells(a##0, b##0);
-    // TrCallStmt: After ProcessCallStmt
-    total#0 := $rhs##0;
-    assume {:captureState "Test/counter.dfy(46,32)"} true;
-    // ----- assert statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(48,3)
-    assert {:id "id49"} defass#x#0;
-    assert {:id "id50"} {:subsumption 0} x#0 != null;
+    s#0 := LitInt(0);
+    defass#s#0 := true;
+    assume {:captureState "Test/test.dfy(64,8)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(65,9)
     assume true;
     assume true;
-    assert {:id "id51"} $Unbox(read($Heap, x#0, _module.Cell.value)): int == LitInt(4);
-    // ----- assert statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(49,3)
-    assert {:id "id52"} defass#y#0;
-    assert {:id "id53"} {:subsumption 0} y#0 != null;
+    i#0 := LitInt(0);
+    assume {:captureState "Test/test.dfy(65,12)"} true;
+    // ----- while statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(66,3)
+    // Assume Fuel Constant
+    $PreLoopHeap$loop#0 := $Heap;
+    preLoop$loop#0$defass#s#0 := defass#s#0;
+    $decr_init$loop#00 := _System.array.Length(a#0) - i#0;
+    havoc $w$loop#0;
     assume true;
     assume true;
-    assert {:id "id54"} $Unbox(read($Heap, y#0, _module.Cell.value)): int == LitInt(7);
-    // ----- assert statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(50,3)
-    assume true;
-    assert {:id "id55"} total#0 == LitInt(11);
+    assume $w$loop#0 ==> true;
+    while (true)
+      free invariant true;
+      invariant {:id "id33"} $w$loop#0 ==> LitInt(0) <= i#0;
+      invariant {:id "id34"} $w$loop#0 ==> i#0 <= _System.array.Length(a#0);
+      free invariant true;
+      invariant {:id "id36"} $w$loop#0 ==> i#0 >= LitInt(0);
+      free invariant (forall $o: ref :: 
+        { $Heap[$o] } 
+        $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+           ==> $Heap[$o] == $PreLoopHeap$loop#0[$o]);
+      free invariant $HeapSucc($PreLoopHeap$loop#0, $Heap);
+      free invariant (forall $o: ref, $f: Field :: 
+        { read($Heap, $o, $f) } 
+        $o != null && $Unbox(read($PreLoopHeap$loop#0, $o, alloc)): bool
+           ==> read($Heap, $o, $f) == read($PreLoopHeap$loop#0, $o, $f)
+             || $_ModifiesFrame[$o, $f]);
+      free invariant preLoop$loop#0$defass#s#0 ==> defass#s#0;
+      free invariant _System.array.Length(a#0) - i#0 <= $decr_init$loop#00;
+    {
+        assume {:captureState "Test/test.dfy(66,2): after some loop iterations"} true;
+        if (!$w$loop#0)
+        {
+            if (LitInt(0) <= i#0)
+            {
+                assert {:id "id31"} {:subsumption 0} a#0 != null;
+                assume true;
+            }
+
+            assume true;
+            assume {:id "id32"} LitInt(0) <= i#0 && i#0 <= _System.array.Length(a#0);
+            assume true;
+            assume {:id "id35"} i#0 >= LitInt(0);
+            assert {:id "id37"} a#0 != null;
+            assume true;
+            assume true;
+            assume false;
+        }
+
+        assert {:id "id38"} a#0 != null;
+        assume true;
+        assume true;
+        if (_System.array.Length(a#0) <= i#0)
+        {
+            break;
+        }
+
+        assume true;
+        $decr$loop#00 := _System.array.Length(a#0) - i#0;
+        // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(70,7)
+        assume true;
+        assert {:id "id39"} defass#s#0;
+        assert {:id "id40"} a#0 != null;
+        assert {:id "id41"} 0 <= i#0 && i#0 < _System.array.Length(a#0);
+        assume true;
+        s#0 := s#0 + $Unbox(read($Heap, a#0, IndexField(i#0))): int;
+        defass#s#0 := true;
+        assume {:captureState "Test/test.dfy(70,17)"} true;
+        // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(71,7)
+        assume true;
+        assume true;
+        i#0 := i#0 + 1;
+        assume {:captureState "Test/test.dfy(71,14)"} true;
+        assume true;
+        // ----- loop termination check ----- /Users/saline/development/projects/dafny/Test/test.dfy(66,3)
+        assert {:id "id44"} 0 <= $decr$loop#00 || _System.array.Length(a#0) - i#0 == $decr$loop#00;
+        assert {:id "id45"} _System.array.Length(a#0) - i#0 < $decr$loop#00;
+        assume true;
+    }
+
+    assert {:id "id46"} defass#s#0;
 }
 
 
 
-const unique class._module.Cell?: ClassName;
+procedure {:verboseName "ProcessList (well-formedness)"} CheckWellFormed$$_module.__default.ProcessList(l#0: DatatypeType
+       where $Is(l#0, Tclass._module.List())
+         && $IsAlloc(l#0, Tclass._module.List(), $Heap)
+         && $IsA#_module.List(l#0))
+   returns (n#0: int);
+  modifies $Heap;
 
-function Tclass._module.Cell?() : Ty
+
+
+procedure {:verboseName "ProcessList (call)"} Call$$_module.__default.ProcessList(l#0: DatatypeType
+       where $Is(l#0, Tclass._module.List())
+         && $IsAlloc(l#0, Tclass._module.List(), $Heap)
+         && $IsA#_module.List(l#0))
+   returns (n#0: int);
+  // user-defined preconditions
+  free requires {:always_assume} $IsA#_module.List(l#0);
+  requires {:id "id49"} !_module.List#Equal(l#0, #_module.List.Nil());
+  modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id50"} n#0 >= LitInt(1);
+  // frame condition: object granularity
+  free ensures (forall $o: ref :: 
+    { $Heap[$o] } 
+    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+       ==> $Heap[$o] == old($Heap)[$o]);
+  // boilerplate
+  free ensures $HeapSucc(old($Heap), $Heap);
+
+
+
+procedure {:verboseName "ProcessList (correctness)"} Impl$$_module.__default.ProcessList(l#0: DatatypeType
+       where $Is(l#0, Tclass._module.List())
+         && $IsAlloc(l#0, Tclass._module.List(), $Heap)
+         && $IsA#_module.List(l#0))
+   returns (defass#n#0: bool, n#0: int, $_reverifyPost: bool);
+  // user-defined preconditions
+  free requires {:always_assume} $IsA#_module.List(l#0);
+  requires {:id "id51"} !_module.List#Equal(l#0, #_module.List.Nil());
+  modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id52"} n#0 >= LitInt(1);
+  // frame condition: object granularity
+  free ensures (forall $o: ref :: 
+    { $Heap[$o] } 
+    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+       ==> $Heap[$o] == old($Heap)[$o]);
+  // boilerplate
+  free ensures $HeapSucc(old($Heap), $Heap);
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "ProcessList (correctness)"} Impl$$_module.__default.ProcessList(l#0: DatatypeType) returns (defass#n#0: bool, n#0: int, $_reverifyPost: bool)
+{
+  var $_ModifiesFrame: [ref,Field]bool;
+  var len#0: int where LitInt(0) <= len#0;
+  var ##l#0: DatatypeType;
+  var l##0: DatatypeType;
+  var cur#0: DatatypeType
+     where $Is(cur#0, Tclass._module.List())
+       && $IsAlloc(cur#0, Tclass._module.List(), $Heap);
+  var $PreLoopHeap$loop#0: Heap;
+  var preLoop$loop#0$defass#n#0: bool;
+  var $decr_init$loop#00: int;
+  var $w$loop#0: bool;
+  var ##l#1: DatatypeType;
+  var ##l#2: DatatypeType;
+  var ##l#3: DatatypeType;
+  var $decr$loop#00: int;
+  var _mcc#0#0_0_0: int;
+  var _mcc#1#0_0_0: DatatypeType;
+  var t#0_0_0: DatatypeType;
+  var let#0_0_0#0#0: DatatypeType;
+
+    // AddMethodImpl: ProcessList, Impl$$_module.__default.ProcessList
+    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
+    assume {:captureState "Test/test.dfy(79,0): initial state"} true;
+    $_reverifyPost := false;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(80,17)
+    assume true;
+    ##l#0 := l#0;
+    // assume allocatedness for argument to function
+    assume $IsAlloc(##l#0, Tclass._module.List(), $Heap);
+    assume _module.__default.ListLength#canCall(l#0);
+    assume _module.__default.ListLength#canCall(l#0);
+    len#0 := _module.__default.ListLength($LS($LZ), l#0);
+    assume {:captureState "Test/test.dfy(80,32)"} true;
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(81,17)
+    // TrCallStmt: Before ProcessCallStmt
+    assume true;
+    // ProcessCallStmt: CheckSubrange
+    l##0 := l#0;
+    call {:id "id54"} Call$$_module.__default.LengthPositive(l##0);
+    // TrCallStmt: After ProcessCallStmt
+    assume {:captureState "Test/test.dfy(81,19)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(82,5)
+    assume true;
+    assume true;
+    n#0 := LitInt(0);
+    defass#n#0 := true;
+    assume {:captureState "Test/test.dfy(82,8)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(83,11)
+    assume true;
+    assume true;
+    cur#0 := l#0;
+    assume {:captureState "Test/test.dfy(83,14)"} true;
+    // ----- while statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(84,3)
+    // Assume Fuel Constant
+    $PreLoopHeap$loop#0 := $Heap;
+    preLoop$loop#0$defass#n#0 := defass#n#0;
+    $decr_init$loop#00 := _module.__default.ListLength($LS($LZ), cur#0);
+    havoc $w$loop#0;
+    assume true;
+    assume $w$loop#0
+       ==> _module.__default.ListLength#canCall(cur#0)
+         && _module.__default.ListLength#canCall(l#0);
+    assume $w$loop#0 ==> _module.__default.ListLength#canCall(cur#0);
+    while (true)
+      free invariant true;
+      invariant {:id "id59"} $w$loop#0 ==> n#0 >= LitInt(0);
+      free invariant $w$loop#0
+         ==> _module.__default.ListLength#canCall(cur#0)
+           && _module.__default.ListLength#canCall(l#0);
+      invariant {:id "id62"} $w$loop#0
+         ==> n#0 + _module.__default.ListLength($LS($LS($LZ)), cur#0)
+           == _module.__default.ListLength($LS($LS($LZ)), l#0);
+      free invariant (forall $o: ref :: 
+        { $Heap[$o] } 
+        $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+           ==> $Heap[$o] == $PreLoopHeap$loop#0[$o]);
+      free invariant $HeapSucc($PreLoopHeap$loop#0, $Heap);
+      free invariant (forall $o: ref, $f: Field :: 
+        { read($Heap, $o, $f) } 
+        $o != null && $Unbox(read($PreLoopHeap$loop#0, $o, alloc)): bool
+           ==> read($Heap, $o, $f) == read($PreLoopHeap$loop#0, $o, $f)
+             || $_ModifiesFrame[$o, $f]);
+      free invariant preLoop$loop#0$defass#n#0 ==> defass#n#0;
+      free invariant _module.__default.ListLength($LS($LZ), cur#0) <= $decr_init$loop#00;
+    {
+        assume {:captureState "Test/test.dfy(84,2): after some loop iterations"} true;
+        if (!$w$loop#0)
+        {
+            assert {:id "id57"} defass#n#0;
+            assume true;
+            assume {:id "id58"} n#0 >= LitInt(0);
+            assert {:id "id60"} defass#n#0;
+            ##l#1 := cur#0;
+            // assume allocatedness for argument to function
+            assume $IsAlloc(##l#1, Tclass._module.List(), $Heap);
+            assume _module.__default.ListLength#canCall(cur#0);
+            ##l#2 := l#0;
+            // assume allocatedness for argument to function
+            assume $IsAlloc(##l#2, Tclass._module.List(), $Heap);
+            assume _module.__default.ListLength#canCall(l#0);
+            assume _module.__default.ListLength#canCall(cur#0)
+               && _module.__default.ListLength#canCall(l#0);
+            assume {:id "id61"} n#0 + _module.__default.ListLength($LS($LZ), cur#0)
+               == _module.__default.ListLength($LS($LZ), l#0);
+            ##l#3 := cur#0;
+            // assume allocatedness for argument to function
+            assume $IsAlloc(##l#3, Tclass._module.List(), $Heap);
+            assume _module.__default.ListLength#canCall(cur#0);
+            assume _module.__default.ListLength#canCall(cur#0);
+            assume false;
+        }
+
+        assume $IsA#_module.List(cur#0);
+        if (_module.List#Equal(cur#0, #_module.List.Nil()))
+        {
+            break;
+        }
+
+        assume $w$loop#0 ==> _module.__default.ListLength#canCall(cur#0);
+        $decr$loop#00 := _module.__default.ListLength($LS($LZ), cur#0);
+        // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(89,7)
+        assume true;
+        assert {:id "id63"} defass#n#0;
+        assume true;
+        n#0 := n#0 + 1;
+        defass#n#0 := true;
+        assume {:captureState "Test/test.dfy(89,14)"} true;
+        assume true;
+        havoc _mcc#0#0_0_0, _mcc#1#0_0_0;
+        if (cur#0 == #_module.List.Nil())
+        {
+        }
+        else if (cur#0 == #_module.List.Cons(_mcc#0#0_0_0, _mcc#1#0_0_0))
+        {
+            assume $Is(_mcc#1#0_0_0, Tclass._module.List())
+               && $IsAlloc(_mcc#1#0_0_0, Tclass._module.List(), $Heap);
+            havoc t#0_0_0;
+            assume $Is(t#0_0_0, Tclass._module.List())
+               && $IsAlloc(t#0_0_0, Tclass._module.List(), $Heap);
+            assume {:id "id65"} let#0_0_0#0#0 == _mcc#1#0_0_0;
+            assume true;
+            assume true;
+            // CheckWellformedWithResult: any expression
+            assume $Is(let#0_0_0#0#0, Tclass._module.List());
+            assume {:id "id66"} t#0_0_0 == let#0_0_0#0#0;
+            // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(92,30)
+            assume true;
+            assume true;
+            cur#0 := t#0_0_0;
+            assume {:captureState "Test/test.dfy(92,33)"} true;
+        }
+        else
+        {
+            assume false;
+        }
+
+        assume $w$loop#0 ==> _module.__default.ListLength#canCall(cur#0);
+        // ----- loop termination check ----- /Users/saline/development/projects/dafny/Test/test.dfy(84,3)
+        assert {:id "id68"} 0 <= $decr$loop#00
+           || _module.__default.ListLength($LS($LZ), cur#0) == $decr$loop#00;
+        assert {:id "id69"} _module.__default.ListLength($LS($LZ), cur#0) < $decr$loop#00;
+        assume n#0 >= LitInt(0)
+           ==> _module.__default.ListLength#canCall(cur#0)
+             && _module.__default.ListLength#canCall(l#0);
+    }
+
+    assert {:id "id70"} defass#n#0;
+}
+
+
+
+function Tclass._module.Counter() : Ty
 uses {
-// Tclass._module.Cell? Tag
-axiom Tag(Tclass._module.Cell?()) == Tagclass._module.Cell?
-   && TagFamily(Tclass._module.Cell?()) == tytagFamily$Cell;
+// Tclass._module.Counter Tag
+axiom Tag(Tclass._module.Counter()) == Tagclass._module.Counter
+   && TagFamily(Tclass._module.Counter()) == tytagFamily$Counter;
 }
 
-const unique Tagclass._module.Cell?: TyTag;
+const unique Tagclass._module.Counter: TyTag;
 
-// Box/unbox axiom for Tclass._module.Cell?
+// Box/unbox axiom for Tclass._module.Counter
 axiom (forall bx: Box :: 
-  { $IsBox(bx, Tclass._module.Cell?()) } 
-  $IsBox(bx, Tclass._module.Cell?())
-     ==> $Box($Unbox(bx): ref) == bx && $Is($Unbox(bx): ref, Tclass._module.Cell?()));
+  { $IsBox(bx, Tclass._module.Counter()) } 
+  $IsBox(bx, Tclass._module.Counter())
+     ==> $Box($Unbox(bx): ref) == bx && $Is($Unbox(bx): ref, Tclass._module.Counter()));
 
-// $Is axiom for class Cell
+procedure {:verboseName "FillAndCount (well-formedness)"} CheckWellFormed$$_module.__default.FillAndCount(c#0: ref
+       where $Is(c#0, Tclass._module.Counter())
+         && $IsAlloc(c#0, Tclass._module.Counter(), $Heap), 
+    a#0: ref
+       where $Is(a#0, Tclass._System.array(TInt))
+         && $IsAlloc(a#0, Tclass._System.array(TInt), $Heap))
+   returns (total#0: int);
+  modifies $Heap;
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "FillAndCount (well-formedness)"} CheckWellFormed$$_module.__default.FillAndCount(c#0: ref, a#0: ref) returns (total#0: int)
+{
+  var $_ModifiesFrame: [ref,Field]bool;
+
+
+    // AddMethodImpl: FillAndCount, CheckWellFormed$$_module.__default.FillAndCount
+    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == c#0);
+    assume {:captureState "Test/test.dfy(98,7): initial state"} true;
+    assert {:id "id71"} c#0 != null;
+    assume true;
+    assume {:id "id72"} $Unbox(read($Heap, c#0, _module.Counter.value)): int >= LitInt(0);
+    assert {:id "id73"} c#0 != null;
+    assume true;
+    assume {:id "id74"} $Unbox(read($Heap, c#0, _module.Counter.limit)): int >= LitInt(0);
+    assert {:id "id75"} a#0 != null;
+    assume true;
+    assume {:id "id76"} _System.array.Length(a#0) >= LitInt(1);
+    havoc $Heap;
+    assume (forall $o: ref :: 
+      { $Heap[$o] } 
+      $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+         ==> $Heap[$o] == old($Heap)[$o] || $o == c#0);
+    assume $HeapSucc(old($Heap), $Heap);
+    havoc total#0;
+    assume {:captureState "Test/test.dfy(102,16): post-state"} true;
+    assume {:id "id77"} total#0 >= LitInt(0);
+}
+
+
+
+procedure {:verboseName "FillAndCount (call)"} Call$$_module.__default.FillAndCount(c#0: ref
+       where $Is(c#0, Tclass._module.Counter())
+         && $IsAlloc(c#0, Tclass._module.Counter(), $Heap), 
+    a#0: ref
+       where $Is(a#0, Tclass._System.array(TInt))
+         && $IsAlloc(a#0, Tclass._System.array(TInt), $Heap))
+   returns (total#0: int);
+  // user-defined preconditions
+  free requires {:always_assume} true;
+  requires {:id "id78"} $Unbox(read($Heap, c#0, _module.Counter.value)): int >= LitInt(0);
+  free requires {:always_assume} true;
+  requires {:id "id79"} $Unbox(read($Heap, c#0, _module.Counter.limit)): int >= LitInt(0);
+  free requires {:always_assume} true;
+  requires {:id "id80"} _System.array.Length(a#0) >= LitInt(1);
+  // user-defined frame expressions
+  free requires {:always_assume} true;
+  modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id81"} total#0 >= LitInt(0);
+  // frame condition: object granularity
+  free ensures (forall $o: ref :: 
+    { $Heap[$o] } 
+    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+       ==> $Heap[$o] == old($Heap)[$o] || $o == c#0);
+  // boilerplate
+  free ensures $HeapSucc(old($Heap), $Heap);
+
+
+
+procedure {:verboseName "FillAndCount (correctness)"} Impl$$_module.__default.FillAndCount(c#0: ref
+       where $Is(c#0, Tclass._module.Counter())
+         && $IsAlloc(c#0, Tclass._module.Counter(), $Heap), 
+    a#0: ref
+       where $Is(a#0, Tclass._System.array(TInt))
+         && $IsAlloc(a#0, Tclass._System.array(TInt), $Heap))
+   returns (defass#total#0: bool, total#0: int, $_reverifyPost: bool);
+  // user-defined preconditions
+  free requires {:always_assume} true;
+  requires {:id "id82"} $Unbox(read($Heap, c#0, _module.Counter.value)): int >= LitInt(0);
+  free requires {:always_assume} true;
+  requires {:id "id83"} $Unbox(read($Heap, c#0, _module.Counter.limit)): int >= LitInt(0);
+  free requires {:always_assume} true;
+  requires {:id "id84"} _System.array.Length(a#0) >= LitInt(1);
+  // user-defined frame expressions
+  free requires {:always_assume} true;
+  modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id85"} total#0 >= LitInt(0);
+  // frame condition: object granularity
+  free ensures (forall $o: ref :: 
+    { $Heap[$o] } 
+    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+       ==> $Heap[$o] == old($Heap)[$o] || $o == c#0);
+  // boilerplate
+  free ensures $HeapSucc(old($Heap), $Heap);
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "FillAndCount (correctness)"} Impl$$_module.__default.FillAndCount(c#0: ref, a#0: ref)
+   returns (defass#total#0: bool, total#0: int, $_reverifyPost: bool)
+{
+  var $_ModifiesFrame: [ref,Field]bool;
+  var i#0: int;
+  var $PreLoopHeap$loop#0: Heap;
+  var preLoop$loop#0$defass#total#0: bool;
+  var $decr_init$loop#00: int;
+  var $w$loop#0: bool;
+  var $decr$loop#00: int;
+
+    // AddMethodImpl: FillAndCount, Impl$$_module.__default.FillAndCount
+    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == c#0);
+    assume {:captureState "Test/test.dfy(104,0): initial state"} true;
+    $_reverifyPost := false;
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(105,10)
+    // TrCallStmt: Before ProcessCallStmt
+    assume true;
+    assert {:id "id86"} c#0 != null;
+    assume true;
+    assert {:id "id87"} (forall $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool && $o == c#0
+         ==> $_ModifiesFrame[$o, $f]);
+    call {:id "id88"} Call$$_module.Counter.Reset(c#0);
+    // TrCallStmt: After ProcessCallStmt
+    assume {:captureState "Test/test.dfy(105,11)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(106,9)
+    assume true;
+    assume true;
+    total#0 := LitInt(0);
+    defass#total#0 := true;
+    assume {:captureState "Test/test.dfy(106,12)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(107,9)
+    assume true;
+    assume true;
+    i#0 := LitInt(0);
+    assume {:captureState "Test/test.dfy(107,12)"} true;
+    // ----- while statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(108,3)
+    // Assume Fuel Constant
+    $PreLoopHeap$loop#0 := $Heap;
+    preLoop$loop#0$defass#total#0 := defass#total#0;
+    $decr_init$loop#00 := _System.array.Length(a#0) - i#0;
+    havoc $w$loop#0;
+    assume true;
+    assume true;
+    assume true;
+    assume $w$loop#0 ==> true;
+    while (true)
+      free invariant true;
+      invariant {:id "id93"} $w$loop#0 ==> LitInt(0) <= i#0;
+      invariant {:id "id94"} $w$loop#0 ==> i#0 <= _System.array.Length(a#0);
+      free invariant true;
+      invariant {:id "id97"} $w$loop#0 ==> total#0 >= LitInt(0);
+      free invariant true;
+      invariant {:id "id100"} $w$loop#0 ==> $Unbox(read($Heap, c#0, _module.Counter.value)): int == LitInt(0);
+      free invariant (forall $o: ref :: 
+        { $Heap[$o] } 
+        $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+           ==> $Heap[$o] == $PreLoopHeap$loop#0[$o] || $o == c#0);
+      free invariant $HeapSucc($PreLoopHeap$loop#0, $Heap);
+      free invariant (forall $o: ref, $f: Field :: 
+        { read($Heap, $o, $f) } 
+        $o != null && $Unbox(read($PreLoopHeap$loop#0, $o, alloc)): bool
+           ==> read($Heap, $o, $f) == read($PreLoopHeap$loop#0, $o, $f)
+             || $_ModifiesFrame[$o, $f]);
+      free invariant preLoop$loop#0$defass#total#0 ==> defass#total#0;
+      free invariant _System.array.Length(a#0) - i#0 <= $decr_init$loop#00;
+    {
+        assume {:captureState "Test/test.dfy(108,2): after some loop iterations"} true;
+        if (!$w$loop#0)
+        {
+            if (LitInt(0) <= i#0)
+            {
+                assert {:id "id91"} {:subsumption 0} a#0 != null;
+                assume true;
+            }
+
+            assume true;
+            assume {:id "id92"} LitInt(0) <= i#0 && i#0 <= _System.array.Length(a#0);
+            assert {:id "id95"} defass#total#0;
+            assume true;
+            assume {:id "id96"} total#0 >= LitInt(0);
+            assert {:id "id98"} {:subsumption 0} c#0 != null;
+            assume true;
+            assume true;
+            assume {:id "id99"} $Unbox(read($Heap, c#0, _module.Counter.value)): int == LitInt(0);
+            assert {:id "id101"} a#0 != null;
+            assume true;
+            assume true;
+            assume false;
+        }
+
+        assert {:id "id102"} a#0 != null;
+        assume true;
+        assume true;
+        if (_System.array.Length(a#0) <= i#0)
+        {
+            break;
+        }
+
+        assume true;
+        $decr$loop#00 := _System.array.Length(a#0) - i#0;
+        // ----- if statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(113,5)
+        assert {:id "id103"} a#0 != null;
+        assert {:id "id104"} 0 <= i#0 && i#0 < _System.array.Length(a#0);
+        assume true;
+        if ($Unbox(read($Heap, a#0, IndexField(i#0))): int > 0)
+        {
+            push;
+            // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(114,13)
+            assume true;
+            assert {:id "id105"} defass#total#0;
+            assert {:id "id106"} a#0 != null;
+            assert {:id "id107"} 0 <= i#0 && i#0 < _System.array.Length(a#0);
+            assume true;
+            total#0 := total#0 + $Unbox(read($Heap, a#0, IndexField(i#0))): int;
+            defass#total#0 := true;
+            assume {:captureState "Test/test.dfy(114,27)"} true;
+            pop;
+        }
+        else
+        {
+        }
+
+        // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(116,7)
+        assume true;
+        assume true;
+        i#0 := i#0 + 1;
+        assume {:captureState "Test/test.dfy(116,14)"} true;
+        assume true;
+        // ----- loop termination check ----- /Users/saline/development/projects/dafny/Test/test.dfy(108,3)
+        assert {:id "id110"} 0 <= $decr$loop#00 || _System.array.Length(a#0) - i#0 == $decr$loop#00;
+        assert {:id "id111"} _System.array.Length(a#0) - i#0 < $decr$loop#00;
+        assume true;
+    }
+
+    assert {:id "id112"} defass#total#0;
+}
+
+
+
+// Constructor function declaration
+function #_module.List.Nil() : DatatypeType
+uses {
+// Constructor identifier
+axiom DatatypeCtorId(#_module.List.Nil()) == ##_module.List.Nil;
+// Constructor $Is
+axiom $Is(#_module.List.Nil(), Tclass._module.List());
+// Constructor literal
+axiom #_module.List.Nil() == Lit(#_module.List.Nil());
+}
+
+const unique ##_module.List.Nil: DtCtorId
+uses {
+// Constructor identifier
+axiom DatatypeCtorId(#_module.List.Nil()) == ##_module.List.Nil;
+}
+
+function _module.List.Nil_q(DatatypeType) : bool;
+
+// Questionmark and identifier
+axiom (forall d: DatatypeType :: 
+  { _module.List.Nil_q(d) } 
+  _module.List.Nil_q(d) <==> DatatypeCtorId(d) == ##_module.List.Nil);
+
+// Constructor questionmark has arguments
+axiom (forall d: DatatypeType :: 
+  { _module.List.Nil_q(d) } 
+  _module.List.Nil_q(d) ==> d == #_module.List.Nil());
+
+// Constructor function declaration
+function #_module.List.Cons(int, DatatypeType) : DatatypeType;
+
+const unique ##_module.List.Cons: DtCtorId
+uses {
+// Constructor identifier
+axiom (forall a#4#0#0: int, a#4#1#0: DatatypeType :: 
+  { #_module.List.Cons(a#4#0#0, a#4#1#0) } 
+  DatatypeCtorId(#_module.List.Cons(a#4#0#0, a#4#1#0)) == ##_module.List.Cons);
+}
+
+function _module.List.Cons_q(DatatypeType) : bool;
+
+// Questionmark and identifier
+axiom (forall d: DatatypeType :: 
+  { _module.List.Cons_q(d) } 
+  _module.List.Cons_q(d) <==> DatatypeCtorId(d) == ##_module.List.Cons);
+
+// Constructor questionmark has arguments
+axiom (forall d: DatatypeType :: 
+  { _module.List.Cons_q(d) } 
+  _module.List.Cons_q(d)
+     ==> (exists a#5#0#0: int, a#5#1#0: DatatypeType :: 
+      d == #_module.List.Cons(a#5#0#0, a#5#1#0)));
+
+// Constructor $Is
+axiom (forall a#6#0#0: int, a#6#1#0: DatatypeType :: 
+  { $Is(#_module.List.Cons(a#6#0#0, a#6#1#0), Tclass._module.List()) } 
+  $Is(#_module.List.Cons(a#6#0#0, a#6#1#0), Tclass._module.List())
+     <==> $Is(a#6#0#0, TInt) && $Is(a#6#1#0, Tclass._module.List()));
+
+// Destructor $IsAlloc
+axiom (forall d: DatatypeType, $h: Heap :: 
+  { $IsAlloc(_module.List.head(d), TInt, $h) } 
+  $IsGoodHeap($h)
+       && 
+      _module.List.Cons_q(d)
+       && $IsAlloc(d, Tclass._module.List(), $h)
+     ==> $IsAlloc(_module.List.head(d), TInt, $h));
+
+// Destructor $IsAlloc
+axiom (forall d: DatatypeType, $h: Heap :: 
+  { $IsAlloc(_module.List.tail(d), Tclass._module.List(), $h) } 
+  $IsGoodHeap($h)
+       && 
+      _module.List.Cons_q(d)
+       && $IsAlloc(d, Tclass._module.List(), $h)
+     ==> $IsAlloc(_module.List.tail(d), Tclass._module.List(), $h));
+
+// Constructor literal
+axiom (forall a#7#0#0: int, a#7#1#0: DatatypeType :: 
+  { #_module.List.Cons(LitInt(a#7#0#0), Lit(a#7#1#0)) } 
+  #_module.List.Cons(LitInt(a#7#0#0), Lit(a#7#1#0))
+     == Lit(#_module.List.Cons(a#7#0#0, a#7#1#0)));
+
+function _module.List.head(DatatypeType) : int;
+
+// Constructor injectivity
+axiom (forall a#8#0#0: int, a#8#1#0: DatatypeType :: 
+  { #_module.List.Cons(a#8#0#0, a#8#1#0) } 
+  _module.List.head(#_module.List.Cons(a#8#0#0, a#8#1#0)) == a#8#0#0);
+
+function _module.List.tail(DatatypeType) : DatatypeType;
+
+// Constructor injectivity
+axiom (forall a#9#0#0: int, a#9#1#0: DatatypeType :: 
+  { #_module.List.Cons(a#9#0#0, a#9#1#0) } 
+  _module.List.tail(#_module.List.Cons(a#9#0#0, a#9#1#0)) == a#9#1#0);
+
+// Inductive rank
+axiom (forall a#10#0#0: int, a#10#1#0: DatatypeType :: 
+  { DtRank(#_module.List.Cons(a#10#0#0, a#10#1#0)) } 
+  DtRank(a#10#1#0) < DtRank(#_module.List.Cons(a#10#0#0, a#10#1#0)));
+
+// Datatype $IsAlloc
+axiom (forall d: DatatypeType, $h: Heap :: 
+  { $IsAlloc(d, Tclass._module.List(), $h) } 
+  $IsGoodHeap($h) && $Is(d, Tclass._module.List())
+     ==> $IsAlloc(d, Tclass._module.List(), $h));
+
+// Depth-one case-split function
+function $IsA#_module.List(DatatypeType) : bool;
+
+// Depth-one case-split axiom
+axiom (forall d: DatatypeType :: 
+  { $IsA#_module.List(d) } 
+  $IsA#_module.List(d) ==> _module.List.Nil_q(d) || _module.List.Cons_q(d));
+
+// Questionmark data type disjunctivity
+axiom (forall d: DatatypeType :: 
+  { _module.List.Cons_q(d), $Is(d, Tclass._module.List()) } 
+    { _module.List.Nil_q(d), $Is(d, Tclass._module.List()) } 
+  $Is(d, Tclass._module.List())
+     ==> _module.List.Nil_q(d) || _module.List.Cons_q(d));
+
+// Datatype extensional equality declaration
+function _module.List#Equal(DatatypeType, DatatypeType) : bool;
+
+// Datatype extensional equality definition: #_module.List.Nil
+axiom (forall a: DatatypeType, b: DatatypeType :: 
+  { _module.List#Equal(a, b), _module.List.Nil_q(a) } 
+    { _module.List#Equal(a, b), _module.List.Nil_q(b) } 
+  _module.List.Nil_q(a) && _module.List.Nil_q(b) ==> _module.List#Equal(a, b));
+
+// Datatype extensional equality definition: #_module.List.Cons
+axiom (forall a: DatatypeType, b: DatatypeType :: 
+  { _module.List#Equal(a, b), _module.List.Cons_q(a) } 
+    { _module.List#Equal(a, b), _module.List.Cons_q(b) } 
+  _module.List.Cons_q(a) && _module.List.Cons_q(b)
+     ==> (_module.List#Equal(a, b)
+       <==> _module.List.head(a) == _module.List.head(b)
+         && _module.List#Equal(_module.List.tail(a), _module.List.tail(b))));
+
+// Datatype extensionality axiom: _module.List
+axiom (forall a: DatatypeType, b: DatatypeType :: 
+  { _module.List#Equal(a, b) } 
+  _module.List#Equal(a, b) <==> a == b);
+
+const unique class._module.List: ClassName;
+
+const unique class._module.Counter?: ClassName;
+
+function Tclass._module.Counter?() : Ty
+uses {
+// Tclass._module.Counter? Tag
+axiom Tag(Tclass._module.Counter?()) == Tagclass._module.Counter?
+   && TagFamily(Tclass._module.Counter?()) == tytagFamily$Counter;
+}
+
+const unique Tagclass._module.Counter?: TyTag;
+
+// Box/unbox axiom for Tclass._module.Counter?
+axiom (forall bx: Box :: 
+  { $IsBox(bx, Tclass._module.Counter?()) } 
+  $IsBox(bx, Tclass._module.Counter?())
+     ==> $Box($Unbox(bx): ref) == bx && $Is($Unbox(bx): ref, Tclass._module.Counter?()));
+
+// $Is axiom for class Counter
 axiom (forall $o: ref :: 
-  { $Is($o, Tclass._module.Cell?()) } 
-  $Is($o, Tclass._module.Cell?())
-     <==> $o == null || dtype($o) == Tclass._module.Cell?());
+  { $Is($o, Tclass._module.Counter?()) } 
+  $Is($o, Tclass._module.Counter?())
+     <==> $o == null || dtype($o) == Tclass._module.Counter?());
 
-// $IsAlloc axiom for class Cell
+// $IsAlloc axiom for class Counter
 axiom (forall $o: ref, $h: Heap :: 
-  { $IsAlloc($o, Tclass._module.Cell?(), $h) } 
-  $IsAlloc($o, Tclass._module.Cell?(), $h)
+  { $IsAlloc($o, Tclass._module.Counter?(), $h) } 
+  $IsAlloc($o, Tclass._module.Counter?(), $h)
      <==> $o == null || $Unbox(read($h, $o, alloc)): bool);
 
-const _module.Cell.value: Field
+const _module.Counter.value: Field
 uses {
-axiom FDim(_module.Cell.value) == 0
-   && FieldOfDecl(class._module.Cell?, field$value) == _module.Cell.value
-   && !$IsGhostField(_module.Cell.value);
+axiom FDim(_module.Counter.value) == 0
+   && FieldOfDecl(class._module.Counter?, field$value) == _module.Counter.value
+   && !$IsGhostField(_module.Counter.value);
 }
 
-// Cell.value: Type axiom
+// Counter.value: Type axiom
 axiom (forall $h: Heap, $o: ref :: 
-  { $Unbox(read($h, $o, _module.Cell.value)): int } 
-  $IsGoodHeap($h) && $o != null && dtype($o) == Tclass._module.Cell?()
-     ==> $Is($Unbox(read($h, $o, _module.Cell.value)): int, TInt));
+  { $Unbox(read($h, $o, _module.Counter.value)): int } 
+  $IsGoodHeap($h) && $o != null && dtype($o) == Tclass._module.Counter?()
+     ==> $Is($Unbox(read($h, $o, _module.Counter.value)): int, TInt));
 
-// Cell.value: Allocation axiom
+// Counter.value: Allocation axiom
 axiom (forall $h: Heap, $o: ref :: 
-  { $Unbox(read($h, $o, _module.Cell.value)): int } 
+  { $Unbox(read($h, $o, _module.Counter.value)): int } 
   $IsGoodHeap($h)
        && 
       $o != null
-       && dtype($o) == Tclass._module.Cell?()
+       && dtype($o) == Tclass._module.Counter?()
        && $Unbox(read($h, $o, alloc)): bool
-     ==> $IsAlloc($Unbox(read($h, $o, _module.Cell.value)): int, TInt, $h));
+     ==> $IsAlloc($Unbox(read($h, $o, _module.Counter.value)): int, TInt, $h));
 
-procedure {:verboseName "Cell._ctor (well-formedness)"} CheckWellFormed$$_module.Cell.__ctor(v#0: int) returns (this: ref);
+const _module.Counter.limit: Field
+uses {
+axiom FDim(_module.Counter.limit) == 0
+   && FieldOfDecl(class._module.Counter?, field$limit) == _module.Counter.limit
+   && !$IsGhostField(_module.Counter.limit);
+}
+
+// Counter.limit: Type axiom
+axiom (forall $h: Heap, $o: ref :: 
+  { $Unbox(read($h, $o, _module.Counter.limit)): int } 
+  $IsGoodHeap($h) && $o != null && dtype($o) == Tclass._module.Counter?()
+     ==> $Is($Unbox(read($h, $o, _module.Counter.limit)): int, TInt));
+
+// Counter.limit: Allocation axiom
+axiom (forall $h: Heap, $o: ref :: 
+  { $Unbox(read($h, $o, _module.Counter.limit)): int } 
+  $IsGoodHeap($h)
+       && 
+      $o != null
+       && dtype($o) == Tclass._module.Counter?()
+       && $Unbox(read($h, $o, alloc)): bool
+     ==> $IsAlloc($Unbox(read($h, $o, _module.Counter.limit)): int, TInt, $h));
+
+procedure {:verboseName "Counter._ctor (well-formedness)"} CheckWellFormed$$_module.Counter.__ctor(lim#0: int) returns (this: ref);
   modifies $Heap;
 
 
 
-procedure {:verboseName "Cell._ctor (call)"} Call$$_module.Cell.__ctor(v#0: int)
+procedure {:verboseName "Counter._ctor (call)"} Call$$_module.Counter.__ctor(lim#0: int)
    returns (this: ref
        where this != null
          && 
-        $Is(this, Tclass._module.Cell())
-         && $IsAlloc(this, Tclass._module.Cell(), $Heap));
+        $Is(this, Tclass._module.Counter())
+         && $IsAlloc(this, Tclass._module.Counter(), $Heap));
+  // user-defined preconditions
+  free requires {:always_assume} true;
+  requires {:id "id116"} lim#0 >= LitInt(0);
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id57"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
+  ensures {:id "id117"} $Unbox(read($Heap, this, _module.Counter.value)): int == LitInt(0);
+  free ensures {:always_assume} true;
+  ensures {:id "id118"} $Unbox(read($Heap, this, _module.Counter.limit)): int == lim#0;
   // constructor allocates the object
   ensures !$Unbox(read(old($Heap), this, alloc)): bool;
   // frame condition: object granularity
@@ -3314,11 +4140,16 @@ procedure {:verboseName "Cell._ctor (call)"} Call$$_module.Cell.__ctor(v#0: int)
 
 
 
-procedure {:verboseName "Cell._ctor (correctness)"} Impl$$_module.Cell.__ctor(v#0: int) returns (this: ref, $_reverifyPost: bool);
+procedure {:verboseName "Counter._ctor (correctness)"} Impl$$_module.Counter.__ctor(lim#0: int) returns (this: ref, $_reverifyPost: bool);
+  // user-defined preconditions
+  free requires {:always_assume} true;
+  requires {:id "id119"} lim#0 >= LitInt(0);
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id58"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
+  ensures {:id "id120"} $Unbox(read($Heap, this, _module.Counter.value)): int == LitInt(0);
+  free ensures {:always_assume} true;
+  ensures {:id "id121"} $Unbox(read($Heap, this, _module.Counter.limit)): int == lim#0;
   // frame condition: object granularity
   free ensures (forall $o: ref :: 
     { $Heap[$o] } 
@@ -3329,159 +4160,105 @@ procedure {:verboseName "Cell._ctor (correctness)"} Impl$$_module.Cell.__ctor(v#
 
 
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell._ctor (correctness)"} Impl$$_module.Cell.__ctor(v#0: int) returns (this: ref, $_reverifyPost: bool)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Counter._ctor (correctness)"} Impl$$_module.Counter.__ctor(lim#0: int) returns (this: ref, $_reverifyPost: bool)
 {
   var $_ModifiesFrame: [ref,Field]bool;
   var this.value: int;
+  var this.limit: int;
 
-    // AddMethodImpl: _ctor, Impl$$_module.Cell.__ctor
+    // AddMethodImpl: _ctor, Impl$$_module.Counter.__ctor
     $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
       $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> false);
-    assume {:captureState "Test/counter.dfy(6,2): initial state"} true;
+    assume {:captureState "Test/test.dfy(36,2): initial state"} true;
     $_reverifyPost := false;
-    // ----- divided block before new; ----- /Users/saline/development/projects/dafny/Test/counter.dfy(6,3)
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(7,11)
+    // ----- divided block before new; ----- /Users/saline/development/projects/dafny/Test/test.dfy(36,3)
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(37,11)
     assume true;
     assume true;
     assume true;
-    this.value := v#0;
-    assume {:captureState "Test/counter.dfy(7,14)"} true;
-    // ----- new; ----- /Users/saline/development/projects/dafny/Test/counter.dfy(6,3)
-    assume this != null && $Is(this, Tclass._module.Cell?());
+    this.value := LitInt(0);
+    assume {:captureState "Test/test.dfy(37,14)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(38,11)
+    assume true;
+    assume true;
+    assume true;
+    this.limit := lim#0;
+    assume {:captureState "Test/test.dfy(38,16)"} true;
+    // ----- new; ----- /Users/saline/development/projects/dafny/Test/test.dfy(36,3)
+    assume this != null && $Is(this, Tclass._module.Counter?());
     assume !$Unbox(read($Heap, this, alloc)): bool;
-    assume $Unbox(read($Heap, this, _module.Cell.value)): int == this.value;
+    assume $Unbox(read($Heap, this, _module.Counter.value)): int == this.value;
+    assume $Unbox(read($Heap, this, _module.Counter.limit)): int == this.limit;
     $Heap := update($Heap, this, alloc, $Box(true));
     assume $IsGoodHeap($Heap);
     assume $IsHeapAnchor($Heap);
-    // ----- divided block after new; ----- /Users/saline/development/projects/dafny/Test/counter.dfy(6,3)
+    // ----- divided block after new; ----- /Users/saline/development/projects/dafny/Test/test.dfy(36,3)
 }
 
 
 
-procedure {:verboseName "Cell.SetValue (well-formedness)"} CheckWellFormed$$_module.Cell.SetValue(this: ref
+procedure {:verboseName "Counter.Increment (well-formedness)"} CheckWellFormed$$_module.Counter.Increment(this: ref
        where this != null
          && 
-        $Is(this, Tclass._module.Cell())
-         && $IsAlloc(this, Tclass._module.Cell(), $Heap), 
-    v#0: int);
+        $Is(this, Tclass._module.Counter())
+         && $IsAlloc(this, Tclass._module.Counter(), $Heap));
   modifies $Heap;
 
 
 
-procedure {:verboseName "Cell.SetValue (call)"} Call$$_module.Cell.SetValue(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Cell())
-         && $IsAlloc(this, Tclass._module.Cell(), $Heap), 
-    v#0: int);
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  modifies $Heap;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id61"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
-  // frame condition: object granularity
-  free ensures (forall $o: ref :: 
-    { $Heap[$o] } 
-    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
-       ==> $Heap[$o] == old($Heap)[$o] || $o == this);
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
-
-
-
-procedure {:verboseName "Cell.SetValue (correctness)"} Impl$$_module.Cell.SetValue(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Cell())
-         && $IsAlloc(this, Tclass._module.Cell(), $Heap), 
-    v#0: int)
-   returns ($_reverifyPost: bool);
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  modifies $Heap;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id62"} $Unbox(read($Heap, this, _module.Cell.value)): int == v#0;
-  // frame condition: object granularity
-  free ensures (forall $o: ref :: 
-    { $Heap[$o] } 
-    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
-       ==> $Heap[$o] == old($Heap)[$o] || $o == this);
-  // boilerplate
-  free ensures $HeapSucc(old($Heap), $Heap);
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell.SetValue (correctness)"} Impl$$_module.Cell.SetValue(this: ref, v#0: int) returns ($_reverifyPost: bool)
-{
-  var $_ModifiesFrame: [ref,Field]bool;
-  var $rhs#0: int;
-
-    // AddMethodImpl: SetValue, Impl$$_module.Cell.SetValue
-    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == this);
-    assume {:captureState "Test/counter.dfy(13,2): initial state"} true;
-    $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(14,11)
-    assume true;
-    assume true;
-    assert {:id "id63"} $_ModifiesFrame[this, _module.Cell.value];
-    assume true;
-    $rhs#0 := v#0;
-    $Heap := update($Heap, this, _module.Cell.value, $Box($rhs#0));
-    assume $IsGoodHeap($Heap);
-    assume {:captureState "Test/counter.dfy(14,14)"} true;
-}
-
-
-
-procedure {:verboseName "Cell.Increment (well-formedness)"} CheckWellFormed$$_module.Cell.Increment(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Cell())
-         && $IsAlloc(this, Tclass._module.Cell(), $Heap));
-  modifies $Heap;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell.Increment (well-formedness)"} CheckWellFormed$$_module.Cell.Increment(this: ref)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Counter.Increment (well-formedness)"} CheckWellFormed$$_module.Counter.Increment(this: ref)
 {
   var $_ModifiesFrame: [ref,Field]bool;
 
 
-    // AddMethodImpl: Increment, CheckWellFormed$$_module.Cell.Increment
+    // AddMethodImpl: Increment, CheckWellFormed$$_module.Counter.Increment
     $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
       $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == this);
-    assume {:captureState "Test/counter.dfy(17,9): initial state"} true;
+    assume {:captureState "Test/test.dfy(41,9): initial state"} true;
+    assume true;
+    assume true;
+    assume {:id "id124"} $Unbox(read($Heap, this, _module.Counter.value)): int
+       < $Unbox(read($Heap, this, _module.Counter.limit)): int;
     havoc $Heap;
     assume (forall $o: ref :: 
       { $Heap[$o] } 
       $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
          ==> $Heap[$o] == old($Heap)[$o] || $o == this);
     assume $HeapSucc(old($Heap), $Heap);
-    assume {:captureState "Test/counter.dfy(19,18): post-state"} true;
+    assume {:captureState "Test/test.dfy(43,18): post-state"} true;
     assume true;
-    assert {:id "id66"} $IsAlloc(this, Tclass._module.Cell(), old($Heap));
+    assert {:id "id125"} $IsAlloc(this, Tclass._module.Counter(), old($Heap));
     assume true;
-    assume {:id "id67"} $Unbox(read($Heap, this, _module.Cell.value)): int
-       == $Unbox(read(old($Heap), this, _module.Cell.value)): int + 1;
+    assume {:id "id126"} $Unbox(read($Heap, this, _module.Counter.value)): int
+       == $Unbox(read(old($Heap), this, _module.Counter.value)): int + 1;
+    assume true;
+    assert {:id "id127"} $IsAlloc(this, Tclass._module.Counter(), old($Heap));
+    assume true;
+    assume {:id "id128"} $Unbox(read($Heap, this, _module.Counter.limit)): int
+       == $Unbox(read(old($Heap), this, _module.Counter.limit)): int;
 }
 
 
 
-procedure {:verboseName "Cell.Increment (call)"} Call$$_module.Cell.Increment(this: ref
+procedure {:verboseName "Counter.Increment (call)"} Call$$_module.Counter.Increment(this: ref
        where this != null
          && 
-        $Is(this, Tclass._module.Cell())
-         && $IsAlloc(this, Tclass._module.Cell(), $Heap));
+        $Is(this, Tclass._module.Counter())
+         && $IsAlloc(this, Tclass._module.Counter(), $Heap));
+  // user-defined preconditions
+  free requires {:always_assume} true;
+  requires {:id "id129"} $Unbox(read($Heap, this, _module.Counter.value)): int
+     < $Unbox(read($Heap, this, _module.Counter.limit)): int;
   // user-defined frame expressions
   free requires {:always_assume} true;
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id68"} $Unbox(read($Heap, this, _module.Cell.value)): int
-     == $Unbox(read(old($Heap), this, _module.Cell.value)): int + 1;
+  ensures {:id "id130"} $Unbox(read($Heap, this, _module.Counter.value)): int
+     == $Unbox(read(old($Heap), this, _module.Counter.value)): int + 1;
+  free ensures {:always_assume} true;
+  ensures {:id "id131"} $Unbox(read($Heap, this, _module.Counter.limit)): int
+     == $Unbox(read(old($Heap), this, _module.Counter.limit)): int;
   // frame condition: object granularity
   free ensures (forall $o: ref :: 
     { $Heap[$o] } 
@@ -3492,19 +4269,135 @@ procedure {:verboseName "Cell.Increment (call)"} Call$$_module.Cell.Increment(th
 
 
 
-procedure {:verboseName "Cell.Increment (correctness)"} Impl$$_module.Cell.Increment(this: ref
+procedure {:verboseName "Counter.Increment (correctness)"} Impl$$_module.Counter.Increment(this: ref
        where this != null
          && 
-        $Is(this, Tclass._module.Cell())
-         && $IsAlloc(this, Tclass._module.Cell(), $Heap))
+        $Is(this, Tclass._module.Counter())
+         && $IsAlloc(this, Tclass._module.Counter(), $Heap))
+   returns ($_reverifyPost: bool);
+  // user-defined preconditions
+  free requires {:always_assume} true;
+  requires {:id "id132"} $Unbox(read($Heap, this, _module.Counter.value)): int
+     < $Unbox(read($Heap, this, _module.Counter.limit)): int;
+  // user-defined frame expressions
+  free requires {:always_assume} true;
+  modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id133"} $Unbox(read($Heap, this, _module.Counter.value)): int
+     == $Unbox(read(old($Heap), this, _module.Counter.value)): int + 1;
+  free ensures {:always_assume} true;
+  ensures {:id "id134"} $Unbox(read($Heap, this, _module.Counter.limit)): int
+     == $Unbox(read(old($Heap), this, _module.Counter.limit)): int;
+  // frame condition: object granularity
+  free ensures (forall $o: ref :: 
+    { $Heap[$o] } 
+    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+       ==> $Heap[$o] == old($Heap)[$o] || $o == this);
+  // boilerplate
+  free ensures $HeapSucc(old($Heap), $Heap);
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Counter.Increment (correctness)"} Impl$$_module.Counter.Increment(this: ref) returns ($_reverifyPost: bool)
+{
+  var $_ModifiesFrame: [ref,Field]bool;
+  var $rhs#0: int;
+
+    // AddMethodImpl: Increment, Impl$$_module.Counter.Increment
+    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == this);
+    assume {:captureState "Test/test.dfy(46,2): initial state"} true;
+    $_reverifyPost := false;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(47,11)
+    assume true;
+    assume true;
+    assert {:id "id135"} $_ModifiesFrame[this, _module.Counter.value];
+    assume true;
+    assume true;
+    $rhs#0 := $Unbox(read($Heap, this, _module.Counter.value)): int + 1;
+    $Heap := update($Heap, this, _module.Counter.value, $Box($rhs#0));
+    assume $IsGoodHeap($Heap);
+    assume {:captureState "Test/test.dfy(47,22)"} true;
+}
+
+
+
+procedure {:verboseName "Counter.Reset (well-formedness)"} CheckWellFormed$$_module.Counter.Reset(this: ref
+       where this != null
+         && 
+        $Is(this, Tclass._module.Counter())
+         && $IsAlloc(this, Tclass._module.Counter(), $Heap));
+  modifies $Heap;
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Counter.Reset (well-formedness)"} CheckWellFormed$$_module.Counter.Reset(this: ref)
+{
+  var $_ModifiesFrame: [ref,Field]bool;
+
+
+    // AddMethodImpl: Reset, CheckWellFormed$$_module.Counter.Reset
+    $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
+      $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == this);
+    assume {:captureState "Test/test.dfy(50,9): initial state"} true;
+    havoc $Heap;
+    assume (forall $o: ref :: 
+      { $Heap[$o] } 
+      $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+         ==> $Heap[$o] == old($Heap)[$o] || $o == this);
+    assume $HeapSucc(old($Heap), $Heap);
+    assume {:captureState "Test/test.dfy(51,18): post-state"} true;
+    assume true;
+    assume {:id "id138"} $Unbox(read($Heap, this, _module.Counter.value)): int == LitInt(0);
+    assume true;
+    assert {:id "id139"} $IsAlloc(this, Tclass._module.Counter(), old($Heap));
+    assume true;
+    assume {:id "id140"} $Unbox(read($Heap, this, _module.Counter.limit)): int
+       == $Unbox(read(old($Heap), this, _module.Counter.limit)): int;
+}
+
+
+
+procedure {:verboseName "Counter.Reset (call)"} Call$$_module.Counter.Reset(this: ref
+       where this != null
+         && 
+        $Is(this, Tclass._module.Counter())
+         && $IsAlloc(this, Tclass._module.Counter(), $Heap));
+  // user-defined frame expressions
+  free requires {:always_assume} true;
+  modifies $Heap;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id141"} $Unbox(read($Heap, this, _module.Counter.value)): int == LitInt(0);
+  free ensures {:always_assume} true;
+  ensures {:id "id142"} $Unbox(read($Heap, this, _module.Counter.limit)): int
+     == $Unbox(read(old($Heap), this, _module.Counter.limit)): int;
+  // frame condition: object granularity
+  free ensures (forall $o: ref :: 
+    { $Heap[$o] } 
+    $o != null && $Unbox(read(old($Heap), $o, alloc)): bool
+       ==> $Heap[$o] == old($Heap)[$o] || $o == this);
+  // boilerplate
+  free ensures $HeapSucc(old($Heap), $Heap);
+
+
+
+procedure {:verboseName "Counter.Reset (correctness)"} Impl$$_module.Counter.Reset(this: ref
+       where this != null
+         && 
+        $Is(this, Tclass._module.Counter())
+         && $IsAlloc(this, Tclass._module.Counter(), $Heap))
    returns ($_reverifyPost: bool);
   // user-defined frame expressions
   free requires {:always_assume} true;
   modifies $Heap;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id69"} $Unbox(read($Heap, this, _module.Cell.value)): int
-     == $Unbox(read(old($Heap), this, _module.Cell.value)): int + 1;
+  ensures {:id "id143"} $Unbox(read($Heap, this, _module.Counter.value)): int == LitInt(0);
+  free ensures {:always_assume} true;
+  ensures {:id "id144"} $Unbox(read($Heap, this, _module.Counter.limit)): int
+     == $Unbox(read(old($Heap), this, _module.Counter.limit)): int;
   // frame condition: object granularity
   free ensures (forall $o: ref :: 
     { $Heap[$o] } 
@@ -3515,41 +4408,40 @@ procedure {:verboseName "Cell.Increment (correctness)"} Impl$$_module.Cell.Incre
 
 
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Cell.Increment (correctness)"} Impl$$_module.Cell.Increment(this: ref) returns ($_reverifyPost: bool)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Counter.Reset (correctness)"} Impl$$_module.Counter.Reset(this: ref) returns ($_reverifyPost: bool)
 {
   var $_ModifiesFrame: [ref,Field]bool;
   var $rhs#0: int;
 
-    // AddMethodImpl: Increment, Impl$$_module.Cell.Increment
+    // AddMethodImpl: Reset, Impl$$_module.Counter.Reset
     $_ModifiesFrame := (lambda $o: ref, $f: Field :: 
       $o != null && $Unbox(read($Heap, $o, alloc)): bool ==> $o == this);
-    assume {:captureState "Test/counter.dfy(20,2): initial state"} true;
+    assume {:captureState "Test/test.dfy(54,2): initial state"} true;
     $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/counter.dfy(21,11)
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/test.dfy(55,11)
     assume true;
     assume true;
-    assert {:id "id70"} $_ModifiesFrame[this, _module.Cell.value];
+    assert {:id "id145"} $_ModifiesFrame[this, _module.Counter.value];
     assume true;
-    assume true;
-    $rhs#0 := $Unbox(read($Heap, this, _module.Cell.value)): int + 1;
-    $Heap := update($Heap, this, _module.Cell.value, $Box($rhs#0));
+    $rhs#0 := LitInt(0);
+    $Heap := update($Heap, this, _module.Counter.value, $Box($rhs#0));
     assume $IsGoodHeap($Heap);
-    assume {:captureState "Test/counter.dfy(21,22)"} true;
+    assume {:captureState "Test/test.dfy(55,14)"} true;
 }
 
 
 
-// $Is axiom for non-null type _module.Cell
+// $Is axiom for non-null type _module.Counter
 axiom (forall c#0: ref :: 
-  { $Is(c#0, Tclass._module.Cell()) } { $Is(c#0, Tclass._module.Cell?()) } 
-  $Is(c#0, Tclass._module.Cell())
-     <==> $Is(c#0, Tclass._module.Cell?()) && c#0 != null);
+  { $Is(c#0, Tclass._module.Counter()) } { $Is(c#0, Tclass._module.Counter?()) } 
+  $Is(c#0, Tclass._module.Counter())
+     <==> $Is(c#0, Tclass._module.Counter?()) && c#0 != null);
 
-// $IsAlloc axiom for non-null type _module.Cell
+// $IsAlloc axiom for non-null type _module.Counter
 axiom (forall c#0: ref, $h: Heap :: 
-  { $IsAlloc(c#0, Tclass._module.Cell(), $h) } 
-  $IsAlloc(c#0, Tclass._module.Cell(), $h)
-     <==> $IsAlloc(c#0, Tclass._module.Cell?(), $h));
+  { $IsAlloc(c#0, Tclass._module.Counter(), $h) } 
+  $IsAlloc(c#0, Tclass._module.Counter(), $h)
+     <==> $IsAlloc(c#0, Tclass._module.Counter?(), $h));
 
 const unique tytagFamily$nat: TyTagFamily;
 
@@ -3573,6 +4465,10 @@ const unique tytagFamily$_tuple#2: TyTagFamily;
 
 const unique tytagFamily$_tuple#0: TyTagFamily;
 
-const unique tytagFamily$Cell: TyTagFamily;
+const unique tytagFamily$List: TyTagFamily;
+
+const unique tytagFamily$Counter: TyTagFamily;
 
 const unique field$value: NameFamily;
+
+const unique field$limit: NameFamily;

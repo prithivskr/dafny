@@ -108,25 +108,12 @@ function {:inline} char#IsChar(n: int): bool {
 
 type char;
 function char#FromInt(int): char;
-axiom (forall n: int ::
-  { char#FromInt(n) }
-  char#IsChar(n) ==> char#ToInt(char#FromInt(n)) == n);
 
 function char#ToInt(char): int;
-axiom (forall ch: char ::
-  { char#ToInt(ch) }
-  char#FromInt(char#ToInt(ch)) == ch &&
-  char#IsChar(char#ToInt(ch)));
 
 function char#Plus(char, char): char;
-axiom (forall a: char, b: char ::
-  { char#Plus(a, b) }
-  char#Plus(a, b) == char#FromInt(char#ToInt(a) + char#ToInt(b)));
 
 function char#Minus(char, char): char;
-axiom (forall a: char, b: char ::
-  { char#Minus(a, b) }
-  char#Minus(a, b) == char#FromInt(char#ToInt(a) - char#ToInt(b)));
 
 // ---------------------------------------------------------------
 // -- References -------------------------------------------------
@@ -174,22 +161,22 @@ function $IsAllocBox(Box,Ty,Heap): bool;
 
 axiom (forall bx : Box ::
     { $IsBox(bx, TInt) }
-    ( $IsBox(bx, TInt) ==> $Box($Unbox(bx) : int) == bx && $Is($Unbox(bx) : int, TInt)));
+    ( $IsBox(bx, TInt) ==> $Box($Unbox(bx) : int) == bx));
 axiom (forall bx : Box ::
     { $IsBox(bx, TReal) }
-    ( $IsBox(bx, TReal) ==> $Box($Unbox(bx) : real) == bx && $Is($Unbox(bx) : real, TReal)));
+    ( $IsBox(bx, TReal) ==> $Box($Unbox(bx) : real) == bx));
 axiom (forall bx : Box ::
     { $IsBox(bx, TBool) }
-    ( $IsBox(bx, TBool) ==> $Box($Unbox(bx) : bool) == bx && $Is($Unbox(bx) : bool, TBool)));
+    ( $IsBox(bx, TBool) ==> $Box($Unbox(bx) : bool) == bx));
 axiom (forall bx : Box ::
     { $IsBox(bx, TChar) }
-    ( $IsBox(bx, TChar) ==> $Box($Unbox(bx) : char) == bx && $Is($Unbox(bx) : char, TChar)));
+    ( $IsBox(bx, TChar) ==> $Box($Unbox(bx) : char) == bx));
 
 // Since each bitvector type is a separate type in Boogie, the Box/Unbox axioms for bitvectors are
 // generated programmatically. Except, Bv0 is given here.
 axiom (forall bx : Box ::
     { $IsBox(bx, TBitvector(0)) }
-    ( $IsBox(bx, TBitvector(0)) ==> $Box($Unbox(bx) : Bv0) == bx && $Is($Unbox(bx) : Bv0, TBitvector(0))));
+    ( $IsBox(bx, TBitvector(0)) ==> $Box($Unbox(bx) : Bv0) == bx));
 
 axiom (forall<T> v : T, t : Ty ::
     { $IsBox($Box(v), t) }
@@ -202,16 +189,6 @@ axiom (forall<T> v : T, t : Ty ::
 // Type-argument to $Is is the /representation type/,
 // the second value argument to $Is is the actual type.
 function $Is<T>(T,Ty): bool;           // no heap for now
-axiom(forall v : int  :: { $Is(v,TInt) }  $Is(v,TInt));
-axiom(forall v : real :: { $Is(v,TReal) } $Is(v,TReal));
-axiom(forall v : bool :: { $Is(v,TBool) } $Is(v,TBool));
-axiom(forall v : char :: { $Is(v,TChar) } $Is(v,TChar));
-axiom(forall v : Field :: { $Is(v,TField) } $Is(v,TField));
-axiom(forall v : ORDINAL :: { $Is(v,TORDINAL) } $Is(v,TORDINAL));
-
-// Since every bitvector type is a separate type in Boogie, the $Is/$IsAlloc axioms
-// for bitvectors are generated programatically. Except, TBitvector(0) is given here.
-axiom (forall v: Bv0 :: { $Is(v, TBitvector(0)) } $Is(v, TBitvector(0)));
 
 function $IsAlloc<T>(T,Ty,Heap): bool;
 function $AlwaysAllocated(Ty): bool;
@@ -357,9 +334,12 @@ function $IsGhostField(Field): bool;
 // -- Arrays -----------------------------------------------------
 // ---------------------------------------------------------------
 
-function _System.array.Length(a: ref): int;
-axiom (forall o: ref :: {_System.array.Length(o)} 0 <= _System.array.Length(o));
+// function _System.array.Length(a: ref): int;
+// axiom (forall o: ref :: {_System.array.Length(o)} 0 <= _System.array.Length(o));
 
+function {:inline} _System.array.Length(a: ref) : int {
+  0
+}
 
 // ---------------------------------------------------------------
 // -- Reals ------------------------------------------------------
@@ -535,21 +515,38 @@ function IMap#Subtract(IMap, Set) : IMap;
 // -- Provide arithmetic wrappers to improve triggering and non-linear math
 // -------------------------------------------------------------------------
 
-function INTERNAL_add_boogie(x:int, y:int) : int { x + y }
-function INTERNAL_sub_boogie(x:int, y:int) : int { x - y }
-function INTERNAL_mul_boogie(x:int, y:int) : int { x * y }
-function INTERNAL_div_boogie(x:int, y:int) : int { x div y }
-function INTERNAL_mod_boogie(x:int, y:int) : int { x mod y }
-function {:never_pattern true} INTERNAL_lt_boogie(x:int, y:int) : bool { x < y }
-function {:never_pattern true} INTERNAL_le_boogie(x:int, y:int) : bool { x <= y }
-function {:never_pattern true} INTERNAL_gt_boogie(x:int, y:int) : bool { x > y }
-function {:never_pattern true} INTERNAL_ge_boogie(x:int, y:int) : bool { x >= y }
+// function INTERNAL_add_boogie(x:int, y:int) : int { x + y }
+// function INTERNAL_sub_boogie(x:int, y:int) : int { x - y }
+// function INTERNAL_mul_boogie(x:int, y:int) : int { x * y }
+// function INTERNAL_div_boogie(x:int, y:int) : int { x div y }
+// function INTERNAL_mod_boogie(x:int, y:int) : int { x mod y }
+// function {:never_pattern true} INTERNAL_lt_boogie(x:int, y:int) : bool { x < y }
+// function {:never_pattern true} INTERNAL_le_boogie(x:int, y:int) : bool { x <= y }
+// function {:never_pattern true} INTERNAL_gt_boogie(x:int, y:int) : bool { x > y }
+// function {:never_pattern true} INTERNAL_ge_boogie(x:int, y:int) : bool { x >= y }
 
-function Mul(x, y: int): int { x * y }
-function Div(x, y: int): int { x div y }
-function Mod(x, y: int): int { x mod y }
-function Add(x, y: int): int { x + y }
-function Sub(x, y: int): int { x - y }
+// function Mul(x, y: int): int { x * y }
+// function Div(x, y: int): int { x div y }
+// function Mod(x, y: int): int { x mod y }
+// function Add(x, y: int): int { x + y }
+// function Sub(x, y: int): int { x - y }
+
+function {:inline true} INTERNAL_add_boogie(x:int, y:int) : int { x + y }
+function {:inline true} INTERNAL_sub_boogie(x:int, y:int) : int { x - y }
+function {:inline true} INTERNAL_mul_boogie(x:int, y:int) : int { x * y }
+function {:inline true} INTERNAL_div_boogie(x:int, y:int) : int { x div y }
+function {:inline true} INTERNAL_mod_boogie(x:int, y:int) : int { x mod y }
+
+function {:inline true} INTERNAL_lt_boogie(x:int, y:int) : bool { x < y }
+function {:inline true} INTERNAL_le_boogie(x:int, y:int) : bool { x <= y }
+function {:inline true} INTERNAL_gt_boogie(x:int, y:int) : bool { x > y }
+function {:inline true} INTERNAL_ge_boogie(x:int, y:int) : bool { x >= y }
+
+function {:inline true} Mul(x: int, y: int): int { x * y }
+function {:inline true} Div(x: int, y: int): int { x div y }
+function {:inline true} Mod(x: int, y: int): int { x mod y }
+function {:inline true} Add(x: int, y: int): int { x + y }
+function {:inline true} Sub(x: int, y: int): int { x - y }
 
 #if ARITH_DISTR
 axiom (forall x, y, z: int ::

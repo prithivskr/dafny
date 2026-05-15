@@ -1728,14 +1728,14 @@ BplBoundVar(varNameGen.FreshId(string.Format("#{0}#", bv.Name)), Predef.BoxType,
         return BoogieGenerator.IsAlloced(tok, HeapExpr, e);
       }
 
-      public Boogie.Expr GoodRef(IOrigin tok, Boogie.Expr e, Type type) {
+      public Boogie.Expr GoodRef(IOrigin tok, Boogie.Expr e, Type type, IsAllocType alloc = IsAllocType.ISALLOC) {
         Contract.Requires(tok != null);
         Contract.Requires(e != null);
         Contract.Requires(type != null);
         Contract.Ensures(Contract.Result<Boogie.Expr>() != null);
 
         // Add $Is and $IsAlloc
-        return BoogieGenerator.GetWhereClause(tok, e, type, this, ISALLOC);
+        return BoogieGenerator.GetWhereClause(tok, e, type, this, alloc);
       }
 
       public Expression MakeAllowance(FunctionCallExpr e, CanCallOptions cco = null) {

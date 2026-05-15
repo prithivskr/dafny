@@ -582,31 +582,42 @@ public partial class BoogieGenerator {
     var typeTerm = TypeToTy(dafnyType);
     AddBoxUnboxAxiom(tok, printableName, typeTerm, boogieType, []);
 
-    // axiom (forall v: bv3 :: { $Is(v, TBitvector(3)) } $Is(v, TBitvector(3)));
-    var vVar = BplBoundVar("v", boogieType, out var v);
-    var bvs = new List<Variable>() { vVar };
-    var isBv = MkIs(v, typeTerm);
-    var tr = BplTrigger(isBv);
-    sink.AddTopLevelDeclaration(new Bpl.Axiom(tok, new Bpl.ForallExpr(tok, bvs, tr, isBv)));
+    if (!UseQuantifierFreeFrames) {
+      // axiom (forall v: bv3 :: { $Is(v, TBitvector(3)) } $Is(v, TBitvector(3)));
+      // QF mode: dropped — Boogie's type system guarantees bvN membership; no quantifier needed.
+      var vVar = BplBoundVar("v", boogieType, out var v);
+      var bvs = new List<Variable>() { vVar };
+      var isBv = MkIs(v, typeTerm);
+      var tr = BplTrigger(isBv);
+      sink.AddTopLevelDeclaration(new Bpl.Axiom(tok, new Bpl.ForallExpr(tok, bvs, tr, isBv)));
+    }
 
     if (!UseQuantifierFreeFrames) {
       // axiom (forall v: bv3, heap: Heap :: { $IsAlloc(v, TBitvector(3), h) } $IsAlloc(v, TBitvector(3), heap));
-      vVar = BplBoundVar("v", boogieType, out v);
+      var vVar2 = BplBoundVar("v", boogieType, out var v2);
       var heapVar = BplBoundVar("heap", Predef.HeapType, out var heap);
-      bvs = [vVar, heapVar];
-      var isAllocBv = MkIsAlloc(v, typeTerm, heap);
-      tr = BplTrigger(isAllocBv);
-      sink.AddTopLevelDeclaration(new Bpl.Axiom(tok, new Bpl.ForallExpr(tok, bvs, tr, isAllocBv)));
+      var bvs2 = new List<Variable>() { vVar2, heapVar };
+      var isAllocBv = MkIsAlloc(v2, typeTerm, heap);
+      var tr2 = BplTrigger(isAllocBv);
+      sink.AddTopLevelDeclaration(new Bpl.Axiom(tok, new Bpl.ForallExpr(tok, bvs2, tr2, isAllocBv)));
     }
   }
 
   /// <summary>
   /// Generate:
+  ///     // Standard mode:
   ///     axiom (forall args: Ty, bx: Box ::
   ///       { $IsBox(bx, name(argExprs)) }
   ///       $IsBox(bx, name(argExprs)) ==>
   ///         $Box($Unbox(bx): tyRepr) == bx &&
   ///         $Is($Unbox(bx): tyRepr, name(argExprs)));
+  ///
+  ///     // QF mode: drop the $Is conjunct — type symbols are declared but not axiomatized.
+  ///     // $Is membership is established locally via where clauses and allocation-site assumes.
+  ///     axiom (forall args: Ty, bx: Box ::
+  ///       { $IsBox(bx, name(argExprs)) }
+  ///       $IsBox(bx, name(argExprs)) ==>
+  ///         $Box($Unbox(bx): tyRepr) == bx);
   /// </summary>
   private void AddBoxUnboxAxiom(IOrigin tok, string printableName, Bpl.Expr typeTerm, Bpl.Type tyRepr, List<Variable> args) {
     Contract.Requires(tok != null);
@@ -618,12 +629,21 @@ public partial class BoogieGenerator {
     var bxVar = BplBoundVar("bx", Predef.BoxType, out var bx);
     var unbox = FunctionCall(tok, BuiltinFunction.Unbox, tyRepr, bx);
     var box_is = MkIs(bx, typeTerm, true);
-    var unbox_is = MkIs(unbox, typeTerm, false);
     var box_unbox = FunctionCall(tok, BuiltinFunction.Box, null, unbox);
+
+    Bpl.Expr consequent;
+    if (UseQuantifierFreeFrames) {
+      // QF mode: declare type symbol, only assert the Box/Unbox identity — no $Is axiom.
+      consequent = Bpl.Expr.Eq(box_unbox, bx);
+    } else {
+      var unbox_is = MkIs(unbox, typeTerm, false);
+      consequent = BplAnd(Bpl.Expr.Eq(box_unbox, bx), unbox_is);
+    }
+
     sink.AddTopLevelDeclaration(
       new Axiom(tok,
         BplForall(Snoc(args, bxVar), BplTrigger(box_is),
-          BplImp(box_is, BplAnd(Bpl.Expr.Eq(box_unbox, bx), unbox_is))),
+          BplImp(box_is, consequent)),
         "Box/unbox axiom for " + printableName));
   }
 
