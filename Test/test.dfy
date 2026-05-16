@@ -1,8 +1,5 @@
-// --- Algebraic datatype ---
 datatype List = Nil | Cons(head: int, tail: List)
 
-// Recursive function with QF pre/post
-// (recursive body, but spec is QF)
 function ListLength(l: List): nat
 {
   match l
@@ -16,15 +13,12 @@ function ListHead(l: List): int
   l.head
 }
 
-// --- Ghost lemma ---
 ghost method LengthPositive(l: List)
   requires l != Nil
   ensures ListLength(l) >= 1
 {
-  // trivial by unfolding
 }
 
-// --- Simple class with heap ---
 class Counter {
   var value: int
   var limit: int
@@ -56,10 +50,9 @@ class Counter {
   }
 }
 
-// --- Array method with loop invariant ---
 method SumArray(a: array<int>) returns (s: int)
   requires a.Length >= 1
-  ensures s >= 0 || s < 0  // trivially QF postcondition
+  ensures s >= 0 || s < 0
 {
   s := 0;
   var i := 0;
@@ -72,7 +65,6 @@ method SumArray(a: array<int>) returns (s: int)
   }
 }
 
-// --- Method using the ADT ---
 method ProcessList(l: List) returns (n: int)
   requires l != Nil
   ensures n >= 1
@@ -94,7 +86,6 @@ method ProcessList(l: List) returns (n: int)
   }
 }
 
-// --- Method using class + array together ---
 method FillAndCount(c: Counter, a: array<int>) returns (total: int)
   requires c.value >= 0
   requires c.limit >= 0
