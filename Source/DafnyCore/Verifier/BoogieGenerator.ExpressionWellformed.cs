@@ -402,6 +402,23 @@ namespace Microsoft.Dafny {
                 desc, wfOptions.AssertKv);
             }
 
+            // QF frames omit the global field-typing axioms. Locally establish declared type of each mutable field read
+            if (UseQuantifierFreeFrames && e.Member is Field { IsMutable: true } field) {
+              var fieldValue = etran.TrExpr(e);
+              var fieldTypeFact = GetWhereClause(e.Origin, fieldValue, e.Type, etran, NOALLOC);
+              if (fieldTypeFact != null) {
+                builder.Add(TrAssumeCmd(e.Origin, fieldTypeFact));
+              }
+
+              // A non-null value read from a field declared as C? also has corresponding non-null reference type C.
+              if (field.Type.NormalizeExpandKeepConstraints() is UserDefinedType fieldType &&
+                  fieldType.IsRefType && !fieldType.IsNonNullRefType) {
+                var nonNullFieldType = UserDefinedType.CreateNonNullType(fieldType);
+                builder.Add(TrAssumeCmd(e.Origin,
+                  BplImp(Bpl.Expr.Neq(fieldValue, Predef.Null), MkIs(fieldValue, nonNullFieldType))));
+              }
+            }
+
             builder.Add(TrAssumeCmd(e.Origin, etran.CanCallAssumption(e)));
             break;
           }

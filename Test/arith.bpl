@@ -42,6 +42,10 @@ revealed function TBitvector(int) : Ty;
 
 revealed function TSet(Ty) : Ty;
 
+axiom (forall t: Ty :: { TSet(t) } Inv0_TSet(TSet(t)) == t);
+
+axiom (forall t: Ty :: { TSet(t) } Tag(TSet(t)) == TagSet);
+
 revealed function TISet(Ty) : Ty;
 
 revealed function TMultiSet(Ty) : Ty;
@@ -198,6 +202,11 @@ axiom (forall bx: Box ::
   { $IsBox(bx, TBitvector(0)) } 
   $IsBox(bx, TBitvector(0)) ==> $Box($Unbox(bx): Bv0) == bx);
 
+axiom (forall bx: Box, t: Ty :: 
+  { $IsBox(bx, TSet(t)) } 
+  $IsBox(bx, TSet(t))
+     ==> $Box($Unbox(bx): Set) == bx && $Is($Unbox(bx): Set, TSet(t)));
+
 axiom (forall<T> v: T, t: Ty :: 
   { $IsBox($Box(v), t) } 
   $IsBox($Box(v), t) <==> $Is(v, t));
@@ -209,6 +218,20 @@ revealed function $IsAlloc<T>(T, Ty, Heap) : bool;
 revealed function $AlwaysAllocated(Ty) : bool;
 
 revealed function $OlderTag(Heap) : bool;
+
+axiom (forall v: Set, t0: Ty :: 
+  { $Is(v, TSet(t0)) } 
+  $Is(v, TSet(t0))
+     <==> (forall bx: Box :: 
+      { Set#IsMember(v, bx) } 
+      Set#IsMember(v, bx) ==> $IsBox(bx, t0)));
+
+axiom (forall v: Set, t0: Ty, h: Heap :: 
+  { $IsAlloc(v, TSet(t0), h) } 
+  $IsAlloc(v, TSet(t0), h)
+     <==> (forall bx: Box :: 
+      { Set#IsMember(v, bx) } 
+      Set#IsMember(v, bx) ==> $IsAllocBox(bx, t0, h)));
 
 type ClassName;
 
@@ -432,29 +455,98 @@ procedure $IterCollectNewObjects(prevHeap: Heap, newHeap: Heap, this: ref, NW: F
 
 
 
-type Set;
+type Set = [Box]bool;
 
-revealed function Set#Card(s: Set) : int;
+revealed function {:inline} Set#IsMember(s: Set, o: Box) : bool
+{
+  s[o]
+}
 
-revealed function Set#Empty() : Set;
+revealed function {:inline} Set#Empty() : Set
+{
+  (lambda o: Box :: false)
+}
 
-revealed function Set#IsMember(s: Set, o: Box) : bool;
+revealed function {:inline} Set#UnionOne(s: Set, x: Box) : Set
+{
+  s[x := true]
+}
 
-revealed function Set#UnionOne(s: Set, o: Box) : Set;
+revealed function {:inline} Set#Union(a: Set, b: Set) : Set
+{
+  (lambda o: Box :: a[o] || b[o])
+}
 
-revealed function Set#Union(a: Set, b: Set) : Set;
+revealed function {:inline} Set#Intersection(a: Set, b: Set) : Set
+{
+  (lambda o: Box :: a[o] && b[o])
+}
 
-revealed function Set#Intersection(a: Set, b: Set) : Set;
+revealed function {:inline} Set#Difference(a: Set, b: Set) : Set
+{
+  (lambda o: Box :: a[o] && !b[o])
+}
 
-revealed function Set#Difference(a: Set, b: Set) : Set;
+revealed function {:inline} Set#Equal(a: Set, b: Set) : bool
+{
+  a == b
+}
 
 revealed function Set#Subset(a: Set, b: Set) : bool;
 
-revealed function Set#Equal(a: Set, b: Set) : bool;
+axiom (forall a: Set, b: Set :: 
+  { Set#Subset(a, b) } 
+  Set#Subset(a, b) <==> (forall o: Box :: { a[o] } { b[o] } a[o] ==> b[o]));
 
 revealed function Set#Disjoint(a: Set, b: Set) : bool;
 
-revealed function Set#FromBoogieMap([Box]bool) : Set;
+axiom (forall a: Set, b: Set :: 
+  { Set#Disjoint(a, b) } 
+  Set#Disjoint(a, b) <==> (forall o: Box :: !a[o] || !b[o]));
+
+axiom (forall s: Set :: 
+  { Set#Equal(s, Set#Empty()) } 
+  !Set#Equal(s, Set#Empty())
+     ==> (exists x: Box :: { Set#IsMember(s, x) } Set#IsMember(s, x)));
+
+revealed function {:inline} Set#FromBoogieMap(m: [Box]bool) : Set
+{
+  m
+}
+
+revealed function Set#Card(s: Set) : int;
+
+axiom (forall s: Set :: { Set#Card(s) } 0 <= Set#Card(s));
+
+axiom (forall s: Set :: 
+  { Set#Card(s) } 
+  (Set#Card(s) == 0 <==> s == Set#Empty())
+     && (Set#Card(s) != 0 ==> (exists x: Box :: s[x])));
+
+axiom (forall a: Set, x: Box :: 
+  { Set#Card(a[x := true]) } 
+  a[x] ==> Set#Card(a[x := true]) == Set#Card(a));
+
+axiom (forall a: Set, x: Box :: 
+  { Set#Card(a[x := true]) } 
+  !a[x] ==> Set#Card(a[x := true]) == Set#Card(a) + 1);
+
+axiom (forall a: Set, b: Set :: 
+  { Set#Card(Set#Union(a, b)) } { Set#Card(Set#Intersection(a, b)) } 
+  Set#Card(Set#Union(a, b)) + Set#Card(Set#Intersection(a, b))
+     == Set#Card(a) + Set#Card(b));
+
+axiom (forall a: Set, b: Set :: 
+  { Set#Card(Set#Difference(a, b)) } 
+  Set#Card(Set#Difference(a, b))
+         + Set#Card(Set#Difference(b, a))
+         + Set#Card(Set#Intersection(a, b))
+       == Set#Card(Set#Union(a, b))
+     && Set#Card(Set#Difference(a, b)) == Set#Card(a) - Set#Card(Set#Intersection(a, b)));
+
+axiom (forall a: Set, b: Set :: 
+  { Set#Subset(a, b), Set#Card(a), Set#Card(b) } 
+  Set#Subset(a, b) && !Set#Subset(b, a) ==> Set#Card(a) < Set#Card(b));
 
 type ISet = [Box]bool;
 
@@ -1368,7 +1460,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Bump (well-f
 {
 
     // AddMethodImpl: Bump, CheckWellFormed$$_module.__default.Bump
-    assume {:captureState "Test/arith.dfy(14,7): initial state"} true;
+    assume {:captureState "Test/arith.dfy(11,7): initial state"} true;
     assume {:id "id0"} a#0 != b#0;
     assume {:id "id1"} a#0 != c#0;
     assume {:id "id2"} a#0 != d#0;
@@ -1385,7 +1477,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Bump (well-f
     assume {:id "id13"} d#0 != f#0;
     assume {:id "id14"} e#0 != f#0;
     havoc $Heap;
-    assume {:captureState "Test/arith.dfy(20,84): post-state"} true;
+    assume {:captureState "Test/arith.dfy(17,57): post-state"} true;
     assert {:id "id15"} a#0 != null;
     assume true;
     assert {:id "id16"} a#0 != null;
@@ -1407,153 +1499,111 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Bump (well-f
     assume true;
     assume {:id "id26"} $Unbox(read($Heap, a#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-    assert {:id "id27"} a#0 != null;
+    assert {:id "id27"} b#0 != null;
     assume true;
-    assert {:id "id28"} a#0 != null;
-    assert {:id "id29"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id28"} b#0 != null;
+    assert {:id "id29"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id30"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
+    assume {:id "id30"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 1;
     assert {:id "id31"} b#0 != null;
     assume true;
     assert {:id "id32"} b#0 != null;
     assert {:id "id33"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id34"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 1;
+    assume {:id "id34"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+       == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
     assert {:id "id35"} b#0 != null;
     assume true;
     assert {:id "id36"} b#0 != null;
     assert {:id "id37"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id38"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-    assert {:id "id39"} b#0 != null;
-    assume true;
-    assert {:id "id40"} b#0 != null;
-    assert {:id "id41"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id42"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+    assume {:id "id38"} $Unbox(read($Heap, b#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-    assert {:id "id43"} b#0 != null;
+    assert {:id "id39"} c#0 != null;
     assume true;
-    assert {:id "id44"} b#0 != null;
-    assert {:id "id45"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id40"} c#0 != null;
+    assert {:id "id41"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id46"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
+    assume {:id "id42"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 1;
+    assert {:id "id43"} c#0 != null;
+    assume true;
+    assert {:id "id44"} c#0 != null;
+    assert {:id "id45"} c#0 == null || old($Alloc)[c#0];
+    assume true;
+    assume {:id "id46"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+       == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
     assert {:id "id47"} c#0 != null;
     assume true;
     assert {:id "id48"} c#0 != null;
     assert {:id "id49"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id50"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 1;
-    assert {:id "id51"} c#0 != null;
-    assume true;
-    assert {:id "id52"} c#0 != null;
-    assert {:id "id53"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id54"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-    assert {:id "id55"} c#0 != null;
-    assume true;
-    assert {:id "id56"} c#0 != null;
-    assert {:id "id57"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id58"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+    assume {:id "id50"} $Unbox(read($Heap, c#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-    assert {:id "id59"} c#0 != null;
+    assert {:id "id51"} d#0 != null;
     assume true;
-    assert {:id "id60"} c#0 != null;
-    assert {:id "id61"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id52"} d#0 != null;
+    assert {:id "id53"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id62"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-    assert {:id "id63"} d#0 != null;
-    assume true;
-    assert {:id "id64"} d#0 != null;
-    assert {:id "id65"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id66"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+    assume {:id "id54"} $Unbox(read($Heap, d#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 1;
-    assert {:id "id67"} d#0 != null;
+    assert {:id "id55"} d#0 != null;
     assume true;
-    assert {:id "id68"} d#0 != null;
-    assert {:id "id69"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id56"} d#0 != null;
+    assert {:id "id57"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id70"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+    assume {:id "id58"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-    assert {:id "id71"} d#0 != null;
+    assert {:id "id59"} d#0 != null;
     assume true;
-    assert {:id "id72"} d#0 != null;
-    assert {:id "id73"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id60"} d#0 != null;
+    assert {:id "id61"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id74"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+    assume {:id "id62"} $Unbox(read($Heap, d#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-    assert {:id "id75"} d#0 != null;
+    assert {:id "id63"} e#0 != null;
     assume true;
-    assert {:id "id76"} d#0 != null;
-    assert {:id "id77"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id64"} e#0 != null;
+    assert {:id "id65"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id78"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-    assert {:id "id79"} e#0 != null;
-    assume true;
-    assert {:id "id80"} e#0 != null;
-    assert {:id "id81"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id82"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+    assume {:id "id66"} $Unbox(read($Heap, e#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 1;
-    assert {:id "id83"} e#0 != null;
+    assert {:id "id67"} e#0 != null;
     assume true;
-    assert {:id "id84"} e#0 != null;
-    assert {:id "id85"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id68"} e#0 != null;
+    assert {:id "id69"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id86"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+    assume {:id "id70"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-    assert {:id "id87"} e#0 != null;
+    assert {:id "id71"} e#0 != null;
     assume true;
-    assert {:id "id88"} e#0 != null;
-    assert {:id "id89"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id72"} e#0 != null;
+    assert {:id "id73"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id90"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+    assume {:id "id74"} $Unbox(read($Heap, e#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-    assert {:id "id91"} e#0 != null;
+    assert {:id "id75"} f#0 != null;
     assume true;
-    assert {:id "id92"} e#0 != null;
-    assert {:id "id93"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id76"} f#0 != null;
+    assert {:id "id77"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id94"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-    assert {:id "id95"} f#0 != null;
-    assume true;
-    assert {:id "id96"} f#0 != null;
-    assert {:id "id97"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id98"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+    assume {:id "id78"} $Unbox(read($Heap, f#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 1;
-    assert {:id "id99"} f#0 != null;
+    assert {:id "id79"} f#0 != null;
     assume true;
-    assert {:id "id100"} f#0 != null;
-    assert {:id "id101"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id80"} f#0 != null;
+    assert {:id "id81"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id102"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+    assume {:id "id82"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-    assert {:id "id103"} f#0 != null;
+    assert {:id "id83"} f#0 != null;
     assume true;
-    assert {:id "id104"} f#0 != null;
-    assert {:id "id105"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id84"} f#0 != null;
+    assert {:id "id85"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id106"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+    assume {:id "id86"} $Unbox(read($Heap, f#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-    assert {:id "id107"} f#0 != null;
-    assume true;
-    assert {:id "id108"} f#0 != null;
-    assert {:id "id109"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id110"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 }
 
 
@@ -1566,35 +1616,35 @@ procedure {:verboseName "Bump (call)"} Call$$_module.__default.Bump(a#0: ref whe
     f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]));
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id111"} a#0 != b#0;
+  requires {:id "id87"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id112"} a#0 != c#0;
+  requires {:id "id88"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id113"} a#0 != d#0;
+  requires {:id "id89"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id114"} a#0 != e#0;
+  requires {:id "id90"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id115"} a#0 != f#0;
+  requires {:id "id91"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id116"} b#0 != c#0;
+  requires {:id "id92"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id117"} b#0 != d#0;
+  requires {:id "id93"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id118"} b#0 != e#0;
+  requires {:id "id94"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id119"} b#0 != f#0;
+  requires {:id "id95"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id120"} c#0 != d#0;
+  requires {:id "id96"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id121"} c#0 != e#0;
+  requires {:id "id97"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id122"} c#0 != f#0;
+  requires {:id "id98"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id123"} d#0 != e#0;
+  requires {:id "id99"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id124"} d#0 != f#0;
+  requires {:id "id100"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id125"} e#0 != f#0;
+  requires {:id "id101"} e#0 != f#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -1605,77 +1655,59 @@ procedure {:verboseName "Bump (call)"} Call$$_module.__default.Bump(a#0: ref whe
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id126"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+  ensures {:id "id102"} $Unbox(read($Heap, a#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id127"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id103"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id128"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id104"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id129"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id130"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+  ensures {:id "id105"} $Unbox(read($Heap, b#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id131"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id106"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id132"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id107"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id133"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id134"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+  ensures {:id "id108"} $Unbox(read($Heap, c#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id135"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id109"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id136"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id110"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id137"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id138"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+  ensures {:id "id111"} $Unbox(read($Heap, d#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id139"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id112"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id140"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id113"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id141"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id142"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+  ensures {:id "id114"} $Unbox(read($Heap, e#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id143"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id115"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id144"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id116"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id145"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id146"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+  ensures {:id "id117"} $Unbox(read($Heap, f#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id147"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id118"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id148"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id119"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id149"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 
 
 
@@ -1688,35 +1720,35 @@ procedure {:verboseName "Bump (correctness)"} Impl$$_module.__default.Bump(a#0: 
    returns ($_reverifyPost: bool);
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id150"} a#0 != b#0;
+  requires {:id "id120"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id151"} a#0 != c#0;
+  requires {:id "id121"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id152"} a#0 != d#0;
+  requires {:id "id122"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id153"} a#0 != e#0;
+  requires {:id "id123"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id154"} a#0 != f#0;
+  requires {:id "id124"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id155"} b#0 != c#0;
+  requires {:id "id125"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id156"} b#0 != d#0;
+  requires {:id "id126"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id157"} b#0 != e#0;
+  requires {:id "id127"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id158"} b#0 != f#0;
+  requires {:id "id128"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id159"} c#0 != d#0;
+  requires {:id "id129"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id160"} c#0 != e#0;
+  requires {:id "id130"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id161"} c#0 != f#0;
+  requires {:id "id131"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id162"} d#0 != e#0;
+  requires {:id "id132"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id163"} d#0 != f#0;
+  requires {:id "id133"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id164"} e#0 != f#0;
+  requires {:id "id134"} e#0 != f#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -1727,77 +1759,59 @@ procedure {:verboseName "Bump (correctness)"} Impl$$_module.__default.Bump(a#0: 
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id165"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+  ensures {:id "id135"} $Unbox(read($Heap, a#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id166"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id136"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id167"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id137"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id168"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id169"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+  ensures {:id "id138"} $Unbox(read($Heap, b#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id170"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id139"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id171"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id140"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id172"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id173"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+  ensures {:id "id141"} $Unbox(read($Heap, c#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id174"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id142"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id175"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id143"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id176"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id177"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+  ensures {:id "id144"} $Unbox(read($Heap, d#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id178"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id145"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id179"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id146"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id180"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id181"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+  ensures {:id "id147"} $Unbox(read($Heap, e#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id182"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id148"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id183"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id149"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id184"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id185"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+  ensures {:id "id150"} $Unbox(read($Heap, f#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 1;
   free ensures {:always_assume} true;
-  ensures {:id "id186"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id151"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id187"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id152"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id188"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 
 
 
@@ -1812,74 +1826,74 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Bump (correc
   var $rhs#5: int;
 
     // AddMethodImpl: Bump, Impl$$_module.__default.Bump
-    assume {:captureState "Test/arith.dfy(26,0): initial state"} true;
+    assume {:captureState "Test/arith.dfy(23,0): initial state"} true;
     $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(27,9)
-    assert {:id "id189"} a#0 != null;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(24,9)
+    assert {:id "id153"} a#0 != null;
     assume true;
     assume true;
-    assert {:id "id190"} a#0 != null;
+    assert {:id "id154"} a#0 != null;
     assume true;
     assume true;
     $rhs#0 := $Unbox(read($Heap, a#0, _module.Node.val)): int + 1;
     $Heap := update($Heap, a#0, _module.Node.val, $Box($rhs#0));
     assume true;
-    assume {:captureState "Test/arith.dfy(27,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(28,9)
-    assert {:id "id193"} b#0 != null;
+    assume {:captureState "Test/arith.dfy(24,20)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(25,9)
+    assert {:id "id157"} b#0 != null;
     assume true;
     assume true;
-    assert {:id "id194"} b#0 != null;
+    assert {:id "id158"} b#0 != null;
     assume true;
     assume true;
     $rhs#1 := $Unbox(read($Heap, b#0, _module.Node.val)): int + 1;
     $Heap := update($Heap, b#0, _module.Node.val, $Box($rhs#1));
     assume true;
-    assume {:captureState "Test/arith.dfy(28,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(29,9)
-    assert {:id "id197"} c#0 != null;
+    assume {:captureState "Test/arith.dfy(25,20)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(26,9)
+    assert {:id "id161"} c#0 != null;
     assume true;
     assume true;
-    assert {:id "id198"} c#0 != null;
+    assert {:id "id162"} c#0 != null;
     assume true;
     assume true;
     $rhs#2 := $Unbox(read($Heap, c#0, _module.Node.val)): int + 1;
     $Heap := update($Heap, c#0, _module.Node.val, $Box($rhs#2));
     assume true;
-    assume {:captureState "Test/arith.dfy(29,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(30,9)
-    assert {:id "id201"} d#0 != null;
+    assume {:captureState "Test/arith.dfy(26,20)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(27,9)
+    assert {:id "id165"} d#0 != null;
     assume true;
     assume true;
-    assert {:id "id202"} d#0 != null;
+    assert {:id "id166"} d#0 != null;
     assume true;
     assume true;
     $rhs#3 := $Unbox(read($Heap, d#0, _module.Node.val)): int + 1;
     $Heap := update($Heap, d#0, _module.Node.val, $Box($rhs#3));
     assume true;
-    assume {:captureState "Test/arith.dfy(30,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(31,9)
-    assert {:id "id205"} e#0 != null;
+    assume {:captureState "Test/arith.dfy(27,20)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(28,9)
+    assert {:id "id169"} e#0 != null;
     assume true;
     assume true;
-    assert {:id "id206"} e#0 != null;
+    assert {:id "id170"} e#0 != null;
     assume true;
     assume true;
     $rhs#4 := $Unbox(read($Heap, e#0, _module.Node.val)): int + 1;
     $Heap := update($Heap, e#0, _module.Node.val, $Box($rhs#4));
     assume true;
-    assume {:captureState "Test/arith.dfy(31,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(32,9)
-    assert {:id "id209"} f#0 != null;
+    assume {:captureState "Test/arith.dfy(28,20)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(29,9)
+    assert {:id "id173"} f#0 != null;
     assume true;
     assume true;
-    assert {:id "id210"} f#0 != null;
+    assert {:id "id174"} f#0 != null;
     assume true;
     assume true;
     $rhs#5 := $Unbox(read($Heap, f#0, _module.Node.val)): int + 1;
     $Heap := update($Heap, f#0, _module.Node.val, $Box($rhs#5));
     assume true;
-    assume {:captureState "Test/arith.dfy(32,20)"} true;
+    assume {:captureState "Test/arith.dfy(29,20)"} true;
 }
 
 
@@ -1898,192 +1912,150 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
 {
 
     // AddMethodImpl: DoubleBump, CheckWellFormed$$_module.__default.DoubleBump
-    assume {:captureState "Test/arith.dfy(36,7): initial state"} true;
-    assume {:id "id213"} a#0 != b#0;
-    assume {:id "id214"} a#0 != c#0;
-    assume {:id "id215"} a#0 != d#0;
-    assume {:id "id216"} a#0 != e#0;
-    assume {:id "id217"} a#0 != f#0;
-    assume {:id "id218"} b#0 != c#0;
-    assume {:id "id219"} b#0 != d#0;
-    assume {:id "id220"} b#0 != e#0;
-    assume {:id "id221"} b#0 != f#0;
-    assume {:id "id222"} c#0 != d#0;
-    assume {:id "id223"} c#0 != e#0;
-    assume {:id "id224"} c#0 != f#0;
-    assume {:id "id225"} d#0 != e#0;
-    assume {:id "id226"} d#0 != f#0;
-    assume {:id "id227"} e#0 != f#0;
+    assume {:captureState "Test/arith.dfy(32,7): initial state"} true;
+    assume {:id "id177"} a#0 != b#0;
+    assume {:id "id178"} a#0 != c#0;
+    assume {:id "id179"} a#0 != d#0;
+    assume {:id "id180"} a#0 != e#0;
+    assume {:id "id181"} a#0 != f#0;
+    assume {:id "id182"} b#0 != c#0;
+    assume {:id "id183"} b#0 != d#0;
+    assume {:id "id184"} b#0 != e#0;
+    assume {:id "id185"} b#0 != f#0;
+    assume {:id "id186"} c#0 != d#0;
+    assume {:id "id187"} c#0 != e#0;
+    assume {:id "id188"} c#0 != f#0;
+    assume {:id "id189"} d#0 != e#0;
+    assume {:id "id190"} d#0 != f#0;
+    assume {:id "id191"} e#0 != f#0;
     havoc $Heap;
-    assume {:captureState "Test/arith.dfy(42,84): post-state"} true;
-    assert {:id "id228"} a#0 != null;
+    assume {:captureState "Test/arith.dfy(38,57): post-state"} true;
+    assert {:id "id192"} a#0 != null;
     assume true;
-    assert {:id "id229"} a#0 != null;
-    assert {:id "id230"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id193"} a#0 != null;
+    assert {:id "id194"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id231"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+    assume {:id "id195"} $Unbox(read($Heap, a#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 2;
-    assert {:id "id232"} a#0 != null;
+    assert {:id "id196"} a#0 != null;
     assume true;
-    assert {:id "id233"} a#0 != null;
-    assert {:id "id234"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id197"} a#0 != null;
+    assert {:id "id198"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id235"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+    assume {:id "id199"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-    assert {:id "id236"} a#0 != null;
+    assert {:id "id200"} a#0 != null;
     assume true;
-    assert {:id "id237"} a#0 != null;
-    assert {:id "id238"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id201"} a#0 != null;
+    assert {:id "id202"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id239"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+    assume {:id "id203"} $Unbox(read($Heap, a#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-    assert {:id "id240"} a#0 != null;
+    assert {:id "id204"} b#0 != null;
     assume true;
-    assert {:id "id241"} a#0 != null;
-    assert {:id "id242"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id205"} b#0 != null;
+    assert {:id "id206"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id243"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-    assert {:id "id244"} b#0 != null;
-    assume true;
-    assert {:id "id245"} b#0 != null;
-    assert {:id "id246"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id247"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+    assume {:id "id207"} $Unbox(read($Heap, b#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 2;
-    assert {:id "id248"} b#0 != null;
+    assert {:id "id208"} b#0 != null;
     assume true;
-    assert {:id "id249"} b#0 != null;
-    assert {:id "id250"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id209"} b#0 != null;
+    assert {:id "id210"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id251"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+    assume {:id "id211"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-    assert {:id "id252"} b#0 != null;
+    assert {:id "id212"} b#0 != null;
     assume true;
-    assert {:id "id253"} b#0 != null;
-    assert {:id "id254"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id213"} b#0 != null;
+    assert {:id "id214"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id255"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+    assume {:id "id215"} $Unbox(read($Heap, b#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-    assert {:id "id256"} b#0 != null;
+    assert {:id "id216"} c#0 != null;
     assume true;
-    assert {:id "id257"} b#0 != null;
-    assert {:id "id258"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id217"} c#0 != null;
+    assert {:id "id218"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id259"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-    assert {:id "id260"} c#0 != null;
-    assume true;
-    assert {:id "id261"} c#0 != null;
-    assert {:id "id262"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id263"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+    assume {:id "id219"} $Unbox(read($Heap, c#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 2;
-    assert {:id "id264"} c#0 != null;
+    assert {:id "id220"} c#0 != null;
     assume true;
-    assert {:id "id265"} c#0 != null;
-    assert {:id "id266"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id221"} c#0 != null;
+    assert {:id "id222"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id267"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+    assume {:id "id223"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-    assert {:id "id268"} c#0 != null;
+    assert {:id "id224"} c#0 != null;
     assume true;
-    assert {:id "id269"} c#0 != null;
-    assert {:id "id270"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id225"} c#0 != null;
+    assert {:id "id226"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id271"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+    assume {:id "id227"} $Unbox(read($Heap, c#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-    assert {:id "id272"} c#0 != null;
+    assert {:id "id228"} d#0 != null;
     assume true;
-    assert {:id "id273"} c#0 != null;
-    assert {:id "id274"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id229"} d#0 != null;
+    assert {:id "id230"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id275"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-    assert {:id "id276"} d#0 != null;
-    assume true;
-    assert {:id "id277"} d#0 != null;
-    assert {:id "id278"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id279"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+    assume {:id "id231"} $Unbox(read($Heap, d#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 2;
-    assert {:id "id280"} d#0 != null;
+    assert {:id "id232"} d#0 != null;
     assume true;
-    assert {:id "id281"} d#0 != null;
-    assert {:id "id282"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id233"} d#0 != null;
+    assert {:id "id234"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id283"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+    assume {:id "id235"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-    assert {:id "id284"} d#0 != null;
+    assert {:id "id236"} d#0 != null;
     assume true;
-    assert {:id "id285"} d#0 != null;
-    assert {:id "id286"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id237"} d#0 != null;
+    assert {:id "id238"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id287"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+    assume {:id "id239"} $Unbox(read($Heap, d#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-    assert {:id "id288"} d#0 != null;
+    assert {:id "id240"} e#0 != null;
     assume true;
-    assert {:id "id289"} d#0 != null;
-    assert {:id "id290"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id241"} e#0 != null;
+    assert {:id "id242"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id291"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-    assert {:id "id292"} e#0 != null;
-    assume true;
-    assert {:id "id293"} e#0 != null;
-    assert {:id "id294"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id295"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+    assume {:id "id243"} $Unbox(read($Heap, e#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 2;
-    assert {:id "id296"} e#0 != null;
+    assert {:id "id244"} e#0 != null;
     assume true;
-    assert {:id "id297"} e#0 != null;
-    assert {:id "id298"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id245"} e#0 != null;
+    assert {:id "id246"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id299"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+    assume {:id "id247"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-    assert {:id "id300"} e#0 != null;
+    assert {:id "id248"} e#0 != null;
     assume true;
-    assert {:id "id301"} e#0 != null;
-    assert {:id "id302"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id249"} e#0 != null;
+    assert {:id "id250"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id303"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+    assume {:id "id251"} $Unbox(read($Heap, e#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-    assert {:id "id304"} e#0 != null;
+    assert {:id "id252"} f#0 != null;
     assume true;
-    assert {:id "id305"} e#0 != null;
-    assert {:id "id306"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id253"} f#0 != null;
+    assert {:id "id254"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id307"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-    assert {:id "id308"} f#0 != null;
-    assume true;
-    assert {:id "id309"} f#0 != null;
-    assert {:id "id310"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id311"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+    assume {:id "id255"} $Unbox(read($Heap, f#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 2;
-    assert {:id "id312"} f#0 != null;
+    assert {:id "id256"} f#0 != null;
     assume true;
-    assert {:id "id313"} f#0 != null;
-    assert {:id "id314"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id257"} f#0 != null;
+    assert {:id "id258"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id315"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+    assume {:id "id259"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-    assert {:id "id316"} f#0 != null;
+    assert {:id "id260"} f#0 != null;
     assume true;
-    assert {:id "id317"} f#0 != null;
-    assert {:id "id318"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id261"} f#0 != null;
+    assert {:id "id262"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id319"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+    assume {:id "id263"} $Unbox(read($Heap, f#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-    assert {:id "id320"} f#0 != null;
-    assume true;
-    assert {:id "id321"} f#0 != null;
-    assert {:id "id322"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id323"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 }
 
 
@@ -2096,35 +2068,35 @@ procedure {:verboseName "DoubleBump (call)"} Call$$_module.__default.DoubleBump(
     f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]));
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id324"} a#0 != b#0;
+  requires {:id "id264"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id325"} a#0 != c#0;
+  requires {:id "id265"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id326"} a#0 != d#0;
+  requires {:id "id266"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id327"} a#0 != e#0;
+  requires {:id "id267"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id328"} a#0 != f#0;
+  requires {:id "id268"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id329"} b#0 != c#0;
+  requires {:id "id269"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id330"} b#0 != d#0;
+  requires {:id "id270"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id331"} b#0 != e#0;
+  requires {:id "id271"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id332"} b#0 != f#0;
+  requires {:id "id272"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id333"} c#0 != d#0;
+  requires {:id "id273"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id334"} c#0 != e#0;
+  requires {:id "id274"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id335"} c#0 != f#0;
+  requires {:id "id275"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id336"} d#0 != e#0;
+  requires {:id "id276"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id337"} d#0 != f#0;
+  requires {:id "id277"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id338"} e#0 != f#0;
+  requires {:id "id278"} e#0 != f#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -2135,77 +2107,59 @@ procedure {:verboseName "DoubleBump (call)"} Call$$_module.__default.DoubleBump(
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id339"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+  ensures {:id "id279"} $Unbox(read($Heap, a#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id340"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id280"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id341"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id281"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id342"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id343"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+  ensures {:id "id282"} $Unbox(read($Heap, b#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id344"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id283"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id345"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id284"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id346"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id347"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+  ensures {:id "id285"} $Unbox(read($Heap, c#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id348"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id286"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id349"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id287"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id350"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id351"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+  ensures {:id "id288"} $Unbox(read($Heap, d#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id352"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id289"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id353"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id290"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id354"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id355"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+  ensures {:id "id291"} $Unbox(read($Heap, e#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id356"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id292"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id357"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id293"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id358"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id359"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+  ensures {:id "id294"} $Unbox(read($Heap, f#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id360"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id295"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id361"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id296"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id362"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 
 
 
@@ -2218,35 +2172,35 @@ procedure {:verboseName "DoubleBump (correctness)"} Impl$$_module.__default.Doub
    returns ($_reverifyPost: bool);
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id363"} a#0 != b#0;
+  requires {:id "id297"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id364"} a#0 != c#0;
+  requires {:id "id298"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id365"} a#0 != d#0;
+  requires {:id "id299"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id366"} a#0 != e#0;
+  requires {:id "id300"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id367"} a#0 != f#0;
+  requires {:id "id301"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id368"} b#0 != c#0;
+  requires {:id "id302"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id369"} b#0 != d#0;
+  requires {:id "id303"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id370"} b#0 != e#0;
+  requires {:id "id304"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id371"} b#0 != f#0;
+  requires {:id "id305"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id372"} c#0 != d#0;
+  requires {:id "id306"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id373"} c#0 != e#0;
+  requires {:id "id307"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id374"} c#0 != f#0;
+  requires {:id "id308"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id375"} d#0 != e#0;
+  requires {:id "id309"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id376"} d#0 != f#0;
+  requires {:id "id310"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id377"} e#0 != f#0;
+  requires {:id "id311"} e#0 != f#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -2257,77 +2211,59 @@ procedure {:verboseName "DoubleBump (correctness)"} Impl$$_module.__default.Doub
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id378"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+  ensures {:id "id312"} $Unbox(read($Heap, a#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id379"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id313"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id380"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id314"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id381"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id382"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+  ensures {:id "id315"} $Unbox(read($Heap, b#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id383"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id316"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id384"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id317"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id385"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id386"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+  ensures {:id "id318"} $Unbox(read($Heap, c#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id387"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id319"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id388"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id320"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id389"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id390"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+  ensures {:id "id321"} $Unbox(read($Heap, d#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id391"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id322"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id392"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id323"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id393"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id394"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+  ensures {:id "id324"} $Unbox(read($Heap, e#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id395"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id325"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id396"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id326"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id397"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id398"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+  ensures {:id "id327"} $Unbox(read($Heap, f#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id399"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id328"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id400"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id329"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id401"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 
 
 
@@ -2352,9 +2288,9 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
   var $PreCallAlloc#1: [ref]bool;
 
     // AddMethodImpl: DoubleBump, Impl$$_module.__default.DoubleBump
-    assume {:captureState "Test/arith.dfy(48,0): initial state"} true;
+    assume {:captureState "Test/arith.dfy(44,0): initial state"} true;
     $_reverifyPost := false;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(49,7)
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(45,7)
     // TrCallStmt: Before ProcessCallStmt
     assume true;
     // ProcessCallStmt: CheckSubrange
@@ -2382,50 +2318,50 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
     assume true;
     assume true;
     assume true;
-    assert {:id "id402"} a##0 == a#0
+    assert {:id "id330"} a##0 == a#0
        || a##0 == b#0
        || a##0 == c#0
        || a##0 == d#0
        || a##0 == e#0
        || a##0 == f#0
        || !old($Alloc)[a##0];
-    assert {:id "id403"} b##0 == a#0
+    assert {:id "id331"} b##0 == a#0
        || b##0 == b#0
        || b##0 == c#0
        || b##0 == d#0
        || b##0 == e#0
        || b##0 == f#0
        || !old($Alloc)[b##0];
-    assert {:id "id404"} c##0 == a#0
+    assert {:id "id332"} c##0 == a#0
        || c##0 == b#0
        || c##0 == c#0
        || c##0 == d#0
        || c##0 == e#0
        || c##0 == f#0
        || !old($Alloc)[c##0];
-    assert {:id "id405"} d##0 == a#0
+    assert {:id "id333"} d##0 == a#0
        || d##0 == b#0
        || d##0 == c#0
        || d##0 == d#0
        || d##0 == e#0
        || d##0 == f#0
        || !old($Alloc)[d##0];
-    assert {:id "id406"} e##0 == a#0
+    assert {:id "id334"} e##0 == a#0
        || e##0 == b#0
        || e##0 == c#0
        || e##0 == d#0
        || e##0 == e#0
        || e##0 == f#0
        || !old($Alloc)[e##0];
-    assert {:id "id407"} f##0 == a#0
+    assert {:id "id335"} f##0 == a#0
        || f##0 == b#0
        || f##0 == c#0
        || f##0 == d#0
        || f##0 == e#0
        || f##0 == f#0
        || !old($Alloc)[f##0];
-    call {:id "id408"} Call$$_module.__default.Bump(a##0, b##0, c##0, d##0, e##0, f##0);
-    // qf-call-frame Bump: supports=12 reads=48 modified=6
+    call {:id "id336"} Call$$_module.__default.Bump(a##0, b##0, c##0, d##0, e##0, f##0);
+    // qf-call-frame Bump: supports=12 reads=36 modified=6
     assume a#0 != null
          && a#0 != a#0
          && a#0 != b#0
@@ -2453,15 +2389,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && a#0 != f#0
        ==> read($Heap, a#0, _module.Node.score)
          == read($PreCallHeap#0, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#0, a#0, _module.Node.rank);
     assume b#0 != null
          && b#0 != a#0
          && b#0 != b#0
@@ -2489,15 +2416,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && b#0 != f#0
        ==> read($Heap, b#0, _module.Node.score)
          == read($PreCallHeap#0, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#0, b#0, _module.Node.rank);
     assume c#0 != null
          && c#0 != a#0
          && c#0 != b#0
@@ -2525,15 +2443,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && c#0 != f#0
        ==> read($Heap, c#0, _module.Node.score)
          == read($PreCallHeap#0, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#0, c#0, _module.Node.rank);
     assume d#0 != null
          && d#0 != a#0
          && d#0 != b#0
@@ -2561,15 +2470,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && d#0 != f#0
        ==> read($Heap, d#0, _module.Node.score)
          == read($PreCallHeap#0, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#0, d#0, _module.Node.rank);
     assume e#0 != null
          && e#0 != a#0
          && e#0 != b#0
@@ -2597,15 +2497,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && e#0 != f#0
        ==> read($Heap, e#0, _module.Node.score)
          == read($PreCallHeap#0, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#0, e#0, _module.Node.rank);
     assume f#0 != null
          && f#0 != a#0
          && f#0 != b#0
@@ -2633,15 +2524,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && f#0 != f#0
        ==> read($Heap, f#0, _module.Node.score)
          == read($PreCallHeap#0, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#0, f#0, _module.Node.rank);
     assume a##0 != null
          && a##0 != a#0
          && a##0 != b#0
@@ -2669,15 +2551,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && a##0 != f#0
        ==> read($Heap, a##0, _module.Node.score)
          == read($PreCallHeap#0, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#0, a##0, _module.Node.rank);
     assume b##0 != null
          && b##0 != a#0
          && b##0 != b#0
@@ -2705,15 +2578,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && b##0 != f#0
        ==> read($Heap, b##0, _module.Node.score)
          == read($PreCallHeap#0, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#0, b##0, _module.Node.rank);
     assume c##0 != null
          && c##0 != a#0
          && c##0 != b#0
@@ -2741,15 +2605,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && c##0 != f#0
        ==> read($Heap, c##0, _module.Node.score)
          == read($PreCallHeap#0, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#0, c##0, _module.Node.rank);
     assume d##0 != null
          && d##0 != a#0
          && d##0 != b#0
@@ -2777,15 +2632,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && d##0 != f#0
        ==> read($Heap, d##0, _module.Node.score)
          == read($PreCallHeap#0, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#0, d##0, _module.Node.rank);
     assume e##0 != null
          && e##0 != a#0
          && e##0 != b#0
@@ -2813,15 +2659,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && e##0 != f#0
        ==> read($Heap, e##0, _module.Node.score)
          == read($PreCallHeap#0, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#0, e##0, _module.Node.rank);
     assume f##0 != null
          && f##0 != a#0
          && f##0 != b#0
@@ -2849,18 +2686,9 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && f##0 != f#0
        ==> read($Heap, f##0, _module.Node.score)
          == read($PreCallHeap#0, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#0, f##0, _module.Node.rank);
     // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(49,24)"} true;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(50,7)
+    assume {:captureState "Test/arith.dfy(45,24)"} true;
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(46,7)
     // TrCallStmt: Before ProcessCallStmt
     assume true;
     // ProcessCallStmt: CheckSubrange
@@ -2888,50 +2716,50 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
     assume true;
     assume true;
     assume true;
-    assert {:id "id409"} a##1 == a#0
+    assert {:id "id337"} a##1 == a#0
        || a##1 == b#0
        || a##1 == c#0
        || a##1 == d#0
        || a##1 == e#0
        || a##1 == f#0
        || !old($Alloc)[a##1];
-    assert {:id "id410"} b##1 == a#0
+    assert {:id "id338"} b##1 == a#0
        || b##1 == b#0
        || b##1 == c#0
        || b##1 == d#0
        || b##1 == e#0
        || b##1 == f#0
        || !old($Alloc)[b##1];
-    assert {:id "id411"} c##1 == a#0
+    assert {:id "id339"} c##1 == a#0
        || c##1 == b#0
        || c##1 == c#0
        || c##1 == d#0
        || c##1 == e#0
        || c##1 == f#0
        || !old($Alloc)[c##1];
-    assert {:id "id412"} d##1 == a#0
+    assert {:id "id340"} d##1 == a#0
        || d##1 == b#0
        || d##1 == c#0
        || d##1 == d#0
        || d##1 == e#0
        || d##1 == f#0
        || !old($Alloc)[d##1];
-    assert {:id "id413"} e##1 == a#0
+    assert {:id "id341"} e##1 == a#0
        || e##1 == b#0
        || e##1 == c#0
        || e##1 == d#0
        || e##1 == e#0
        || e##1 == f#0
        || !old($Alloc)[e##1];
-    assert {:id "id414"} f##1 == a#0
+    assert {:id "id342"} f##1 == a#0
        || f##1 == b#0
        || f##1 == c#0
        || f##1 == d#0
        || f##1 == e#0
        || f##1 == f#0
        || !old($Alloc)[f##1];
-    call {:id "id415"} Call$$_module.__default.Bump(a##1, b##1, c##1, d##1, e##1, f##1);
-    // qf-call-frame Bump: supports=18 reads=72 modified=6
+    call {:id "id343"} Call$$_module.__default.Bump(a##1, b##1, c##1, d##1, e##1, f##1);
+    // qf-call-frame Bump: supports=18 reads=54 modified=6
     assume a#0 != null
          && a#0 != a#0
          && a#0 != b#0
@@ -2959,15 +2787,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && a#0 != f#0
        ==> read($Heap, a#0, _module.Node.score)
          == read($PreCallHeap#1, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#1, a#0, _module.Node.rank);
     assume b#0 != null
          && b#0 != a#0
          && b#0 != b#0
@@ -2995,15 +2814,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && b#0 != f#0
        ==> read($Heap, b#0, _module.Node.score)
          == read($PreCallHeap#1, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#1, b#0, _module.Node.rank);
     assume c#0 != null
          && c#0 != a#0
          && c#0 != b#0
@@ -3031,15 +2841,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && c#0 != f#0
        ==> read($Heap, c#0, _module.Node.score)
          == read($PreCallHeap#1, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#1, c#0, _module.Node.rank);
     assume d#0 != null
          && d#0 != a#0
          && d#0 != b#0
@@ -3067,15 +2868,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && d#0 != f#0
        ==> read($Heap, d#0, _module.Node.score)
          == read($PreCallHeap#1, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#1, d#0, _module.Node.rank);
     assume e#0 != null
          && e#0 != a#0
          && e#0 != b#0
@@ -3103,15 +2895,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && e#0 != f#0
        ==> read($Heap, e#0, _module.Node.score)
          == read($PreCallHeap#1, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#1, e#0, _module.Node.rank);
     assume f#0 != null
          && f#0 != a#0
          && f#0 != b#0
@@ -3139,15 +2922,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && f#0 != f#0
        ==> read($Heap, f#0, _module.Node.score)
          == read($PreCallHeap#1, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#1, f#0, _module.Node.rank);
     assume a##0 != null
          && a##0 != a#0
          && a##0 != b#0
@@ -3175,15 +2949,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && a##0 != f#0
        ==> read($Heap, a##0, _module.Node.score)
          == read($PreCallHeap#1, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#1, a##0, _module.Node.rank);
     assume b##0 != null
          && b##0 != a#0
          && b##0 != b#0
@@ -3211,15 +2976,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && b##0 != f#0
        ==> read($Heap, b##0, _module.Node.score)
          == read($PreCallHeap#1, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#1, b##0, _module.Node.rank);
     assume c##0 != null
          && c##0 != a#0
          && c##0 != b#0
@@ -3247,15 +3003,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && c##0 != f#0
        ==> read($Heap, c##0, _module.Node.score)
          == read($PreCallHeap#1, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#1, c##0, _module.Node.rank);
     assume d##0 != null
          && d##0 != a#0
          && d##0 != b#0
@@ -3283,15 +3030,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && d##0 != f#0
        ==> read($Heap, d##0, _module.Node.score)
          == read($PreCallHeap#1, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#1, d##0, _module.Node.rank);
     assume e##0 != null
          && e##0 != a#0
          && e##0 != b#0
@@ -3319,15 +3057,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && e##0 != f#0
        ==> read($Heap, e##0, _module.Node.score)
          == read($PreCallHeap#1, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#1, e##0, _module.Node.rank);
     assume f##0 != null
          && f##0 != a#0
          && f##0 != b#0
@@ -3355,15 +3084,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && f##0 != f#0
        ==> read($Heap, f##0, _module.Node.score)
          == read($PreCallHeap#1, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#1, f##0, _module.Node.rank);
     assume a##1 != null
          && a##1 != a#0
          && a##1 != b#0
@@ -3391,15 +3111,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && a##1 != f#0
        ==> read($Heap, a##1, _module.Node.score)
          == read($PreCallHeap#1, a##1, _module.Node.score);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
-       ==> read($Heap, a##1, _module.Node.rank)
-         == read($PreCallHeap#1, a##1, _module.Node.rank);
     assume b##1 != null
          && b##1 != a#0
          && b##1 != b#0
@@ -3427,15 +3138,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && b##1 != f#0
        ==> read($Heap, b##1, _module.Node.score)
          == read($PreCallHeap#1, b##1, _module.Node.score);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
-       ==> read($Heap, b##1, _module.Node.rank)
-         == read($PreCallHeap#1, b##1, _module.Node.rank);
     assume c##1 != null
          && c##1 != a#0
          && c##1 != b#0
@@ -3463,15 +3165,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && c##1 != f#0
        ==> read($Heap, c##1, _module.Node.score)
          == read($PreCallHeap#1, c##1, _module.Node.score);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
-       ==> read($Heap, c##1, _module.Node.rank)
-         == read($PreCallHeap#1, c##1, _module.Node.rank);
     assume d##1 != null
          && d##1 != a#0
          && d##1 != b#0
@@ -3499,15 +3192,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && d##1 != f#0
        ==> read($Heap, d##1, _module.Node.score)
          == read($PreCallHeap#1, d##1, _module.Node.score);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
-       ==> read($Heap, d##1, _module.Node.rank)
-         == read($PreCallHeap#1, d##1, _module.Node.rank);
     assume e##1 != null
          && e##1 != a#0
          && e##1 != b#0
@@ -3535,15 +3219,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && e##1 != f#0
        ==> read($Heap, e##1, _module.Node.score)
          == read($PreCallHeap#1, e##1, _module.Node.score);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
-       ==> read($Heap, e##1, _module.Node.rank)
-         == read($PreCallHeap#1, e##1, _module.Node.rank);
     assume f##1 != null
          && f##1 != a#0
          && f##1 != b#0
@@ -3571,17 +3246,8 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "DoubleBump (
          && f##1 != f#0
        ==> read($Heap, f##1, _module.Node.score)
          == read($PreCallHeap#1, f##1, _module.Node.score);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
-       ==> read($Heap, f##1, _module.Node.rank)
-         == read($PreCallHeap#1, f##1, _module.Node.rank);
     // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(50,24)"} true;
+    assume {:captureState "Test/arith.dfy(46,24)"} true;
 }
 
 
@@ -3600,192 +3266,150 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (we
 {
 
     // AddMethodImpl: QuadBump, CheckWellFormed$$_module.__default.QuadBump
-    assume {:captureState "Test/arith.dfy(54,7): initial state"} true;
-    assume {:id "id416"} a#0 != b#0;
-    assume {:id "id417"} a#0 != c#0;
-    assume {:id "id418"} a#0 != d#0;
-    assume {:id "id419"} a#0 != e#0;
-    assume {:id "id420"} a#0 != f#0;
-    assume {:id "id421"} b#0 != c#0;
-    assume {:id "id422"} b#0 != d#0;
-    assume {:id "id423"} b#0 != e#0;
-    assume {:id "id424"} b#0 != f#0;
-    assume {:id "id425"} c#0 != d#0;
-    assume {:id "id426"} c#0 != e#0;
-    assume {:id "id427"} c#0 != f#0;
-    assume {:id "id428"} d#0 != e#0;
-    assume {:id "id429"} d#0 != f#0;
-    assume {:id "id430"} e#0 != f#0;
+    assume {:captureState "Test/arith.dfy(49,7): initial state"} true;
+    assume {:id "id344"} a#0 != b#0;
+    assume {:id "id345"} a#0 != c#0;
+    assume {:id "id346"} a#0 != d#0;
+    assume {:id "id347"} a#0 != e#0;
+    assume {:id "id348"} a#0 != f#0;
+    assume {:id "id349"} b#0 != c#0;
+    assume {:id "id350"} b#0 != d#0;
+    assume {:id "id351"} b#0 != e#0;
+    assume {:id "id352"} b#0 != f#0;
+    assume {:id "id353"} c#0 != d#0;
+    assume {:id "id354"} c#0 != e#0;
+    assume {:id "id355"} c#0 != f#0;
+    assume {:id "id356"} d#0 != e#0;
+    assume {:id "id357"} d#0 != f#0;
+    assume {:id "id358"} e#0 != f#0;
     havoc $Heap;
-    assume {:captureState "Test/arith.dfy(60,84): post-state"} true;
-    assert {:id "id431"} a#0 != null;
+    assume {:captureState "Test/arith.dfy(55,57): post-state"} true;
+    assert {:id "id359"} a#0 != null;
     assume true;
-    assert {:id "id432"} a#0 != null;
-    assert {:id "id433"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id360"} a#0 != null;
+    assert {:id "id361"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id434"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+    assume {:id "id362"} $Unbox(read($Heap, a#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 4;
-    assert {:id "id435"} a#0 != null;
+    assert {:id "id363"} a#0 != null;
     assume true;
-    assert {:id "id436"} a#0 != null;
-    assert {:id "id437"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id364"} a#0 != null;
+    assert {:id "id365"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id438"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+    assume {:id "id366"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-    assert {:id "id439"} a#0 != null;
+    assert {:id "id367"} a#0 != null;
     assume true;
-    assert {:id "id440"} a#0 != null;
-    assert {:id "id441"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id368"} a#0 != null;
+    assert {:id "id369"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id442"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+    assume {:id "id370"} $Unbox(read($Heap, a#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-    assert {:id "id443"} a#0 != null;
+    assert {:id "id371"} b#0 != null;
     assume true;
-    assert {:id "id444"} a#0 != null;
-    assert {:id "id445"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id372"} b#0 != null;
+    assert {:id "id373"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id446"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-    assert {:id "id447"} b#0 != null;
-    assume true;
-    assert {:id "id448"} b#0 != null;
-    assert {:id "id449"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id450"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+    assume {:id "id374"} $Unbox(read($Heap, b#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 4;
-    assert {:id "id451"} b#0 != null;
+    assert {:id "id375"} b#0 != null;
     assume true;
-    assert {:id "id452"} b#0 != null;
-    assert {:id "id453"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id376"} b#0 != null;
+    assert {:id "id377"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id454"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+    assume {:id "id378"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-    assert {:id "id455"} b#0 != null;
+    assert {:id "id379"} b#0 != null;
     assume true;
-    assert {:id "id456"} b#0 != null;
-    assert {:id "id457"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id380"} b#0 != null;
+    assert {:id "id381"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id458"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+    assume {:id "id382"} $Unbox(read($Heap, b#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-    assert {:id "id459"} b#0 != null;
+    assert {:id "id383"} c#0 != null;
     assume true;
-    assert {:id "id460"} b#0 != null;
-    assert {:id "id461"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id384"} c#0 != null;
+    assert {:id "id385"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id462"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-    assert {:id "id463"} c#0 != null;
-    assume true;
-    assert {:id "id464"} c#0 != null;
-    assert {:id "id465"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id466"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+    assume {:id "id386"} $Unbox(read($Heap, c#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 4;
-    assert {:id "id467"} c#0 != null;
+    assert {:id "id387"} c#0 != null;
     assume true;
-    assert {:id "id468"} c#0 != null;
-    assert {:id "id469"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id388"} c#0 != null;
+    assert {:id "id389"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id470"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+    assume {:id "id390"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-    assert {:id "id471"} c#0 != null;
+    assert {:id "id391"} c#0 != null;
     assume true;
-    assert {:id "id472"} c#0 != null;
-    assert {:id "id473"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id392"} c#0 != null;
+    assert {:id "id393"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id474"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+    assume {:id "id394"} $Unbox(read($Heap, c#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-    assert {:id "id475"} c#0 != null;
+    assert {:id "id395"} d#0 != null;
     assume true;
-    assert {:id "id476"} c#0 != null;
-    assert {:id "id477"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id396"} d#0 != null;
+    assert {:id "id397"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id478"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-    assert {:id "id479"} d#0 != null;
-    assume true;
-    assert {:id "id480"} d#0 != null;
-    assert {:id "id481"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id482"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+    assume {:id "id398"} $Unbox(read($Heap, d#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 4;
-    assert {:id "id483"} d#0 != null;
+    assert {:id "id399"} d#0 != null;
     assume true;
-    assert {:id "id484"} d#0 != null;
-    assert {:id "id485"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id400"} d#0 != null;
+    assert {:id "id401"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id486"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+    assume {:id "id402"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-    assert {:id "id487"} d#0 != null;
+    assert {:id "id403"} d#0 != null;
     assume true;
-    assert {:id "id488"} d#0 != null;
-    assert {:id "id489"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id404"} d#0 != null;
+    assert {:id "id405"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id490"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+    assume {:id "id406"} $Unbox(read($Heap, d#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-    assert {:id "id491"} d#0 != null;
+    assert {:id "id407"} e#0 != null;
     assume true;
-    assert {:id "id492"} d#0 != null;
-    assert {:id "id493"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id408"} e#0 != null;
+    assert {:id "id409"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id494"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-    assert {:id "id495"} e#0 != null;
-    assume true;
-    assert {:id "id496"} e#0 != null;
-    assert {:id "id497"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id498"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+    assume {:id "id410"} $Unbox(read($Heap, e#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 4;
-    assert {:id "id499"} e#0 != null;
+    assert {:id "id411"} e#0 != null;
     assume true;
-    assert {:id "id500"} e#0 != null;
-    assert {:id "id501"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id412"} e#0 != null;
+    assert {:id "id413"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id502"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+    assume {:id "id414"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-    assert {:id "id503"} e#0 != null;
+    assert {:id "id415"} e#0 != null;
     assume true;
-    assert {:id "id504"} e#0 != null;
-    assert {:id "id505"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id416"} e#0 != null;
+    assert {:id "id417"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id506"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+    assume {:id "id418"} $Unbox(read($Heap, e#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-    assert {:id "id507"} e#0 != null;
+    assert {:id "id419"} f#0 != null;
     assume true;
-    assert {:id "id508"} e#0 != null;
-    assert {:id "id509"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id420"} f#0 != null;
+    assert {:id "id421"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id510"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-    assert {:id "id511"} f#0 != null;
-    assume true;
-    assert {:id "id512"} f#0 != null;
-    assert {:id "id513"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id514"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+    assume {:id "id422"} $Unbox(read($Heap, f#0, _module.Node.val)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 4;
-    assert {:id "id515"} f#0 != null;
+    assert {:id "id423"} f#0 != null;
     assume true;
-    assert {:id "id516"} f#0 != null;
-    assert {:id "id517"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id424"} f#0 != null;
+    assert {:id "id425"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id518"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+    assume {:id "id426"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-    assert {:id "id519"} f#0 != null;
+    assert {:id "id427"} f#0 != null;
     assume true;
-    assert {:id "id520"} f#0 != null;
-    assert {:id "id521"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id428"} f#0 != null;
+    assert {:id "id429"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id522"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+    assume {:id "id430"} $Unbox(read($Heap, f#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-    assert {:id "id523"} f#0 != null;
-    assume true;
-    assert {:id "id524"} f#0 != null;
-    assert {:id "id525"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id526"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 }
 
 
@@ -3798,35 +3422,35 @@ procedure {:verboseName "QuadBump (call)"} Call$$_module.__default.QuadBump(a#0:
     f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]));
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id527"} a#0 != b#0;
+  requires {:id "id431"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id528"} a#0 != c#0;
+  requires {:id "id432"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id529"} a#0 != d#0;
+  requires {:id "id433"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id530"} a#0 != e#0;
+  requires {:id "id434"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id531"} a#0 != f#0;
+  requires {:id "id435"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id532"} b#0 != c#0;
+  requires {:id "id436"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id533"} b#0 != d#0;
+  requires {:id "id437"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id534"} b#0 != e#0;
+  requires {:id "id438"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id535"} b#0 != f#0;
+  requires {:id "id439"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id536"} c#0 != d#0;
+  requires {:id "id440"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id537"} c#0 != e#0;
+  requires {:id "id441"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id538"} c#0 != f#0;
+  requires {:id "id442"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id539"} d#0 != e#0;
+  requires {:id "id443"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id540"} d#0 != f#0;
+  requires {:id "id444"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id541"} e#0 != f#0;
+  requires {:id "id445"} e#0 != f#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -3837,77 +3461,59 @@ procedure {:verboseName "QuadBump (call)"} Call$$_module.__default.QuadBump(a#0:
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id542"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+  ensures {:id "id446"} $Unbox(read($Heap, a#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id543"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id447"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id544"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id448"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id545"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id546"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+  ensures {:id "id449"} $Unbox(read($Heap, b#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id547"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id450"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id548"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id451"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id549"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id550"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+  ensures {:id "id452"} $Unbox(read($Heap, c#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id551"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id453"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id552"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id454"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id553"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id554"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+  ensures {:id "id455"} $Unbox(read($Heap, d#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id555"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id456"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id556"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id457"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id557"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id558"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+  ensures {:id "id458"} $Unbox(read($Heap, e#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id559"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id459"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id560"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id460"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id561"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id562"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+  ensures {:id "id461"} $Unbox(read($Heap, f#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id563"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id462"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id564"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id463"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id565"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 
 
 
@@ -3920,35 +3526,35 @@ procedure {:verboseName "QuadBump (correctness)"} Impl$$_module.__default.QuadBu
    returns ($_reverifyPost: bool);
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id566"} a#0 != b#0;
+  requires {:id "id464"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id567"} a#0 != c#0;
+  requires {:id "id465"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id568"} a#0 != d#0;
+  requires {:id "id466"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id569"} a#0 != e#0;
+  requires {:id "id467"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id570"} a#0 != f#0;
+  requires {:id "id468"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id571"} b#0 != c#0;
+  requires {:id "id469"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id572"} b#0 != d#0;
+  requires {:id "id470"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id573"} b#0 != e#0;
+  requires {:id "id471"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id574"} b#0 != f#0;
+  requires {:id "id472"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id575"} c#0 != d#0;
+  requires {:id "id473"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id576"} c#0 != e#0;
+  requires {:id "id474"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id577"} c#0 != f#0;
+  requires {:id "id475"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id578"} d#0 != e#0;
+  requires {:id "id476"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id579"} d#0 != f#0;
+  requires {:id "id477"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id580"} e#0 != f#0;
+  requires {:id "id478"} e#0 != f#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -3959,77 +3565,59 @@ procedure {:verboseName "QuadBump (correctness)"} Impl$$_module.__default.QuadBu
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id581"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+  ensures {:id "id479"} $Unbox(read($Heap, a#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id582"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id480"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id583"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id481"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id584"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id585"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+  ensures {:id "id482"} $Unbox(read($Heap, b#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id586"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id483"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id587"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id484"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id588"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id589"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+  ensures {:id "id485"} $Unbox(read($Heap, c#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id590"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id486"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id591"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id487"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id592"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id593"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+  ensures {:id "id488"} $Unbox(read($Heap, d#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id594"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id489"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id595"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id490"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id596"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id597"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+  ensures {:id "id491"} $Unbox(read($Heap, e#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id598"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id492"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id599"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id493"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id600"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id601"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+  ensures {:id "id494"} $Unbox(read($Heap, f#0, _module.Node.val)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id602"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id495"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id603"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id496"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id604"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 
 
 
@@ -4054,9 +3642,9 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
   var $PreCallAlloc#1: [ref]bool;
 
     // AddMethodImpl: QuadBump, Impl$$_module.__default.QuadBump
-    assume {:captureState "Test/arith.dfy(66,0): initial state"} true;
+    assume {:captureState "Test/arith.dfy(61,0): initial state"} true;
     $_reverifyPost := false;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(67,13)
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(62,13)
     // TrCallStmt: Before ProcessCallStmt
     assume true;
     // ProcessCallStmt: CheckSubrange
@@ -4084,50 +3672,50 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
     assume true;
     assume true;
     assume true;
-    assert {:id "id605"} a##0 == a#0
+    assert {:id "id497"} a##0 == a#0
        || a##0 == b#0
        || a##0 == c#0
        || a##0 == d#0
        || a##0 == e#0
        || a##0 == f#0
        || !old($Alloc)[a##0];
-    assert {:id "id606"} b##0 == a#0
+    assert {:id "id498"} b##0 == a#0
        || b##0 == b#0
        || b##0 == c#0
        || b##0 == d#0
        || b##0 == e#0
        || b##0 == f#0
        || !old($Alloc)[b##0];
-    assert {:id "id607"} c##0 == a#0
+    assert {:id "id499"} c##0 == a#0
        || c##0 == b#0
        || c##0 == c#0
        || c##0 == d#0
        || c##0 == e#0
        || c##0 == f#0
        || !old($Alloc)[c##0];
-    assert {:id "id608"} d##0 == a#0
+    assert {:id "id500"} d##0 == a#0
        || d##0 == b#0
        || d##0 == c#0
        || d##0 == d#0
        || d##0 == e#0
        || d##0 == f#0
        || !old($Alloc)[d##0];
-    assert {:id "id609"} e##0 == a#0
+    assert {:id "id501"} e##0 == a#0
        || e##0 == b#0
        || e##0 == c#0
        || e##0 == d#0
        || e##0 == e#0
        || e##0 == f#0
        || !old($Alloc)[e##0];
-    assert {:id "id610"} f##0 == a#0
+    assert {:id "id502"} f##0 == a#0
        || f##0 == b#0
        || f##0 == c#0
        || f##0 == d#0
        || f##0 == e#0
        || f##0 == f#0
        || !old($Alloc)[f##0];
-    call {:id "id611"} Call$$_module.__default.DoubleBump(a##0, b##0, c##0, d##0, e##0, f##0);
-    // qf-call-frame DoubleBump: supports=12 reads=48 modified=6
+    call {:id "id503"} Call$$_module.__default.DoubleBump(a##0, b##0, c##0, d##0, e##0, f##0);
+    // qf-call-frame DoubleBump: supports=12 reads=36 modified=6
     assume a#0 != null
          && a#0 != a#0
          && a#0 != b#0
@@ -4155,15 +3743,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && a#0 != f#0
        ==> read($Heap, a#0, _module.Node.score)
          == read($PreCallHeap#0, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#0, a#0, _module.Node.rank);
     assume b#0 != null
          && b#0 != a#0
          && b#0 != b#0
@@ -4191,15 +3770,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && b#0 != f#0
        ==> read($Heap, b#0, _module.Node.score)
          == read($PreCallHeap#0, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#0, b#0, _module.Node.rank);
     assume c#0 != null
          && c#0 != a#0
          && c#0 != b#0
@@ -4227,15 +3797,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && c#0 != f#0
        ==> read($Heap, c#0, _module.Node.score)
          == read($PreCallHeap#0, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#0, c#0, _module.Node.rank);
     assume d#0 != null
          && d#0 != a#0
          && d#0 != b#0
@@ -4263,15 +3824,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && d#0 != f#0
        ==> read($Heap, d#0, _module.Node.score)
          == read($PreCallHeap#0, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#0, d#0, _module.Node.rank);
     assume e#0 != null
          && e#0 != a#0
          && e#0 != b#0
@@ -4299,15 +3851,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && e#0 != f#0
        ==> read($Heap, e#0, _module.Node.score)
          == read($PreCallHeap#0, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#0, e#0, _module.Node.rank);
     assume f#0 != null
          && f#0 != a#0
          && f#0 != b#0
@@ -4335,15 +3878,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && f#0 != f#0
        ==> read($Heap, f#0, _module.Node.score)
          == read($PreCallHeap#0, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#0, f#0, _module.Node.rank);
     assume a##0 != null
          && a##0 != a#0
          && a##0 != b#0
@@ -4371,15 +3905,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && a##0 != f#0
        ==> read($Heap, a##0, _module.Node.score)
          == read($PreCallHeap#0, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#0, a##0, _module.Node.rank);
     assume b##0 != null
          && b##0 != a#0
          && b##0 != b#0
@@ -4407,15 +3932,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && b##0 != f#0
        ==> read($Heap, b##0, _module.Node.score)
          == read($PreCallHeap#0, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#0, b##0, _module.Node.rank);
     assume c##0 != null
          && c##0 != a#0
          && c##0 != b#0
@@ -4443,15 +3959,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && c##0 != f#0
        ==> read($Heap, c##0, _module.Node.score)
          == read($PreCallHeap#0, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#0, c##0, _module.Node.rank);
     assume d##0 != null
          && d##0 != a#0
          && d##0 != b#0
@@ -4479,15 +3986,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && d##0 != f#0
        ==> read($Heap, d##0, _module.Node.score)
          == read($PreCallHeap#0, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#0, d##0, _module.Node.rank);
     assume e##0 != null
          && e##0 != a#0
          && e##0 != b#0
@@ -4515,15 +4013,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && e##0 != f#0
        ==> read($Heap, e##0, _module.Node.score)
          == read($PreCallHeap#0, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#0, e##0, _module.Node.rank);
     assume f##0 != null
          && f##0 != a#0
          && f##0 != b#0
@@ -4551,18 +4040,9 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && f##0 != f#0
        ==> read($Heap, f##0, _module.Node.score)
          == read($PreCallHeap#0, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#0, f##0, _module.Node.rank);
     // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(67,30)"} true;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(68,13)
+    assume {:captureState "Test/arith.dfy(62,30)"} true;
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(63,13)
     // TrCallStmt: Before ProcessCallStmt
     assume true;
     // ProcessCallStmt: CheckSubrange
@@ -4590,50 +4070,50 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
     assume true;
     assume true;
     assume true;
-    assert {:id "id612"} a##1 == a#0
+    assert {:id "id504"} a##1 == a#0
        || a##1 == b#0
        || a##1 == c#0
        || a##1 == d#0
        || a##1 == e#0
        || a##1 == f#0
        || !old($Alloc)[a##1];
-    assert {:id "id613"} b##1 == a#0
+    assert {:id "id505"} b##1 == a#0
        || b##1 == b#0
        || b##1 == c#0
        || b##1 == d#0
        || b##1 == e#0
        || b##1 == f#0
        || !old($Alloc)[b##1];
-    assert {:id "id614"} c##1 == a#0
+    assert {:id "id506"} c##1 == a#0
        || c##1 == b#0
        || c##1 == c#0
        || c##1 == d#0
        || c##1 == e#0
        || c##1 == f#0
        || !old($Alloc)[c##1];
-    assert {:id "id615"} d##1 == a#0
+    assert {:id "id507"} d##1 == a#0
        || d##1 == b#0
        || d##1 == c#0
        || d##1 == d#0
        || d##1 == e#0
        || d##1 == f#0
        || !old($Alloc)[d##1];
-    assert {:id "id616"} e##1 == a#0
+    assert {:id "id508"} e##1 == a#0
        || e##1 == b#0
        || e##1 == c#0
        || e##1 == d#0
        || e##1 == e#0
        || e##1 == f#0
        || !old($Alloc)[e##1];
-    assert {:id "id617"} f##1 == a#0
+    assert {:id "id509"} f##1 == a#0
        || f##1 == b#0
        || f##1 == c#0
        || f##1 == d#0
        || f##1 == e#0
        || f##1 == f#0
        || !old($Alloc)[f##1];
-    call {:id "id618"} Call$$_module.__default.DoubleBump(a##1, b##1, c##1, d##1, e##1, f##1);
-    // qf-call-frame DoubleBump: supports=18 reads=72 modified=6
+    call {:id "id510"} Call$$_module.__default.DoubleBump(a##1, b##1, c##1, d##1, e##1, f##1);
+    // qf-call-frame DoubleBump: supports=18 reads=54 modified=6
     assume a#0 != null
          && a#0 != a#0
          && a#0 != b#0
@@ -4661,15 +4141,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && a#0 != f#0
        ==> read($Heap, a#0, _module.Node.score)
          == read($PreCallHeap#1, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#1, a#0, _module.Node.rank);
     assume b#0 != null
          && b#0 != a#0
          && b#0 != b#0
@@ -4697,15 +4168,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && b#0 != f#0
        ==> read($Heap, b#0, _module.Node.score)
          == read($PreCallHeap#1, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#1, b#0, _module.Node.rank);
     assume c#0 != null
          && c#0 != a#0
          && c#0 != b#0
@@ -4733,15 +4195,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && c#0 != f#0
        ==> read($Heap, c#0, _module.Node.score)
          == read($PreCallHeap#1, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#1, c#0, _module.Node.rank);
     assume d#0 != null
          && d#0 != a#0
          && d#0 != b#0
@@ -4769,15 +4222,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && d#0 != f#0
        ==> read($Heap, d#0, _module.Node.score)
          == read($PreCallHeap#1, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#1, d#0, _module.Node.rank);
     assume e#0 != null
          && e#0 != a#0
          && e#0 != b#0
@@ -4805,15 +4249,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && e#0 != f#0
        ==> read($Heap, e#0, _module.Node.score)
          == read($PreCallHeap#1, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#1, e#0, _module.Node.rank);
     assume f#0 != null
          && f#0 != a#0
          && f#0 != b#0
@@ -4841,15 +4276,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && f#0 != f#0
        ==> read($Heap, f#0, _module.Node.score)
          == read($PreCallHeap#1, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#1, f#0, _module.Node.rank);
     assume a##0 != null
          && a##0 != a#0
          && a##0 != b#0
@@ -4877,15 +4303,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && a##0 != f#0
        ==> read($Heap, a##0, _module.Node.score)
          == read($PreCallHeap#1, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#1, a##0, _module.Node.rank);
     assume b##0 != null
          && b##0 != a#0
          && b##0 != b#0
@@ -4913,15 +4330,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && b##0 != f#0
        ==> read($Heap, b##0, _module.Node.score)
          == read($PreCallHeap#1, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#1, b##0, _module.Node.rank);
     assume c##0 != null
          && c##0 != a#0
          && c##0 != b#0
@@ -4949,15 +4357,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && c##0 != f#0
        ==> read($Heap, c##0, _module.Node.score)
          == read($PreCallHeap#1, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#1, c##0, _module.Node.rank);
     assume d##0 != null
          && d##0 != a#0
          && d##0 != b#0
@@ -4985,15 +4384,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && d##0 != f#0
        ==> read($Heap, d##0, _module.Node.score)
          == read($PreCallHeap#1, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#1, d##0, _module.Node.rank);
     assume e##0 != null
          && e##0 != a#0
          && e##0 != b#0
@@ -5021,15 +4411,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && e##0 != f#0
        ==> read($Heap, e##0, _module.Node.score)
          == read($PreCallHeap#1, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#1, e##0, _module.Node.rank);
     assume f##0 != null
          && f##0 != a#0
          && f##0 != b#0
@@ -5057,15 +4438,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && f##0 != f#0
        ==> read($Heap, f##0, _module.Node.score)
          == read($PreCallHeap#1, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#1, f##0, _module.Node.rank);
     assume a##1 != null
          && a##1 != a#0
          && a##1 != b#0
@@ -5093,15 +4465,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && a##1 != f#0
        ==> read($Heap, a##1, _module.Node.score)
          == read($PreCallHeap#1, a##1, _module.Node.score);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
-       ==> read($Heap, a##1, _module.Node.rank)
-         == read($PreCallHeap#1, a##1, _module.Node.rank);
     assume b##1 != null
          && b##1 != a#0
          && b##1 != b#0
@@ -5129,15 +4492,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && b##1 != f#0
        ==> read($Heap, b##1, _module.Node.score)
          == read($PreCallHeap#1, b##1, _module.Node.score);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
-       ==> read($Heap, b##1, _module.Node.rank)
-         == read($PreCallHeap#1, b##1, _module.Node.rank);
     assume c##1 != null
          && c##1 != a#0
          && c##1 != b#0
@@ -5165,15 +4519,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && c##1 != f#0
        ==> read($Heap, c##1, _module.Node.score)
          == read($PreCallHeap#1, c##1, _module.Node.score);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
-       ==> read($Heap, c##1, _module.Node.rank)
-         == read($PreCallHeap#1, c##1, _module.Node.rank);
     assume d##1 != null
          && d##1 != a#0
          && d##1 != b#0
@@ -5201,15 +4546,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && d##1 != f#0
        ==> read($Heap, d##1, _module.Node.score)
          == read($PreCallHeap#1, d##1, _module.Node.score);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
-       ==> read($Heap, d##1, _module.Node.rank)
-         == read($PreCallHeap#1, d##1, _module.Node.rank);
     assume e##1 != null
          && e##1 != a#0
          && e##1 != b#0
@@ -5237,15 +4573,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && e##1 != f#0
        ==> read($Heap, e##1, _module.Node.score)
          == read($PreCallHeap#1, e##1, _module.Node.score);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
-       ==> read($Heap, e##1, _module.Node.rank)
-         == read($PreCallHeap#1, e##1, _module.Node.rank);
     assume f##1 != null
          && f##1 != a#0
          && f##1 != b#0
@@ -5273,2249 +4600,8 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "QuadBump (co
          && f##1 != f#0
        ==> read($Heap, f##1, _module.Node.score)
          == read($PreCallHeap#1, f##1, _module.Node.score);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
-       ==> read($Heap, f##1, _module.Node.rank)
-         == read($PreCallHeap#1, f##1, _module.Node.rank);
     // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(68,30)"} true;
-}
-
-
-
-procedure {:verboseName "OctoBump (well-formedness)"} CheckWellFormed$$_module.__default.OctoBump(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    d#0: ref where $Is(d#0, Tclass._module.Node()) && (d#0 == null || $Alloc[d#0]), 
-    e#0: ref where $Is(e#0, Tclass._module.Node()) && (e#0 == null || $Alloc[e#0]), 
-    f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]));
-  modifies $Heap, $Alloc;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "OctoBump (well-formedness)"} CheckWellFormed$$_module.__default.OctoBump(a#0: ref, b#0: ref, c#0: ref, d#0: ref, e#0: ref, f#0: ref)
-{
-
-    // AddMethodImpl: OctoBump, CheckWellFormed$$_module.__default.OctoBump
-    assume {:captureState "Test/arith.dfy(72,7): initial state"} true;
-    assume {:id "id619"} a#0 != b#0;
-    assume {:id "id620"} a#0 != c#0;
-    assume {:id "id621"} a#0 != d#0;
-    assume {:id "id622"} a#0 != e#0;
-    assume {:id "id623"} a#0 != f#0;
-    assume {:id "id624"} b#0 != c#0;
-    assume {:id "id625"} b#0 != d#0;
-    assume {:id "id626"} b#0 != e#0;
-    assume {:id "id627"} b#0 != f#0;
-    assume {:id "id628"} c#0 != d#0;
-    assume {:id "id629"} c#0 != e#0;
-    assume {:id "id630"} c#0 != f#0;
-    assume {:id "id631"} d#0 != e#0;
-    assume {:id "id632"} d#0 != f#0;
-    assume {:id "id633"} e#0 != f#0;
-    havoc $Heap;
-    assume {:captureState "Test/arith.dfy(78,84): post-state"} true;
-    assert {:id "id634"} a#0 != null;
-    assume true;
-    assert {:id "id635"} a#0 != null;
-    assert {:id "id636"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id637"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 8;
-    assert {:id "id638"} a#0 != null;
-    assume true;
-    assert {:id "id639"} a#0 != null;
-    assert {:id "id640"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id641"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-    assert {:id "id642"} a#0 != null;
-    assume true;
-    assert {:id "id643"} a#0 != null;
-    assert {:id "id644"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id645"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-    assert {:id "id646"} a#0 != null;
-    assume true;
-    assert {:id "id647"} a#0 != null;
-    assert {:id "id648"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id649"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-    assert {:id "id650"} b#0 != null;
-    assume true;
-    assert {:id "id651"} b#0 != null;
-    assert {:id "id652"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id653"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 8;
-    assert {:id "id654"} b#0 != null;
-    assume true;
-    assert {:id "id655"} b#0 != null;
-    assert {:id "id656"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id657"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-    assert {:id "id658"} b#0 != null;
-    assume true;
-    assert {:id "id659"} b#0 != null;
-    assert {:id "id660"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id661"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-    assert {:id "id662"} b#0 != null;
-    assume true;
-    assert {:id "id663"} b#0 != null;
-    assert {:id "id664"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id665"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-    assert {:id "id666"} c#0 != null;
-    assume true;
-    assert {:id "id667"} c#0 != null;
-    assert {:id "id668"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id669"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 8;
-    assert {:id "id670"} c#0 != null;
-    assume true;
-    assert {:id "id671"} c#0 != null;
-    assert {:id "id672"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id673"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-    assert {:id "id674"} c#0 != null;
-    assume true;
-    assert {:id "id675"} c#0 != null;
-    assert {:id "id676"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id677"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-    assert {:id "id678"} c#0 != null;
-    assume true;
-    assert {:id "id679"} c#0 != null;
-    assert {:id "id680"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id681"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-    assert {:id "id682"} d#0 != null;
-    assume true;
-    assert {:id "id683"} d#0 != null;
-    assert {:id "id684"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id685"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 8;
-    assert {:id "id686"} d#0 != null;
-    assume true;
-    assert {:id "id687"} d#0 != null;
-    assert {:id "id688"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id689"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-    assert {:id "id690"} d#0 != null;
-    assume true;
-    assert {:id "id691"} d#0 != null;
-    assert {:id "id692"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id693"} $Unbox(read($Heap, d#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-    assert {:id "id694"} d#0 != null;
-    assume true;
-    assert {:id "id695"} d#0 != null;
-    assert {:id "id696"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id697"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-    assert {:id "id698"} e#0 != null;
-    assume true;
-    assert {:id "id699"} e#0 != null;
-    assert {:id "id700"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id701"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 8;
-    assert {:id "id702"} e#0 != null;
-    assume true;
-    assert {:id "id703"} e#0 != null;
-    assert {:id "id704"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id705"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-    assert {:id "id706"} e#0 != null;
-    assume true;
-    assert {:id "id707"} e#0 != null;
-    assert {:id "id708"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id709"} $Unbox(read($Heap, e#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-    assert {:id "id710"} e#0 != null;
-    assume true;
-    assert {:id "id711"} e#0 != null;
-    assert {:id "id712"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id713"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-    assert {:id "id714"} f#0 != null;
-    assume true;
-    assert {:id "id715"} f#0 != null;
-    assert {:id "id716"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id717"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 8;
-    assert {:id "id718"} f#0 != null;
-    assume true;
-    assert {:id "id719"} f#0 != null;
-    assert {:id "id720"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id721"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-    assert {:id "id722"} f#0 != null;
-    assume true;
-    assert {:id "id723"} f#0 != null;
-    assert {:id "id724"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id725"} $Unbox(read($Heap, f#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-    assert {:id "id726"} f#0 != null;
-    assume true;
-    assert {:id "id727"} f#0 != null;
-    assert {:id "id728"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id729"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-}
-
-
-
-procedure {:verboseName "OctoBump (call)"} Call$$_module.__default.OctoBump(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    d#0: ref where $Is(d#0, Tclass._module.Node()) && (d#0 == null || $Alloc[d#0]), 
-    e#0: ref where $Is(e#0, Tclass._module.Node()) && (e#0 == null || $Alloc[e#0]), 
-    f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]));
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id730"} a#0 != b#0;
-  free requires {:always_assume} true;
-  requires {:id "id731"} a#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id732"} a#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id733"} a#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id734"} a#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id735"} b#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id736"} b#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id737"} b#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id738"} b#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id739"} c#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id740"} c#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id741"} c#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id742"} d#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id743"} d#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id744"} e#0 != f#0;
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id745"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id746"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id747"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id748"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id749"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id750"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id751"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id752"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id753"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id754"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id755"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id756"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id757"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id758"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id759"} $Unbox(read($Heap, d#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id760"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id761"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id762"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id763"} $Unbox(read($Heap, e#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id764"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id765"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id766"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id767"} $Unbox(read($Heap, f#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id768"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-
-
-
-procedure {:verboseName "OctoBump (correctness)"} Impl$$_module.__default.OctoBump(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    d#0: ref where $Is(d#0, Tclass._module.Node()) && (d#0 == null || $Alloc[d#0]), 
-    e#0: ref where $Is(e#0, Tclass._module.Node()) && (e#0 == null || $Alloc[e#0]), 
-    f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]))
-   returns ($_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id769"} a#0 != b#0;
-  free requires {:always_assume} true;
-  requires {:id "id770"} a#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id771"} a#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id772"} a#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id773"} a#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id774"} b#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id775"} b#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id776"} b#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id777"} b#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id778"} c#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id779"} c#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id780"} c#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id781"} d#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id782"} d#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id783"} e#0 != f#0;
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id784"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id785"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id786"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id787"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id788"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id789"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id790"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id791"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id792"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id793"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id794"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id795"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id796"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id797"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id798"} $Unbox(read($Heap, d#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id799"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id800"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id801"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id802"} $Unbox(read($Heap, e#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id803"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id804"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id805"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id806"} $Unbox(read($Heap, f#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id807"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "OctoBump (correctness)"} Impl$$_module.__default.OctoBump(a#0: ref, b#0: ref, c#0: ref, d#0: ref, e#0: ref, f#0: ref)
-   returns ($_reverifyPost: bool)
-{
-  var a##0: ref;
-  var b##0: ref;
-  var c##0: ref;
-  var d##0: ref;
-  var e##0: ref;
-  var f##0: ref;
-  var $PreCallHeap#0: Heap;
-  var $PreCallAlloc#0: [ref]bool;
-  var a##1: ref;
-  var b##1: ref;
-  var c##1: ref;
-  var d##1: ref;
-  var e##1: ref;
-  var f##1: ref;
-  var $PreCallHeap#1: Heap;
-  var $PreCallAlloc#1: [ref]bool;
-
-    // AddMethodImpl: OctoBump, Impl$$_module.__default.OctoBump
-    assume {:captureState "Test/arith.dfy(84,0): initial state"} true;
-    $_reverifyPost := false;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(85,11)
-    // TrCallStmt: Before ProcessCallStmt
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    a##0 := a#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    b##0 := b#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    c##0 := c#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    d##0 := d#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    e##0 := e#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    f##0 := f#0;
-    $PreCallHeap#0 := $Heap;
-    $PreCallAlloc#0 := $Alloc;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assert {:id "id808"} a##0 == a#0
-       || a##0 == b#0
-       || a##0 == c#0
-       || a##0 == d#0
-       || a##0 == e#0
-       || a##0 == f#0
-       || !old($Alloc)[a##0];
-    assert {:id "id809"} b##0 == a#0
-       || b##0 == b#0
-       || b##0 == c#0
-       || b##0 == d#0
-       || b##0 == e#0
-       || b##0 == f#0
-       || !old($Alloc)[b##0];
-    assert {:id "id810"} c##0 == a#0
-       || c##0 == b#0
-       || c##0 == c#0
-       || c##0 == d#0
-       || c##0 == e#0
-       || c##0 == f#0
-       || !old($Alloc)[c##0];
-    assert {:id "id811"} d##0 == a#0
-       || d##0 == b#0
-       || d##0 == c#0
-       || d##0 == d#0
-       || d##0 == e#0
-       || d##0 == f#0
-       || !old($Alloc)[d##0];
-    assert {:id "id812"} e##0 == a#0
-       || e##0 == b#0
-       || e##0 == c#0
-       || e##0 == d#0
-       || e##0 == e#0
-       || e##0 == f#0
-       || !old($Alloc)[e##0];
-    assert {:id "id813"} f##0 == a#0
-       || f##0 == b#0
-       || f##0 == c#0
-       || f##0 == d#0
-       || f##0 == e#0
-       || f##0 == f#0
-       || !old($Alloc)[f##0];
-    call {:id "id814"} Call$$_module.__default.QuadBump(a##0, b##0, c##0, d##0, e##0, f##0);
-    // qf-call-frame QuadBump: supports=12 reads=48 modified=6
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.val)
-         == read($PreCallHeap#0, a#0, _module.Node.val);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.tag)
-         == read($PreCallHeap#0, a#0, _module.Node.tag);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.score)
-         == read($PreCallHeap#0, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#0, a#0, _module.Node.rank);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.val)
-         == read($PreCallHeap#0, b#0, _module.Node.val);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.tag)
-         == read($PreCallHeap#0, b#0, _module.Node.tag);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.score)
-         == read($PreCallHeap#0, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#0, b#0, _module.Node.rank);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.val)
-         == read($PreCallHeap#0, c#0, _module.Node.val);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.tag)
-         == read($PreCallHeap#0, c#0, _module.Node.tag);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.score)
-         == read($PreCallHeap#0, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#0, c#0, _module.Node.rank);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.val)
-         == read($PreCallHeap#0, d#0, _module.Node.val);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.tag)
-         == read($PreCallHeap#0, d#0, _module.Node.tag);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.score)
-         == read($PreCallHeap#0, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#0, d#0, _module.Node.rank);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.val)
-         == read($PreCallHeap#0, e#0, _module.Node.val);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.tag)
-         == read($PreCallHeap#0, e#0, _module.Node.tag);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.score)
-         == read($PreCallHeap#0, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#0, e#0, _module.Node.rank);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.val)
-         == read($PreCallHeap#0, f#0, _module.Node.val);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.tag)
-         == read($PreCallHeap#0, f#0, _module.Node.tag);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.score)
-         == read($PreCallHeap#0, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#0, f#0, _module.Node.rank);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.val)
-         == read($PreCallHeap#0, a##0, _module.Node.val);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.tag)
-         == read($PreCallHeap#0, a##0, _module.Node.tag);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.score)
-         == read($PreCallHeap#0, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#0, a##0, _module.Node.rank);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.val)
-         == read($PreCallHeap#0, b##0, _module.Node.val);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.tag)
-         == read($PreCallHeap#0, b##0, _module.Node.tag);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.score)
-         == read($PreCallHeap#0, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#0, b##0, _module.Node.rank);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.val)
-         == read($PreCallHeap#0, c##0, _module.Node.val);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.tag)
-         == read($PreCallHeap#0, c##0, _module.Node.tag);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.score)
-         == read($PreCallHeap#0, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#0, c##0, _module.Node.rank);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.val)
-         == read($PreCallHeap#0, d##0, _module.Node.val);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.tag)
-         == read($PreCallHeap#0, d##0, _module.Node.tag);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.score)
-         == read($PreCallHeap#0, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#0, d##0, _module.Node.rank);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.val)
-         == read($PreCallHeap#0, e##0, _module.Node.val);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.tag)
-         == read($PreCallHeap#0, e##0, _module.Node.tag);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.score)
-         == read($PreCallHeap#0, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#0, e##0, _module.Node.rank);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.val)
-         == read($PreCallHeap#0, f##0, _module.Node.val);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.tag)
-         == read($PreCallHeap#0, f##0, _module.Node.tag);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.score)
-         == read($PreCallHeap#0, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#0, f##0, _module.Node.rank);
-    // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(85,28)"} true;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(86,11)
-    // TrCallStmt: Before ProcessCallStmt
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    a##1 := a#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    b##1 := b#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    c##1 := c#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    d##1 := d#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    e##1 := e#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    f##1 := f#0;
-    $PreCallHeap#1 := $Heap;
-    $PreCallAlloc#1 := $Alloc;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assert {:id "id815"} a##1 == a#0
-       || a##1 == b#0
-       || a##1 == c#0
-       || a##1 == d#0
-       || a##1 == e#0
-       || a##1 == f#0
-       || !old($Alloc)[a##1];
-    assert {:id "id816"} b##1 == a#0
-       || b##1 == b#0
-       || b##1 == c#0
-       || b##1 == d#0
-       || b##1 == e#0
-       || b##1 == f#0
-       || !old($Alloc)[b##1];
-    assert {:id "id817"} c##1 == a#0
-       || c##1 == b#0
-       || c##1 == c#0
-       || c##1 == d#0
-       || c##1 == e#0
-       || c##1 == f#0
-       || !old($Alloc)[c##1];
-    assert {:id "id818"} d##1 == a#0
-       || d##1 == b#0
-       || d##1 == c#0
-       || d##1 == d#0
-       || d##1 == e#0
-       || d##1 == f#0
-       || !old($Alloc)[d##1];
-    assert {:id "id819"} e##1 == a#0
-       || e##1 == b#0
-       || e##1 == c#0
-       || e##1 == d#0
-       || e##1 == e#0
-       || e##1 == f#0
-       || !old($Alloc)[e##1];
-    assert {:id "id820"} f##1 == a#0
-       || f##1 == b#0
-       || f##1 == c#0
-       || f##1 == d#0
-       || f##1 == e#0
-       || f##1 == f#0
-       || !old($Alloc)[f##1];
-    call {:id "id821"} Call$$_module.__default.QuadBump(a##1, b##1, c##1, d##1, e##1, f##1);
-    // qf-call-frame QuadBump: supports=18 reads=72 modified=6
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.val)
-         == read($PreCallHeap#1, a#0, _module.Node.val);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.tag)
-         == read($PreCallHeap#1, a#0, _module.Node.tag);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.score)
-         == read($PreCallHeap#1, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#1, a#0, _module.Node.rank);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.val)
-         == read($PreCallHeap#1, b#0, _module.Node.val);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.tag)
-         == read($PreCallHeap#1, b#0, _module.Node.tag);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.score)
-         == read($PreCallHeap#1, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#1, b#0, _module.Node.rank);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.val)
-         == read($PreCallHeap#1, c#0, _module.Node.val);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.tag)
-         == read($PreCallHeap#1, c#0, _module.Node.tag);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.score)
-         == read($PreCallHeap#1, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#1, c#0, _module.Node.rank);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.val)
-         == read($PreCallHeap#1, d#0, _module.Node.val);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.tag)
-         == read($PreCallHeap#1, d#0, _module.Node.tag);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.score)
-         == read($PreCallHeap#1, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#1, d#0, _module.Node.rank);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.val)
-         == read($PreCallHeap#1, e#0, _module.Node.val);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.tag)
-         == read($PreCallHeap#1, e#0, _module.Node.tag);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.score)
-         == read($PreCallHeap#1, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#1, e#0, _module.Node.rank);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.val)
-         == read($PreCallHeap#1, f#0, _module.Node.val);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.tag)
-         == read($PreCallHeap#1, f#0, _module.Node.tag);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.score)
-         == read($PreCallHeap#1, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#1, f#0, _module.Node.rank);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.val)
-         == read($PreCallHeap#1, a##0, _module.Node.val);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.tag)
-         == read($PreCallHeap#1, a##0, _module.Node.tag);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.score)
-         == read($PreCallHeap#1, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#1, a##0, _module.Node.rank);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.val)
-         == read($PreCallHeap#1, b##0, _module.Node.val);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.tag)
-         == read($PreCallHeap#1, b##0, _module.Node.tag);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.score)
-         == read($PreCallHeap#1, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#1, b##0, _module.Node.rank);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.val)
-         == read($PreCallHeap#1, c##0, _module.Node.val);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.tag)
-         == read($PreCallHeap#1, c##0, _module.Node.tag);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.score)
-         == read($PreCallHeap#1, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#1, c##0, _module.Node.rank);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.val)
-         == read($PreCallHeap#1, d##0, _module.Node.val);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.tag)
-         == read($PreCallHeap#1, d##0, _module.Node.tag);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.score)
-         == read($PreCallHeap#1, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#1, d##0, _module.Node.rank);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.val)
-         == read($PreCallHeap#1, e##0, _module.Node.val);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.tag)
-         == read($PreCallHeap#1, e##0, _module.Node.tag);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.score)
-         == read($PreCallHeap#1, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#1, e##0, _module.Node.rank);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.val)
-         == read($PreCallHeap#1, f##0, _module.Node.val);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.tag)
-         == read($PreCallHeap#1, f##0, _module.Node.tag);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.score)
-         == read($PreCallHeap#1, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#1, f##0, _module.Node.rank);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
-       ==> read($Heap, a##1, _module.Node.val)
-         == read($PreCallHeap#1, a##1, _module.Node.val);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
-       ==> read($Heap, a##1, _module.Node.tag)
-         == read($PreCallHeap#1, a##1, _module.Node.tag);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
-       ==> read($Heap, a##1, _module.Node.score)
-         == read($PreCallHeap#1, a##1, _module.Node.score);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
-       ==> read($Heap, a##1, _module.Node.rank)
-         == read($PreCallHeap#1, a##1, _module.Node.rank);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
-       ==> read($Heap, b##1, _module.Node.val)
-         == read($PreCallHeap#1, b##1, _module.Node.val);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
-       ==> read($Heap, b##1, _module.Node.tag)
-         == read($PreCallHeap#1, b##1, _module.Node.tag);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
-       ==> read($Heap, b##1, _module.Node.score)
-         == read($PreCallHeap#1, b##1, _module.Node.score);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
-       ==> read($Heap, b##1, _module.Node.rank)
-         == read($PreCallHeap#1, b##1, _module.Node.rank);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
-       ==> read($Heap, c##1, _module.Node.val)
-         == read($PreCallHeap#1, c##1, _module.Node.val);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
-       ==> read($Heap, c##1, _module.Node.tag)
-         == read($PreCallHeap#1, c##1, _module.Node.tag);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
-       ==> read($Heap, c##1, _module.Node.score)
-         == read($PreCallHeap#1, c##1, _module.Node.score);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
-       ==> read($Heap, c##1, _module.Node.rank)
-         == read($PreCallHeap#1, c##1, _module.Node.rank);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
-       ==> read($Heap, d##1, _module.Node.val)
-         == read($PreCallHeap#1, d##1, _module.Node.val);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
-       ==> read($Heap, d##1, _module.Node.tag)
-         == read($PreCallHeap#1, d##1, _module.Node.tag);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
-       ==> read($Heap, d##1, _module.Node.score)
-         == read($PreCallHeap#1, d##1, _module.Node.score);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
-       ==> read($Heap, d##1, _module.Node.rank)
-         == read($PreCallHeap#1, d##1, _module.Node.rank);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
-       ==> read($Heap, e##1, _module.Node.val)
-         == read($PreCallHeap#1, e##1, _module.Node.val);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
-       ==> read($Heap, e##1, _module.Node.tag)
-         == read($PreCallHeap#1, e##1, _module.Node.tag);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
-       ==> read($Heap, e##1, _module.Node.score)
-         == read($PreCallHeap#1, e##1, _module.Node.score);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
-       ==> read($Heap, e##1, _module.Node.rank)
-         == read($PreCallHeap#1, e##1, _module.Node.rank);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
-       ==> read($Heap, f##1, _module.Node.val)
-         == read($PreCallHeap#1, f##1, _module.Node.val);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
-       ==> read($Heap, f##1, _module.Node.tag)
-         == read($PreCallHeap#1, f##1, _module.Node.tag);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
-       ==> read($Heap, f##1, _module.Node.score)
-         == read($PreCallHeap#1, f##1, _module.Node.score);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
-       ==> read($Heap, f##1, _module.Node.rank)
-         == read($PreCallHeap#1, f##1, _module.Node.rank);
-    // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(86,28)"} true;
-}
-
-
-
-procedure {:verboseName "CrossBump (well-formedness)"} CheckWellFormed$$_module.__default.CrossBump(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    p#0: ref where $Is(p#0, Tclass._module.Node()) && (p#0 == null || $Alloc[p#0]), 
-    q#0: ref where $Is(q#0, Tclass._module.Node()) && (q#0 == null || $Alloc[q#0]), 
-    r#0: ref where $Is(r#0, Tclass._module.Node()) && (r#0 == null || $Alloc[r#0]));
-  modifies $Heap, $Alloc;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "CrossBump (well-formedness)"} CheckWellFormed$$_module.__default.CrossBump(a#0: ref, b#0: ref, c#0: ref, p#0: ref, q#0: ref, r#0: ref)
-{
-
-    // AddMethodImpl: CrossBump, CheckWellFormed$$_module.__default.CrossBump
-    assume {:captureState "Test/arith.dfy(93,7): initial state"} true;
-    assume {:id "id822"} a#0 != b#0;
-    assume {:id "id823"} a#0 != c#0;
-    assume {:id "id824"} b#0 != c#0;
-    assume {:id "id825"} p#0 != q#0;
-    assume {:id "id826"} p#0 != r#0;
-    assume {:id "id827"} q#0 != r#0;
-    assume {:id "id828"} a#0 != p#0;
-    assume {:id "id829"} a#0 != q#0;
-    assume {:id "id830"} a#0 != r#0;
-    assume {:id "id831"} b#0 != p#0;
-    assume {:id "id832"} b#0 != q#0;
-    assume {:id "id833"} b#0 != r#0;
-    assume {:id "id834"} c#0 != p#0;
-    assume {:id "id835"} c#0 != q#0;
-    assume {:id "id836"} c#0 != r#0;
-    havoc $Heap;
-    assume {:captureState "Test/arith.dfy(100,84): post-state"} true;
-    assert {:id "id837"} a#0 != null;
-    assume true;
-    assert {:id "id838"} a#0 != null;
-    assert {:id "id839"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id840"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 1;
-    assert {:id "id841"} a#0 != null;
-    assume true;
-    assert {:id "id842"} a#0 != null;
-    assert {:id "id843"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id844"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-    assert {:id "id845"} a#0 != null;
-    assume true;
-    assert {:id "id846"} a#0 != null;
-    assert {:id "id847"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id848"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-    assert {:id "id849"} a#0 != null;
-    assume true;
-    assert {:id "id850"} a#0 != null;
-    assert {:id "id851"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id852"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-    assert {:id "id853"} b#0 != null;
-    assume true;
-    assert {:id "id854"} b#0 != null;
-    assert {:id "id855"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id856"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 1;
-    assert {:id "id857"} b#0 != null;
-    assume true;
-    assert {:id "id858"} b#0 != null;
-    assert {:id "id859"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id860"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-    assert {:id "id861"} b#0 != null;
-    assume true;
-    assert {:id "id862"} b#0 != null;
-    assert {:id "id863"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id864"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-    assert {:id "id865"} b#0 != null;
-    assume true;
-    assert {:id "id866"} b#0 != null;
-    assert {:id "id867"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id868"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-    assert {:id "id869"} c#0 != null;
-    assume true;
-    assert {:id "id870"} c#0 != null;
-    assert {:id "id871"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id872"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 1;
-    assert {:id "id873"} c#0 != null;
-    assume true;
-    assert {:id "id874"} c#0 != null;
-    assert {:id "id875"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id876"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-    assert {:id "id877"} c#0 != null;
-    assume true;
-    assert {:id "id878"} c#0 != null;
-    assert {:id "id879"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id880"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-    assert {:id "id881"} c#0 != null;
-    assume true;
-    assert {:id "id882"} c#0 != null;
-    assert {:id "id883"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id884"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-    assert {:id "id885"} p#0 != null;
-    assume true;
-    assert {:id "id886"} p#0 != null;
-    assert {:id "id887"} p#0 == null || old($Alloc)[p#0];
-    assume true;
-    assume {:id "id888"} $Unbox(read($Heap, p#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 1;
-    assert {:id "id889"} p#0 != null;
-    assume true;
-    assert {:id "id890"} p#0 != null;
-    assert {:id "id891"} p#0 == null || old($Alloc)[p#0];
-    assume true;
-    assume {:id "id892"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), p#0, _module.Node.tag)): int;
-    assert {:id "id893"} p#0 != null;
-    assume true;
-    assert {:id "id894"} p#0 != null;
-    assert {:id "id895"} p#0 == null || old($Alloc)[p#0];
-    assume true;
-    assume {:id "id896"} $Unbox(read($Heap, p#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), p#0, _module.Node.score)): int;
-    assert {:id "id897"} p#0 != null;
-    assume true;
-    assert {:id "id898"} p#0 != null;
-    assert {:id "id899"} p#0 == null || old($Alloc)[p#0];
-    assume true;
-    assume {:id "id900"} $Unbox(read($Heap, p#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), p#0, _module.Node.rank)): int;
-    assert {:id "id901"} q#0 != null;
-    assume true;
-    assert {:id "id902"} q#0 != null;
-    assert {:id "id903"} q#0 == null || old($Alloc)[q#0];
-    assume true;
-    assume {:id "id904"} $Unbox(read($Heap, q#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 1;
-    assert {:id "id905"} q#0 != null;
-    assume true;
-    assert {:id "id906"} q#0 != null;
-    assert {:id "id907"} q#0 == null || old($Alloc)[q#0];
-    assume true;
-    assume {:id "id908"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), q#0, _module.Node.tag)): int;
-    assert {:id "id909"} q#0 != null;
-    assume true;
-    assert {:id "id910"} q#0 != null;
-    assert {:id "id911"} q#0 == null || old($Alloc)[q#0];
-    assume true;
-    assume {:id "id912"} $Unbox(read($Heap, q#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), q#0, _module.Node.score)): int;
-    assert {:id "id913"} q#0 != null;
-    assume true;
-    assert {:id "id914"} q#0 != null;
-    assert {:id "id915"} q#0 == null || old($Alloc)[q#0];
-    assume true;
-    assume {:id "id916"} $Unbox(read($Heap, q#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), q#0, _module.Node.rank)): int;
-    assert {:id "id917"} r#0 != null;
-    assume true;
-    assert {:id "id918"} r#0 != null;
-    assert {:id "id919"} r#0 == null || old($Alloc)[r#0];
-    assume true;
-    assume {:id "id920"} $Unbox(read($Heap, r#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 1;
-    assert {:id "id921"} r#0 != null;
-    assume true;
-    assert {:id "id922"} r#0 != null;
-    assert {:id "id923"} r#0 == null || old($Alloc)[r#0];
-    assume true;
-    assume {:id "id924"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), r#0, _module.Node.tag)): int;
-    assert {:id "id925"} r#0 != null;
-    assume true;
-    assert {:id "id926"} r#0 != null;
-    assert {:id "id927"} r#0 == null || old($Alloc)[r#0];
-    assume true;
-    assume {:id "id928"} $Unbox(read($Heap, r#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), r#0, _module.Node.score)): int;
-    assert {:id "id929"} r#0 != null;
-    assume true;
-    assert {:id "id930"} r#0 != null;
-    assert {:id "id931"} r#0 == null || old($Alloc)[r#0];
-    assume true;
-    assume {:id "id932"} $Unbox(read($Heap, r#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), r#0, _module.Node.rank)): int;
-}
-
-
-
-procedure {:verboseName "CrossBump (call)"} Call$$_module.__default.CrossBump(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    p#0: ref where $Is(p#0, Tclass._module.Node()) && (p#0 == null || $Alloc[p#0]), 
-    q#0: ref where $Is(q#0, Tclass._module.Node()) && (q#0 == null || $Alloc[q#0]), 
-    r#0: ref where $Is(r#0, Tclass._module.Node()) && (r#0 == null || $Alloc[r#0]));
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id933"} a#0 != b#0;
-  free requires {:always_assume} true;
-  requires {:id "id934"} a#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id935"} b#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id936"} p#0 != q#0;
-  free requires {:always_assume} true;
-  requires {:id "id937"} p#0 != r#0;
-  free requires {:always_assume} true;
-  requires {:id "id938"} q#0 != r#0;
-  free requires {:always_assume} true;
-  requires {:id "id939"} a#0 != p#0;
-  free requires {:always_assume} true;
-  requires {:id "id940"} a#0 != q#0;
-  free requires {:always_assume} true;
-  requires {:id "id941"} a#0 != r#0;
-  free requires {:always_assume} true;
-  requires {:id "id942"} b#0 != p#0;
-  free requires {:always_assume} true;
-  requires {:id "id943"} b#0 != q#0;
-  free requires {:always_assume} true;
-  requires {:id "id944"} b#0 != r#0;
-  free requires {:always_assume} true;
-  requires {:id "id945"} c#0 != p#0;
-  free requires {:always_assume} true;
-  requires {:id "id946"} c#0 != q#0;
-  free requires {:always_assume} true;
-  requires {:id "id947"} c#0 != r#0;
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id948"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id949"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id950"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id951"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id952"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id953"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id954"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id955"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id956"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id957"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id958"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id959"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id960"} $Unbox(read($Heap, p#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id961"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id962"} $Unbox(read($Heap, p#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id963"} $Unbox(read($Heap, p#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id964"} $Unbox(read($Heap, q#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id965"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id966"} $Unbox(read($Heap, q#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id967"} $Unbox(read($Heap, q#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id968"} $Unbox(read($Heap, r#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id969"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id970"} $Unbox(read($Heap, r#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id971"} $Unbox(read($Heap, r#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.rank)): int;
-
-
-
-procedure {:verboseName "CrossBump (correctness)"} Impl$$_module.__default.CrossBump(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    p#0: ref where $Is(p#0, Tclass._module.Node()) && (p#0 == null || $Alloc[p#0]), 
-    q#0: ref where $Is(q#0, Tclass._module.Node()) && (q#0 == null || $Alloc[q#0]), 
-    r#0: ref where $Is(r#0, Tclass._module.Node()) && (r#0 == null || $Alloc[r#0]))
-   returns ($_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id972"} a#0 != b#0;
-  free requires {:always_assume} true;
-  requires {:id "id973"} a#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id974"} b#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id975"} p#0 != q#0;
-  free requires {:always_assume} true;
-  requires {:id "id976"} p#0 != r#0;
-  free requires {:always_assume} true;
-  requires {:id "id977"} q#0 != r#0;
-  free requires {:always_assume} true;
-  requires {:id "id978"} a#0 != p#0;
-  free requires {:always_assume} true;
-  requires {:id "id979"} a#0 != q#0;
-  free requires {:always_assume} true;
-  requires {:id "id980"} a#0 != r#0;
-  free requires {:always_assume} true;
-  requires {:id "id981"} b#0 != p#0;
-  free requires {:always_assume} true;
-  requires {:id "id982"} b#0 != q#0;
-  free requires {:always_assume} true;
-  requires {:id "id983"} b#0 != r#0;
-  free requires {:always_assume} true;
-  requires {:id "id984"} c#0 != p#0;
-  free requires {:always_assume} true;
-  requires {:id "id985"} c#0 != q#0;
-  free requires {:always_assume} true;
-  requires {:id "id986"} c#0 != r#0;
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id987"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id988"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id989"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id990"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id991"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id992"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id993"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id994"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id995"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id996"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id997"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id998"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id999"} $Unbox(read($Heap, p#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id1000"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1001"} $Unbox(read($Heap, p#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1002"} $Unbox(read($Heap, p#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1003"} $Unbox(read($Heap, q#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id1004"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1005"} $Unbox(read($Heap, q#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1006"} $Unbox(read($Heap, q#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1007"} $Unbox(read($Heap, r#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id1008"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1009"} $Unbox(read($Heap, r#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1010"} $Unbox(read($Heap, r#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.rank)): int;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "CrossBump (correctness)"} Impl$$_module.__default.CrossBump(a#0: ref, b#0: ref, c#0: ref, p#0: ref, q#0: ref, r#0: ref)
-   returns ($_reverifyPost: bool)
-{
-  var $rhs#0: int;
-  var $rhs#1: int;
-  var $rhs#2: int;
-  var $rhs#3: int;
-  var $rhs#4: int;
-  var $rhs#5: int;
-
-    // AddMethodImpl: CrossBump, Impl$$_module.__default.CrossBump
-    assume {:captureState "Test/arith.dfy(106,0): initial state"} true;
-    $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(107,9)
-    assert {:id "id1011"} a#0 != null;
-    assume true;
-    assume true;
-    assert {:id "id1012"} a#0 != null;
-    assume true;
-    assume true;
-    $rhs#0 := $Unbox(read($Heap, a#0, _module.Node.val)): int + 1;
-    $Heap := update($Heap, a#0, _module.Node.val, $Box($rhs#0));
-    assume true;
-    assume {:captureState "Test/arith.dfy(107,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(108,9)
-    assert {:id "id1015"} b#0 != null;
-    assume true;
-    assume true;
-    assert {:id "id1016"} b#0 != null;
-    assume true;
-    assume true;
-    $rhs#1 := $Unbox(read($Heap, b#0, _module.Node.val)): int + 1;
-    $Heap := update($Heap, b#0, _module.Node.val, $Box($rhs#1));
-    assume true;
-    assume {:captureState "Test/arith.dfy(108,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(109,9)
-    assert {:id "id1019"} c#0 != null;
-    assume true;
-    assume true;
-    assert {:id "id1020"} c#0 != null;
-    assume true;
-    assume true;
-    $rhs#2 := $Unbox(read($Heap, c#0, _module.Node.val)): int + 1;
-    $Heap := update($Heap, c#0, _module.Node.val, $Box($rhs#2));
-    assume true;
-    assume {:captureState "Test/arith.dfy(109,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(110,9)
-    assert {:id "id1023"} p#0 != null;
-    assume true;
-    assume true;
-    assert {:id "id1024"} p#0 != null;
-    assume true;
-    assume true;
-    $rhs#3 := $Unbox(read($Heap, p#0, _module.Node.val)): int + 1;
-    $Heap := update($Heap, p#0, _module.Node.val, $Box($rhs#3));
-    assume true;
-    assume {:captureState "Test/arith.dfy(110,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(111,9)
-    assert {:id "id1027"} q#0 != null;
-    assume true;
-    assume true;
-    assert {:id "id1028"} q#0 != null;
-    assume true;
-    assume true;
-    $rhs#4 := $Unbox(read($Heap, q#0, _module.Node.val)): int + 1;
-    $Heap := update($Heap, q#0, _module.Node.val, $Box($rhs#4));
-    assume true;
-    assume {:captureState "Test/arith.dfy(111,20)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(112,9)
-    assert {:id "id1031"} r#0 != null;
-    assume true;
-    assume true;
-    assert {:id "id1032"} r#0 != null;
-    assume true;
-    assume true;
-    $rhs#5 := $Unbox(read($Heap, r#0, _module.Node.val)): int + 1;
-    $Heap := update($Heap, r#0, _module.Node.val, $Box($rhs#5));
-    assume true;
-    assume {:captureState "Test/arith.dfy(112,20)"} true;
+    assume {:captureState "Test/arith.dfy(63,30)"} true;
 }
 
 
@@ -7535,193 +4621,151 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (well-
 {
 
     // AddMethodImpl: BumpN, CheckWellFormed$$_module.__default.BumpN
-    assume {:captureState "Test/arith.dfy(119,7): initial state"} true;
-    assume {:id "id1035"} n#0 >= LitInt(0);
-    assume {:id "id1036"} a#0 != b#0;
-    assume {:id "id1037"} a#0 != c#0;
-    assume {:id "id1038"} a#0 != d#0;
-    assume {:id "id1039"} a#0 != e#0;
-    assume {:id "id1040"} a#0 != f#0;
-    assume {:id "id1041"} b#0 != c#0;
-    assume {:id "id1042"} b#0 != d#0;
-    assume {:id "id1043"} b#0 != e#0;
-    assume {:id "id1044"} b#0 != f#0;
-    assume {:id "id1045"} c#0 != d#0;
-    assume {:id "id1046"} c#0 != e#0;
-    assume {:id "id1047"} c#0 != f#0;
-    assume {:id "id1048"} d#0 != e#0;
-    assume {:id "id1049"} d#0 != f#0;
-    assume {:id "id1050"} e#0 != f#0;
+    assume {:captureState "Test/arith.dfy(66,7): initial state"} true;
+    assume {:id "id511"} n#0 >= LitInt(0);
+    assume {:id "id512"} a#0 != b#0;
+    assume {:id "id513"} a#0 != c#0;
+    assume {:id "id514"} a#0 != d#0;
+    assume {:id "id515"} a#0 != e#0;
+    assume {:id "id516"} a#0 != f#0;
+    assume {:id "id517"} b#0 != c#0;
+    assume {:id "id518"} b#0 != d#0;
+    assume {:id "id519"} b#0 != e#0;
+    assume {:id "id520"} b#0 != f#0;
+    assume {:id "id521"} c#0 != d#0;
+    assume {:id "id522"} c#0 != e#0;
+    assume {:id "id523"} c#0 != f#0;
+    assume {:id "id524"} d#0 != e#0;
+    assume {:id "id525"} d#0 != f#0;
+    assume {:id "id526"} e#0 != f#0;
     havoc $Heap;
-    assume {:captureState "Test/arith.dfy(126,86): post-state"} true;
-    assert {:id "id1051"} a#0 != null;
+    assume {:captureState "Test/arith.dfy(73,57): post-state"} true;
+    assert {:id "id527"} a#0 != null;
     assume true;
-    assert {:id "id1052"} a#0 != null;
-    assert {:id "id1053"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id528"} a#0 != null;
+    assert {:id "id529"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id1054"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-    assert {:id "id1055"} a#0 != null;
+    assume {:id "id530"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + n#0;
+    assert {:id "id531"} a#0 != null;
     assume true;
-    assert {:id "id1056"} a#0 != null;
-    assert {:id "id1057"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id532"} a#0 != null;
+    assert {:id "id533"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id1058"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+    assume {:id "id534"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-    assert {:id "id1059"} a#0 != null;
+    assert {:id "id535"} a#0 != null;
     assume true;
-    assert {:id "id1060"} a#0 != null;
-    assert {:id "id1061"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id536"} a#0 != null;
+    assert {:id "id537"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id1062"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+    assume {:id "id538"} $Unbox(read($Heap, a#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-    assert {:id "id1063"} a#0 != null;
+    assert {:id "id539"} b#0 != null;
     assume true;
-    assert {:id "id1064"} a#0 != null;
-    assert {:id "id1065"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id540"} b#0 != null;
+    assert {:id "id541"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id1066"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-    assert {:id "id1067"} b#0 != null;
+    assume {:id "id542"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + n#0;
+    assert {:id "id543"} b#0 != null;
     assume true;
-    assert {:id "id1068"} b#0 != null;
-    assert {:id "id1069"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id544"} b#0 != null;
+    assert {:id "id545"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id1070"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-    assert {:id "id1071"} b#0 != null;
-    assume true;
-    assert {:id "id1072"} b#0 != null;
-    assert {:id "id1073"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id1074"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+    assume {:id "id546"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-    assert {:id "id1075"} b#0 != null;
+    assert {:id "id547"} b#0 != null;
     assume true;
-    assert {:id "id1076"} b#0 != null;
-    assert {:id "id1077"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id548"} b#0 != null;
+    assert {:id "id549"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id1078"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+    assume {:id "id550"} $Unbox(read($Heap, b#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-    assert {:id "id1079"} b#0 != null;
+    assert {:id "id551"} c#0 != null;
     assume true;
-    assert {:id "id1080"} b#0 != null;
-    assert {:id "id1081"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id552"} c#0 != null;
+    assert {:id "id553"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id1082"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-    assert {:id "id1083"} c#0 != null;
+    assume {:id "id554"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + n#0;
+    assert {:id "id555"} c#0 != null;
     assume true;
-    assert {:id "id1084"} c#0 != null;
-    assert {:id "id1085"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id556"} c#0 != null;
+    assert {:id "id557"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id1086"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-    assert {:id "id1087"} c#0 != null;
-    assume true;
-    assert {:id "id1088"} c#0 != null;
-    assert {:id "id1089"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id1090"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+    assume {:id "id558"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-    assert {:id "id1091"} c#0 != null;
+    assert {:id "id559"} c#0 != null;
     assume true;
-    assert {:id "id1092"} c#0 != null;
-    assert {:id "id1093"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id560"} c#0 != null;
+    assert {:id "id561"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id1094"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+    assume {:id "id562"} $Unbox(read($Heap, c#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-    assert {:id "id1095"} c#0 != null;
+    assert {:id "id563"} d#0 != null;
     assume true;
-    assert {:id "id1096"} c#0 != null;
-    assert {:id "id1097"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id564"} d#0 != null;
+    assert {:id "id565"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id1098"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-    assert {:id "id1099"} d#0 != null;
+    assume {:id "id566"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + n#0;
+    assert {:id "id567"} d#0 != null;
     assume true;
-    assert {:id "id1100"} d#0 != null;
-    assert {:id "id1101"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id568"} d#0 != null;
+    assert {:id "id569"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id1102"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-    assert {:id "id1103"} d#0 != null;
-    assume true;
-    assert {:id "id1104"} d#0 != null;
-    assert {:id "id1105"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id1106"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+    assume {:id "id570"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-    assert {:id "id1107"} d#0 != null;
+    assert {:id "id571"} d#0 != null;
     assume true;
-    assert {:id "id1108"} d#0 != null;
-    assert {:id "id1109"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id572"} d#0 != null;
+    assert {:id "id573"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id1110"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+    assume {:id "id574"} $Unbox(read($Heap, d#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-    assert {:id "id1111"} d#0 != null;
+    assert {:id "id575"} e#0 != null;
     assume true;
-    assert {:id "id1112"} d#0 != null;
-    assert {:id "id1113"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id576"} e#0 != null;
+    assert {:id "id577"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id1114"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-    assert {:id "id1115"} e#0 != null;
+    assume {:id "id578"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + n#0;
+    assert {:id "id579"} e#0 != null;
     assume true;
-    assert {:id "id1116"} e#0 != null;
-    assert {:id "id1117"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id580"} e#0 != null;
+    assert {:id "id581"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id1118"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-    assert {:id "id1119"} e#0 != null;
-    assume true;
-    assert {:id "id1120"} e#0 != null;
-    assert {:id "id1121"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id1122"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+    assume {:id "id582"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-    assert {:id "id1123"} e#0 != null;
+    assert {:id "id583"} e#0 != null;
     assume true;
-    assert {:id "id1124"} e#0 != null;
-    assert {:id "id1125"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id584"} e#0 != null;
+    assert {:id "id585"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id1126"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+    assume {:id "id586"} $Unbox(read($Heap, e#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-    assert {:id "id1127"} e#0 != null;
+    assert {:id "id587"} f#0 != null;
     assume true;
-    assert {:id "id1128"} e#0 != null;
-    assert {:id "id1129"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id588"} f#0 != null;
+    assert {:id "id589"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id1130"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-    assert {:id "id1131"} f#0 != null;
+    assume {:id "id590"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + n#0;
+    assert {:id "id591"} f#0 != null;
     assume true;
-    assert {:id "id1132"} f#0 != null;
-    assert {:id "id1133"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id592"} f#0 != null;
+    assert {:id "id593"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id1134"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-    assert {:id "id1135"} f#0 != null;
-    assume true;
-    assert {:id "id1136"} f#0 != null;
-    assert {:id "id1137"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id1138"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+    assume {:id "id594"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-    assert {:id "id1139"} f#0 != null;
+    assert {:id "id595"} f#0 != null;
     assume true;
-    assert {:id "id1140"} f#0 != null;
-    assert {:id "id1141"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id596"} f#0 != null;
+    assert {:id "id597"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id1142"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+    assume {:id "id598"} $Unbox(read($Heap, f#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-    assert {:id "id1143"} f#0 != null;
-    assume true;
-    assert {:id "id1144"} f#0 != null;
-    assert {:id "id1145"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id1146"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 }
 
 
@@ -7735,37 +4779,37 @@ procedure {:verboseName "BumpN (call)"} Call$$_module.__default.BumpN(a#0: ref w
     n#0: int);
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id1147"} n#0 >= LitInt(0);
+  requires {:id "id599"} n#0 >= LitInt(0);
   free requires {:always_assume} true;
-  requires {:id "id1148"} a#0 != b#0;
+  requires {:id "id600"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id1149"} a#0 != c#0;
+  requires {:id "id601"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id1150"} a#0 != d#0;
+  requires {:id "id602"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1151"} a#0 != e#0;
+  requires {:id "id603"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1152"} a#0 != f#0;
+  requires {:id "id604"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1153"} b#0 != c#0;
+  requires {:id "id605"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id1154"} b#0 != d#0;
+  requires {:id "id606"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1155"} b#0 != e#0;
+  requires {:id "id607"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1156"} b#0 != f#0;
+  requires {:id "id608"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1157"} c#0 != d#0;
+  requires {:id "id609"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1158"} c#0 != e#0;
+  requires {:id "id610"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1159"} c#0 != f#0;
+  requires {:id "id611"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1160"} d#0 != e#0;
+  requires {:id "id612"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1161"} d#0 != f#0;
+  requires {:id "id613"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1162"} e#0 != f#0;
+  requires {:id "id614"} e#0 != f#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -7776,77 +4820,59 @@ procedure {:verboseName "BumpN (call)"} Call$$_module.__default.BumpN(a#0: ref w
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id1163"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
+  ensures {:id "id615"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1164"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id616"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1165"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id617"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1166"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
+  ensures {:id "id618"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1167"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1168"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id619"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1169"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id620"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1170"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
+  ensures {:id "id621"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1171"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1172"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id622"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1173"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id623"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1174"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
+  ensures {:id "id624"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1175"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1176"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id625"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1177"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id626"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1178"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
+  ensures {:id "id627"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1179"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1180"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id628"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1181"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id629"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1182"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
+  ensures {:id "id630"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1183"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1184"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id631"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1185"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id632"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1186"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 
 
 
@@ -7860,37 +4886,37 @@ procedure {:verboseName "BumpN (correctness)"} Impl$$_module.__default.BumpN(a#0
    returns ($_reverifyPost: bool);
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id1187"} n#0 >= LitInt(0);
+  requires {:id "id633"} n#0 >= LitInt(0);
   free requires {:always_assume} true;
-  requires {:id "id1188"} a#0 != b#0;
+  requires {:id "id634"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id1189"} a#0 != c#0;
+  requires {:id "id635"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id1190"} a#0 != d#0;
+  requires {:id "id636"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1191"} a#0 != e#0;
+  requires {:id "id637"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1192"} a#0 != f#0;
+  requires {:id "id638"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1193"} b#0 != c#0;
+  requires {:id "id639"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id1194"} b#0 != d#0;
+  requires {:id "id640"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1195"} b#0 != e#0;
+  requires {:id "id641"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1196"} b#0 != f#0;
+  requires {:id "id642"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1197"} c#0 != d#0;
+  requires {:id "id643"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1198"} c#0 != e#0;
+  requires {:id "id644"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1199"} c#0 != f#0;
+  requires {:id "id645"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1200"} d#0 != e#0;
+  requires {:id "id646"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1201"} d#0 != f#0;
+  requires {:id "id647"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1202"} e#0 != f#0;
+  requires {:id "id648"} e#0 != f#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -7901,77 +4927,59 @@ procedure {:verboseName "BumpN (correctness)"} Impl$$_module.__default.BumpN(a#0
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id1203"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
+  ensures {:id "id649"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1204"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id650"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1205"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id651"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1206"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
+  ensures {:id "id652"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1207"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1208"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id653"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1209"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id654"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1210"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
+  ensures {:id "id655"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1211"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1212"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id656"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1213"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id657"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1214"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
+  ensures {:id "id658"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1215"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1216"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id659"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1217"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id660"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1218"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
+  ensures {:id "id661"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1219"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1220"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id662"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1221"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id663"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1222"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
+  ensures {:id "id664"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + n#0;
   free ensures {:always_assume} true;
-  ensures {:id "id1223"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(2), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1224"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id665"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1225"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id666"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1226"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
 
 
 
@@ -7994,14 +5002,14 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
   var $PreCallAlloc#0_0: [ref]bool;
 
     // AddMethodImpl: BumpN, Impl$$_module.__default.BumpN
-    assume {:captureState "Test/arith.dfy(132,0): initial state"} true;
+    assume {:captureState "Test/arith.dfy(79,0): initial state"} true;
     $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(133,9)
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(80,9)
     assume true;
     assume true;
     i#0 := LitInt(0);
-    assume {:captureState "Test/arith.dfy(133,12)"} true;
-    // ----- while statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(134,3)
+    assume {:captureState "Test/arith.dfy(80,12)"} true;
+    // ----- while statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(81,3)
     // Assume Fuel Constant
     $PreLoopHeap$loop#0 := $Heap;
     $PreLoopAlloc$loop#0 := $Alloc;
@@ -8017,86 +5025,68 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
     assume $w$loop#0 ==> true;
     while (true)
       free invariant true;
-      invariant {:id "id1229"} $w$loop#0 ==> LitInt(0) <= i#0;
-      invariant {:id "id1230"} $w$loop#0 ==> i#0 <= n#0;
+      invariant {:id "id669"} $w$loop#0 ==> LitInt(0) <= i#0;
+      invariant {:id "id670"} $w$loop#0 ==> i#0 <= n#0;
       free invariant true;
-      invariant {:id "id1244"} $w$loop#0
+      invariant {:id "id681"} $w$loop#0
          ==> $Unbox(read($Heap, a#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(2), i#0);
-      invariant {:id "id1245"} $w$loop#0
+           == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + i#0;
+      invariant {:id "id682"} $w$loop#0
          ==> $Unbox(read($Heap, a#0, _module.Node.tag)): int
            == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-      invariant {:id "id1246"} $w$loop#0
+      invariant {:id "id683"} $w$loop#0
          ==> $Unbox(read($Heap, a#0, _module.Node.score)): int
            == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-      invariant {:id "id1247"} $w$loop#0
-         ==> $Unbox(read($Heap, a#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
       free invariant true;
-      invariant {:id "id1261"} $w$loop#0
+      invariant {:id "id694"} $w$loop#0
          ==> $Unbox(read($Heap, b#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(2), i#0);
-      invariant {:id "id1262"} $w$loop#0
+           == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + i#0;
+      invariant {:id "id695"} $w$loop#0
          ==> $Unbox(read($Heap, b#0, _module.Node.tag)): int
            == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-      invariant {:id "id1263"} $w$loop#0
+      invariant {:id "id696"} $w$loop#0
          ==> $Unbox(read($Heap, b#0, _module.Node.score)): int
            == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-      invariant {:id "id1264"} $w$loop#0
-         ==> $Unbox(read($Heap, b#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
       free invariant true;
-      invariant {:id "id1278"} $w$loop#0
+      invariant {:id "id707"} $w$loop#0
          ==> $Unbox(read($Heap, c#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(2), i#0);
-      invariant {:id "id1279"} $w$loop#0
+           == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + i#0;
+      invariant {:id "id708"} $w$loop#0
          ==> $Unbox(read($Heap, c#0, _module.Node.tag)): int
            == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-      invariant {:id "id1280"} $w$loop#0
+      invariant {:id "id709"} $w$loop#0
          ==> $Unbox(read($Heap, c#0, _module.Node.score)): int
            == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-      invariant {:id "id1281"} $w$loop#0
-         ==> $Unbox(read($Heap, c#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
       free invariant true;
-      invariant {:id "id1295"} $w$loop#0
+      invariant {:id "id720"} $w$loop#0
          ==> $Unbox(read($Heap, d#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(2), i#0);
-      invariant {:id "id1296"} $w$loop#0
+           == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + i#0;
+      invariant {:id "id721"} $w$loop#0
          ==> $Unbox(read($Heap, d#0, _module.Node.tag)): int
            == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-      invariant {:id "id1297"} $w$loop#0
+      invariant {:id "id722"} $w$loop#0
          ==> $Unbox(read($Heap, d#0, _module.Node.score)): int
            == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-      invariant {:id "id1298"} $w$loop#0
-         ==> $Unbox(read($Heap, d#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
       free invariant true;
-      invariant {:id "id1312"} $w$loop#0
+      invariant {:id "id733"} $w$loop#0
          ==> $Unbox(read($Heap, e#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(2), i#0);
-      invariant {:id "id1313"} $w$loop#0
+           == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + i#0;
+      invariant {:id "id734"} $w$loop#0
          ==> $Unbox(read($Heap, e#0, _module.Node.tag)): int
            == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-      invariant {:id "id1314"} $w$loop#0
+      invariant {:id "id735"} $w$loop#0
          ==> $Unbox(read($Heap, e#0, _module.Node.score)): int
            == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-      invariant {:id "id1315"} $w$loop#0
-         ==> $Unbox(read($Heap, e#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
       free invariant true;
-      invariant {:id "id1329"} $w$loop#0
+      invariant {:id "id746"} $w$loop#0
          ==> $Unbox(read($Heap, f#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(2), i#0);
-      invariant {:id "id1330"} $w$loop#0
+           == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + i#0;
+      invariant {:id "id747"} $w$loop#0
          ==> $Unbox(read($Heap, f#0, _module.Node.tag)): int
            == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-      invariant {:id "id1331"} $w$loop#0
+      invariant {:id "id748"} $w$loop#0
          ==> $Unbox(read($Heap, f#0, _module.Node.score)): int
            == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-      invariant {:id "id1332"} $w$loop#0
-         ==> $Unbox(read($Heap, f#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
       free invariant a#0 != null
            && a#0 != a#0
            && a#0 != b#0
@@ -8124,15 +5114,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
            && a#0 != f#0
          ==> read($PreLoopHeap$loop#0, a#0, _module.Node.score)
            == read($PreLoopHeap$loop#0, a#0, _module.Node.score);
-      free invariant a#0 != null
-           && a#0 != a#0
-           && a#0 != b#0
-           && a#0 != c#0
-           && a#0 != d#0
-           && a#0 != e#0
-           && a#0 != f#0
-         ==> read($PreLoopHeap$loop#0, a#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, a#0, _module.Node.rank);
       free invariant b#0 != null
            && b#0 != a#0
            && b#0 != b#0
@@ -8160,15 +5141,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
            && b#0 != f#0
          ==> read($PreLoopHeap$loop#0, b#0, _module.Node.score)
            == read($PreLoopHeap$loop#0, b#0, _module.Node.score);
-      free invariant b#0 != null
-           && b#0 != a#0
-           && b#0 != b#0
-           && b#0 != c#0
-           && b#0 != d#0
-           && b#0 != e#0
-           && b#0 != f#0
-         ==> read($PreLoopHeap$loop#0, b#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, b#0, _module.Node.rank);
       free invariant c#0 != null
            && c#0 != a#0
            && c#0 != b#0
@@ -8196,15 +5168,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
            && c#0 != f#0
          ==> read($PreLoopHeap$loop#0, c#0, _module.Node.score)
            == read($PreLoopHeap$loop#0, c#0, _module.Node.score);
-      free invariant c#0 != null
-           && c#0 != a#0
-           && c#0 != b#0
-           && c#0 != c#0
-           && c#0 != d#0
-           && c#0 != e#0
-           && c#0 != f#0
-         ==> read($PreLoopHeap$loop#0, c#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, c#0, _module.Node.rank);
       free invariant d#0 != null
            && d#0 != a#0
            && d#0 != b#0
@@ -8232,15 +5195,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
            && d#0 != f#0
          ==> read($PreLoopHeap$loop#0, d#0, _module.Node.score)
            == read($PreLoopHeap$loop#0, d#0, _module.Node.score);
-      free invariant d#0 != null
-           && d#0 != a#0
-           && d#0 != b#0
-           && d#0 != c#0
-           && d#0 != d#0
-           && d#0 != e#0
-           && d#0 != f#0
-         ==> read($PreLoopHeap$loop#0, d#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, d#0, _module.Node.rank);
       free invariant e#0 != null
            && e#0 != a#0
            && e#0 != b#0
@@ -8268,15 +5222,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
            && e#0 != f#0
          ==> read($PreLoopHeap$loop#0, e#0, _module.Node.score)
            == read($PreLoopHeap$loop#0, e#0, _module.Node.score);
-      free invariant e#0 != null
-           && e#0 != a#0
-           && e#0 != b#0
-           && e#0 != c#0
-           && e#0 != d#0
-           && e#0 != e#0
-           && e#0 != f#0
-         ==> read($PreLoopHeap$loop#0, e#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, e#0, _module.Node.rank);
       free invariant f#0 != null
            && f#0 != a#0
            && f#0 != b#0
@@ -8304,18 +5249,9 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
            && f#0 != f#0
          ==> read($PreLoopHeap$loop#0, f#0, _module.Node.score)
            == read($PreLoopHeap$loop#0, f#0, _module.Node.score);
-      free invariant f#0 != null
-           && f#0 != a#0
-           && f#0 != b#0
-           && f#0 != c#0
-           && f#0 != d#0
-           && f#0 != e#0
-           && f#0 != f#0
-         ==> read($PreLoopHeap$loop#0, f#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, f#0, _module.Node.rank);
       free invariant n#0 - i#0 <= $decr_init$loop#00;
     {
-        assume {:captureState "Test/arith.dfy(134,2): after some loop iterations"} true;
+        assume {:captureState "Test/arith.dfy(81,2): after some loop iterations"} true;
         if (!$w$loop#0)
         {
             if (LitInt(0) <= i#0)
@@ -8323,307 +5259,211 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
             }
 
             assume true;
-            assume {:id "id1228"} LitInt(0) <= i#0 && i#0 <= n#0;
-            assert {:id "id1231"} {:subsumption 0} a#0 != null;
+            assume {:id "id668"} LitInt(0) <= i#0 && i#0 <= n#0;
+            assert {:id "id671"} {:subsumption 0} a#0 != null;
             assume true;
-            assert {:id "id1232"} {:subsumption 0} a#0 != null;
-            assert {:id "id1233"} a#0 == null || old($Alloc)[a#0];
+            assert {:id "id672"} {:subsumption 0} a#0 != null;
+            assert {:id "id673"} a#0 == null || old($Alloc)[a#0];
             assume true;
             if ($Unbox(read($Heap, a#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(2), i#0))
+               == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + i#0)
             {
-                assert {:id "id1234"} {:subsumption 0} a#0 != null;
+                assert {:id "id674"} {:subsumption 0} a#0 != null;
                 assume true;
-                assert {:id "id1235"} {:subsumption 0} a#0 != null;
-                assert {:id "id1236"} a#0 == null || old($Alloc)[a#0];
+                assert {:id "id675"} {:subsumption 0} a#0 != null;
+                assert {:id "id676"} a#0 == null || old($Alloc)[a#0];
                 assume true;
             }
 
             if ($Unbox(read($Heap, a#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+                 == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, a#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int)
             {
-                assert {:id "id1237"} {:subsumption 0} a#0 != null;
+                assert {:id "id677"} {:subsumption 0} a#0 != null;
                 assume true;
-                assert {:id "id1238"} {:subsumption 0} a#0 != null;
-                assert {:id "id1239"} a#0 == null || old($Alloc)[a#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, a#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
-               && $Unbox(read($Heap, a#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, a#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.score)): int)
-            {
-                assert {:id "id1240"} {:subsumption 0} a#0 != null;
-                assume true;
-                assert {:id "id1241"} {:subsumption 0} a#0 != null;
-                assert {:id "id1242"} a#0 == null || old($Alloc)[a#0];
+                assert {:id "id678"} {:subsumption 0} a#0 != null;
+                assert {:id "id679"} a#0 == null || old($Alloc)[a#0];
                 assume true;
             }
 
             assume true;
-            assume {:id "id1243"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+            assume {:id "id680"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+                 == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, a#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int
                && $Unbox(read($Heap, a#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.score)): int
-               && $Unbox(read($Heap, a#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-            assert {:id "id1248"} {:subsumption 0} b#0 != null;
+                 == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
+            assert {:id "id684"} {:subsumption 0} b#0 != null;
             assume true;
-            assert {:id "id1249"} {:subsumption 0} b#0 != null;
-            assert {:id "id1250"} b#0 == null || old($Alloc)[b#0];
+            assert {:id "id685"} {:subsumption 0} b#0 != null;
+            assert {:id "id686"} b#0 == null || old($Alloc)[b#0];
             assume true;
             if ($Unbox(read($Heap, b#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(2), i#0))
+               == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + i#0)
             {
-                assert {:id "id1251"} {:subsumption 0} b#0 != null;
+                assert {:id "id687"} {:subsumption 0} b#0 != null;
                 assume true;
-                assert {:id "id1252"} {:subsumption 0} b#0 != null;
-                assert {:id "id1253"} b#0 == null || old($Alloc)[b#0];
+                assert {:id "id688"} {:subsumption 0} b#0 != null;
+                assert {:id "id689"} b#0 == null || old($Alloc)[b#0];
                 assume true;
             }
 
             if ($Unbox(read($Heap, b#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+                 == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, b#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int)
             {
-                assert {:id "id1254"} {:subsumption 0} b#0 != null;
+                assert {:id "id690"} {:subsumption 0} b#0 != null;
                 assume true;
-                assert {:id "id1255"} {:subsumption 0} b#0 != null;
-                assert {:id "id1256"} b#0 == null || old($Alloc)[b#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, b#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
-               && $Unbox(read($Heap, b#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, b#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.score)): int)
-            {
-                assert {:id "id1257"} {:subsumption 0} b#0 != null;
-                assume true;
-                assert {:id "id1258"} {:subsumption 0} b#0 != null;
-                assert {:id "id1259"} b#0 == null || old($Alloc)[b#0];
+                assert {:id "id691"} {:subsumption 0} b#0 != null;
+                assert {:id "id692"} b#0 == null || old($Alloc)[b#0];
                 assume true;
             }
 
             assume true;
-            assume {:id "id1260"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+            assume {:id "id693"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+                 == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, b#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int
                && $Unbox(read($Heap, b#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.score)): int
-               && $Unbox(read($Heap, b#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-            assert {:id "id1265"} {:subsumption 0} c#0 != null;
+                 == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
+            assert {:id "id697"} {:subsumption 0} c#0 != null;
             assume true;
-            assert {:id "id1266"} {:subsumption 0} c#0 != null;
-            assert {:id "id1267"} c#0 == null || old($Alloc)[c#0];
+            assert {:id "id698"} {:subsumption 0} c#0 != null;
+            assert {:id "id699"} c#0 == null || old($Alloc)[c#0];
             assume true;
             if ($Unbox(read($Heap, c#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(2), i#0))
+               == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + i#0)
             {
-                assert {:id "id1268"} {:subsumption 0} c#0 != null;
+                assert {:id "id700"} {:subsumption 0} c#0 != null;
                 assume true;
-                assert {:id "id1269"} {:subsumption 0} c#0 != null;
-                assert {:id "id1270"} c#0 == null || old($Alloc)[c#0];
+                assert {:id "id701"} {:subsumption 0} c#0 != null;
+                assert {:id "id702"} c#0 == null || old($Alloc)[c#0];
                 assume true;
             }
 
             if ($Unbox(read($Heap, c#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+                 == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, c#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int)
             {
-                assert {:id "id1271"} {:subsumption 0} c#0 != null;
+                assert {:id "id703"} {:subsumption 0} c#0 != null;
                 assume true;
-                assert {:id "id1272"} {:subsumption 0} c#0 != null;
-                assert {:id "id1273"} c#0 == null || old($Alloc)[c#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, c#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
-               && $Unbox(read($Heap, c#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, c#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.score)): int)
-            {
-                assert {:id "id1274"} {:subsumption 0} c#0 != null;
-                assume true;
-                assert {:id "id1275"} {:subsumption 0} c#0 != null;
-                assert {:id "id1276"} c#0 == null || old($Alloc)[c#0];
+                assert {:id "id704"} {:subsumption 0} c#0 != null;
+                assert {:id "id705"} c#0 == null || old($Alloc)[c#0];
                 assume true;
             }
 
             assume true;
-            assume {:id "id1277"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+            assume {:id "id706"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+                 == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, c#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int
                && $Unbox(read($Heap, c#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.score)): int
-               && $Unbox(read($Heap, c#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-            assert {:id "id1282"} {:subsumption 0} d#0 != null;
+                 == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
+            assert {:id "id710"} {:subsumption 0} d#0 != null;
             assume true;
-            assert {:id "id1283"} {:subsumption 0} d#0 != null;
-            assert {:id "id1284"} d#0 == null || old($Alloc)[d#0];
+            assert {:id "id711"} {:subsumption 0} d#0 != null;
+            assert {:id "id712"} d#0 == null || old($Alloc)[d#0];
             assume true;
             if ($Unbox(read($Heap, d#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(2), i#0))
+               == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + i#0)
             {
-                assert {:id "id1285"} {:subsumption 0} d#0 != null;
+                assert {:id "id713"} {:subsumption 0} d#0 != null;
                 assume true;
-                assert {:id "id1286"} {:subsumption 0} d#0 != null;
-                assert {:id "id1287"} d#0 == null || old($Alloc)[d#0];
+                assert {:id "id714"} {:subsumption 0} d#0 != null;
+                assert {:id "id715"} d#0 == null || old($Alloc)[d#0];
                 assume true;
             }
 
             if ($Unbox(read($Heap, d#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+                 == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, d#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int)
             {
-                assert {:id "id1288"} {:subsumption 0} d#0 != null;
+                assert {:id "id716"} {:subsumption 0} d#0 != null;
                 assume true;
-                assert {:id "id1289"} {:subsumption 0} d#0 != null;
-                assert {:id "id1290"} d#0 == null || old($Alloc)[d#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, d#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
-               && $Unbox(read($Heap, d#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, d#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.score)): int)
-            {
-                assert {:id "id1291"} {:subsumption 0} d#0 != null;
-                assume true;
-                assert {:id "id1292"} {:subsumption 0} d#0 != null;
-                assert {:id "id1293"} d#0 == null || old($Alloc)[d#0];
+                assert {:id "id717"} {:subsumption 0} d#0 != null;
+                assert {:id "id718"} d#0 == null || old($Alloc)[d#0];
                 assume true;
             }
 
             assume true;
-            assume {:id "id1294"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+            assume {:id "id719"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+                 == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, d#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int
                && $Unbox(read($Heap, d#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.score)): int
-               && $Unbox(read($Heap, d#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-            assert {:id "id1299"} {:subsumption 0} e#0 != null;
+                 == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
+            assert {:id "id723"} {:subsumption 0} e#0 != null;
             assume true;
-            assert {:id "id1300"} {:subsumption 0} e#0 != null;
-            assert {:id "id1301"} e#0 == null || old($Alloc)[e#0];
+            assert {:id "id724"} {:subsumption 0} e#0 != null;
+            assert {:id "id725"} e#0 == null || old($Alloc)[e#0];
             assume true;
             if ($Unbox(read($Heap, e#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(2), i#0))
+               == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + i#0)
             {
-                assert {:id "id1302"} {:subsumption 0} e#0 != null;
+                assert {:id "id726"} {:subsumption 0} e#0 != null;
                 assume true;
-                assert {:id "id1303"} {:subsumption 0} e#0 != null;
-                assert {:id "id1304"} e#0 == null || old($Alloc)[e#0];
+                assert {:id "id727"} {:subsumption 0} e#0 != null;
+                assert {:id "id728"} e#0 == null || old($Alloc)[e#0];
                 assume true;
             }
 
             if ($Unbox(read($Heap, e#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+                 == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, e#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int)
             {
-                assert {:id "id1305"} {:subsumption 0} e#0 != null;
+                assert {:id "id729"} {:subsumption 0} e#0 != null;
                 assume true;
-                assert {:id "id1306"} {:subsumption 0} e#0 != null;
-                assert {:id "id1307"} e#0 == null || old($Alloc)[e#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, e#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
-               && $Unbox(read($Heap, e#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, e#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.score)): int)
-            {
-                assert {:id "id1308"} {:subsumption 0} e#0 != null;
-                assume true;
-                assert {:id "id1309"} {:subsumption 0} e#0 != null;
-                assert {:id "id1310"} e#0 == null || old($Alloc)[e#0];
+                assert {:id "id730"} {:subsumption 0} e#0 != null;
+                assert {:id "id731"} e#0 == null || old($Alloc)[e#0];
                 assume true;
             }
 
             assume true;
-            assume {:id "id1311"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+            assume {:id "id732"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+                 == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, e#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int
                && $Unbox(read($Heap, e#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.score)): int
-               && $Unbox(read($Heap, e#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-            assert {:id "id1316"} {:subsumption 0} f#0 != null;
+                 == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
+            assert {:id "id736"} {:subsumption 0} f#0 != null;
             assume true;
-            assert {:id "id1317"} {:subsumption 0} f#0 != null;
-            assert {:id "id1318"} f#0 == null || old($Alloc)[f#0];
+            assert {:id "id737"} {:subsumption 0} f#0 != null;
+            assert {:id "id738"} f#0 == null || old($Alloc)[f#0];
             assume true;
             if ($Unbox(read($Heap, f#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(2), i#0))
+               == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + i#0)
             {
-                assert {:id "id1319"} {:subsumption 0} f#0 != null;
+                assert {:id "id739"} {:subsumption 0} f#0 != null;
                 assume true;
-                assert {:id "id1320"} {:subsumption 0} f#0 != null;
-                assert {:id "id1321"} f#0 == null || old($Alloc)[f#0];
+                assert {:id "id740"} {:subsumption 0} f#0 != null;
+                assert {:id "id741"} f#0 == null || old($Alloc)[f#0];
                 assume true;
             }
 
             if ($Unbox(read($Heap, f#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+                 == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, f#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int)
             {
-                assert {:id "id1322"} {:subsumption 0} f#0 != null;
+                assert {:id "id742"} {:subsumption 0} f#0 != null;
                 assume true;
-                assert {:id "id1323"} {:subsumption 0} f#0 != null;
-                assert {:id "id1324"} f#0 == null || old($Alloc)[f#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, f#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
-               && $Unbox(read($Heap, f#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, f#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.score)): int)
-            {
-                assert {:id "id1325"} {:subsumption 0} f#0 != null;
-                assume true;
-                assert {:id "id1326"} {:subsumption 0} f#0 != null;
-                assert {:id "id1327"} f#0 == null || old($Alloc)[f#0];
+                assert {:id "id743"} {:subsumption 0} f#0 != null;
+                assert {:id "id744"} f#0 == null || old($Alloc)[f#0];
                 assume true;
             }
 
             assume true;
-            assume {:id "id1328"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(2), i#0)
+            assume {:id "id745"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+                 == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + i#0
                && $Unbox(read($Heap, f#0, _module.Node.tag)): int
                  == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int
                && $Unbox(read($Heap, f#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.score)): int
-               && $Unbox(read($Heap, f#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
+                 == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
             assume true;
             assume false;
         }
@@ -8636,7 +5476,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
 
         assume true;
         $decr$loop#00 := n#0 - i#0;
-        // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(143,15)
+        // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(90,9)
         // TrCallStmt: Before ProcessCallStmt
         assume true;
         // ProcessCallStmt: CheckSubrange
@@ -8664,50 +5504,50 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
         assume true;
         assume true;
         assume true;
-        assert {:id "id1333"} a##0_0 == a#0
+        assert {:id "id749"} a##0_0 == a#0
            || a##0_0 == b#0
            || a##0_0 == c#0
            || a##0_0 == d#0
            || a##0_0 == e#0
            || a##0_0 == f#0
            || !old($Alloc)[a##0_0];
-        assert {:id "id1334"} b##0_0 == a#0
+        assert {:id "id750"} b##0_0 == a#0
            || b##0_0 == b#0
            || b##0_0 == c#0
            || b##0_0 == d#0
            || b##0_0 == e#0
            || b##0_0 == f#0
            || !old($Alloc)[b##0_0];
-        assert {:id "id1335"} c##0_0 == a#0
+        assert {:id "id751"} c##0_0 == a#0
            || c##0_0 == b#0
            || c##0_0 == c#0
            || c##0_0 == d#0
            || c##0_0 == e#0
            || c##0_0 == f#0
            || !old($Alloc)[c##0_0];
-        assert {:id "id1336"} d##0_0 == a#0
+        assert {:id "id752"} d##0_0 == a#0
            || d##0_0 == b#0
            || d##0_0 == c#0
            || d##0_0 == d#0
            || d##0_0 == e#0
            || d##0_0 == f#0
            || !old($Alloc)[d##0_0];
-        assert {:id "id1337"} e##0_0 == a#0
+        assert {:id "id753"} e##0_0 == a#0
            || e##0_0 == b#0
            || e##0_0 == c#0
            || e##0_0 == d#0
            || e##0_0 == e#0
            || e##0_0 == f#0
            || !old($Alloc)[e##0_0];
-        assert {:id "id1338"} f##0_0 == a#0
+        assert {:id "id754"} f##0_0 == a#0
            || f##0_0 == b#0
            || f##0_0 == c#0
            || f##0_0 == d#0
            || f##0_0 == e#0
            || f##0_0 == f#0
            || !old($Alloc)[f##0_0];
-        call {:id "id1339"} Call$$_module.__default.DoubleBump(a##0_0, b##0_0, c##0_0, d##0_0, e##0_0, f##0_0);
-        // qf-call-frame DoubleBump: supports=12 reads=48 modified=6
+        call {:id "id755"} Call$$_module.__default.Bump(a##0_0, b##0_0, c##0_0, d##0_0, e##0_0, f##0_0);
+        // qf-call-frame Bump: supports=12 reads=36 modified=6
         assume a#0 != null
              && a#0 != a#0
              && a#0 != b#0
@@ -8735,15 +5575,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && a#0 != f#0
            ==> read($Heap, a#0, _module.Node.score)
              == read($PreCallHeap#0_0, a#0, _module.Node.score);
-        assume a#0 != null
-             && a#0 != a#0
-             && a#0 != b#0
-             && a#0 != c#0
-             && a#0 != d#0
-             && a#0 != e#0
-             && a#0 != f#0
-           ==> read($Heap, a#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, a#0, _module.Node.rank);
         assume b#0 != null
              && b#0 != a#0
              && b#0 != b#0
@@ -8771,15 +5602,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && b#0 != f#0
            ==> read($Heap, b#0, _module.Node.score)
              == read($PreCallHeap#0_0, b#0, _module.Node.score);
-        assume b#0 != null
-             && b#0 != a#0
-             && b#0 != b#0
-             && b#0 != c#0
-             && b#0 != d#0
-             && b#0 != e#0
-             && b#0 != f#0
-           ==> read($Heap, b#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, b#0, _module.Node.rank);
         assume c#0 != null
              && c#0 != a#0
              && c#0 != b#0
@@ -8807,15 +5629,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && c#0 != f#0
            ==> read($Heap, c#0, _module.Node.score)
              == read($PreCallHeap#0_0, c#0, _module.Node.score);
-        assume c#0 != null
-             && c#0 != a#0
-             && c#0 != b#0
-             && c#0 != c#0
-             && c#0 != d#0
-             && c#0 != e#0
-             && c#0 != f#0
-           ==> read($Heap, c#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, c#0, _module.Node.rank);
         assume d#0 != null
              && d#0 != a#0
              && d#0 != b#0
@@ -8843,15 +5656,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && d#0 != f#0
            ==> read($Heap, d#0, _module.Node.score)
              == read($PreCallHeap#0_0, d#0, _module.Node.score);
-        assume d#0 != null
-             && d#0 != a#0
-             && d#0 != b#0
-             && d#0 != c#0
-             && d#0 != d#0
-             && d#0 != e#0
-             && d#0 != f#0
-           ==> read($Heap, d#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, d#0, _module.Node.rank);
         assume e#0 != null
              && e#0 != a#0
              && e#0 != b#0
@@ -8879,15 +5683,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && e#0 != f#0
            ==> read($Heap, e#0, _module.Node.score)
              == read($PreCallHeap#0_0, e#0, _module.Node.score);
-        assume e#0 != null
-             && e#0 != a#0
-             && e#0 != b#0
-             && e#0 != c#0
-             && e#0 != d#0
-             && e#0 != e#0
-             && e#0 != f#0
-           ==> read($Heap, e#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, e#0, _module.Node.rank);
         assume f#0 != null
              && f#0 != a#0
              && f#0 != b#0
@@ -8915,15 +5710,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && f#0 != f#0
            ==> read($Heap, f#0, _module.Node.score)
              == read($PreCallHeap#0_0, f#0, _module.Node.score);
-        assume f#0 != null
-             && f#0 != a#0
-             && f#0 != b#0
-             && f#0 != c#0
-             && f#0 != d#0
-             && f#0 != e#0
-             && f#0 != f#0
-           ==> read($Heap, f#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, f#0, _module.Node.rank);
         assume a##0_0 != null
              && a##0_0 != a#0
              && a##0_0 != b#0
@@ -8951,15 +5737,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && a##0_0 != f#0
            ==> read($Heap, a##0_0, _module.Node.score)
              == read($PreCallHeap#0_0, a##0_0, _module.Node.score);
-        assume a##0_0 != null
-             && a##0_0 != a#0
-             && a##0_0 != b#0
-             && a##0_0 != c#0
-             && a##0_0 != d#0
-             && a##0_0 != e#0
-             && a##0_0 != f#0
-           ==> read($Heap, a##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, a##0_0, _module.Node.rank);
         assume b##0_0 != null
              && b##0_0 != a#0
              && b##0_0 != b#0
@@ -8987,15 +5764,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && b##0_0 != f#0
            ==> read($Heap, b##0_0, _module.Node.score)
              == read($PreCallHeap#0_0, b##0_0, _module.Node.score);
-        assume b##0_0 != null
-             && b##0_0 != a#0
-             && b##0_0 != b#0
-             && b##0_0 != c#0
-             && b##0_0 != d#0
-             && b##0_0 != e#0
-             && b##0_0 != f#0
-           ==> read($Heap, b##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, b##0_0, _module.Node.rank);
         assume c##0_0 != null
              && c##0_0 != a#0
              && c##0_0 != b#0
@@ -9023,15 +5791,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && c##0_0 != f#0
            ==> read($Heap, c##0_0, _module.Node.score)
              == read($PreCallHeap#0_0, c##0_0, _module.Node.score);
-        assume c##0_0 != null
-             && c##0_0 != a#0
-             && c##0_0 != b#0
-             && c##0_0 != c#0
-             && c##0_0 != d#0
-             && c##0_0 != e#0
-             && c##0_0 != f#0
-           ==> read($Heap, c##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, c##0_0, _module.Node.rank);
         assume d##0_0 != null
              && d##0_0 != a#0
              && d##0_0 != b#0
@@ -9059,15 +5818,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && d##0_0 != f#0
            ==> read($Heap, d##0_0, _module.Node.score)
              == read($PreCallHeap#0_0, d##0_0, _module.Node.score);
-        assume d##0_0 != null
-             && d##0_0 != a#0
-             && d##0_0 != b#0
-             && d##0_0 != c#0
-             && d##0_0 != d#0
-             && d##0_0 != e#0
-             && d##0_0 != f#0
-           ==> read($Heap, d##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, d##0_0, _module.Node.rank);
         assume e##0_0 != null
              && e##0_0 != a#0
              && e##0_0 != b#0
@@ -9095,15 +5845,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && e##0_0 != f#0
            ==> read($Heap, e##0_0, _module.Node.score)
              == read($PreCallHeap#0_0, e##0_0, _module.Node.score);
-        assume e##0_0 != null
-             && e##0_0 != a#0
-             && e##0_0 != b#0
-             && e##0_0 != c#0
-             && e##0_0 != d#0
-             && e##0_0 != e#0
-             && e##0_0 != f#0
-           ==> read($Heap, e##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, e##0_0, _module.Node.rank);
         assume f##0_0 != null
              && f##0_0 != a#0
              && f##0_0 != b#0
@@ -9131,1663 +5872,17 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpN (corre
              && f##0_0 != f#0
            ==> read($Heap, f##0_0, _module.Node.score)
              == read($PreCallHeap#0_0, f##0_0, _module.Node.score);
-        assume f##0_0 != null
-             && f##0_0 != a#0
-             && f##0_0 != b#0
-             && f##0_0 != c#0
-             && f##0_0 != d#0
-             && f##0_0 != e#0
-             && f##0_0 != f#0
-           ==> read($Heap, f##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, f##0_0, _module.Node.rank);
         // TrCallStmt: After ProcessCallStmt
-        assume {:captureState "Test/arith.dfy(143,32)"} true;
-        // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(144,7)
+        assume {:captureState "Test/arith.dfy(90,26)"} true;
+        // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(91,7)
         assume true;
         assume true;
         i#0 := i#0 + 1;
-        assume {:captureState "Test/arith.dfy(144,14)"} true;
+        assume {:captureState "Test/arith.dfy(91,14)"} true;
         assume true;
-        // ----- loop termination check ----- /Users/saline/development/projects/dafny/Test/arith.dfy(134,3)
-        assert {:id "id1341"} 0 <= $decr$loop#00 || n#0 - i#0 == $decr$loop#00;
-        assert {:id "id1342"} n#0 - i#0 < $decr$loop#00;
-        assume true;
-    }
-}
-
-
-
-procedure {:verboseName "BumpNQuad (well-formedness)"} CheckWellFormed$$_module.__default.BumpNQuad(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    d#0: ref where $Is(d#0, Tclass._module.Node()) && (d#0 == null || $Alloc[d#0]), 
-    e#0: ref where $Is(e#0, Tclass._module.Node()) && (e#0 == null || $Alloc[e#0]), 
-    f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]), 
-    n#0: int);
-  modifies $Heap, $Alloc;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpNQuad (well-formedness)"} CheckWellFormed$$_module.__default.BumpNQuad(a#0: ref, b#0: ref, c#0: ref, d#0: ref, e#0: ref, f#0: ref, n#0: int)
-{
-
-    // AddMethodImpl: BumpNQuad, CheckWellFormed$$_module.__default.BumpNQuad
-    assume {:captureState "Test/arith.dfy(152,7): initial state"} true;
-    assume {:id "id1343"} n#0 >= LitInt(0);
-    assume {:id "id1344"} a#0 != b#0;
-    assume {:id "id1345"} a#0 != c#0;
-    assume {:id "id1346"} a#0 != d#0;
-    assume {:id "id1347"} a#0 != e#0;
-    assume {:id "id1348"} a#0 != f#0;
-    assume {:id "id1349"} b#0 != c#0;
-    assume {:id "id1350"} b#0 != d#0;
-    assume {:id "id1351"} b#0 != e#0;
-    assume {:id "id1352"} b#0 != f#0;
-    assume {:id "id1353"} c#0 != d#0;
-    assume {:id "id1354"} c#0 != e#0;
-    assume {:id "id1355"} c#0 != f#0;
-    assume {:id "id1356"} d#0 != e#0;
-    assume {:id "id1357"} d#0 != f#0;
-    assume {:id "id1358"} e#0 != f#0;
-    havoc $Heap;
-    assume {:captureState "Test/arith.dfy(159,86): post-state"} true;
-    assert {:id "id1359"} a#0 != null;
-    assume true;
-    assert {:id "id1360"} a#0 != null;
-    assert {:id "id1361"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id1362"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-    assert {:id "id1363"} a#0 != null;
-    assume true;
-    assert {:id "id1364"} a#0 != null;
-    assert {:id "id1365"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id1366"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-    assert {:id "id1367"} a#0 != null;
-    assume true;
-    assert {:id "id1368"} a#0 != null;
-    assert {:id "id1369"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id1370"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-    assert {:id "id1371"} a#0 != null;
-    assume true;
-    assert {:id "id1372"} a#0 != null;
-    assert {:id "id1373"} a#0 == null || old($Alloc)[a#0];
-    assume true;
-    assume {:id "id1374"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-    assert {:id "id1375"} b#0 != null;
-    assume true;
-    assert {:id "id1376"} b#0 != null;
-    assert {:id "id1377"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id1378"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-    assert {:id "id1379"} b#0 != null;
-    assume true;
-    assert {:id "id1380"} b#0 != null;
-    assert {:id "id1381"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id1382"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-    assert {:id "id1383"} b#0 != null;
-    assume true;
-    assert {:id "id1384"} b#0 != null;
-    assert {:id "id1385"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id1386"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-    assert {:id "id1387"} b#0 != null;
-    assume true;
-    assert {:id "id1388"} b#0 != null;
-    assert {:id "id1389"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id1390"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-    assert {:id "id1391"} c#0 != null;
-    assume true;
-    assert {:id "id1392"} c#0 != null;
-    assert {:id "id1393"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id1394"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-    assert {:id "id1395"} c#0 != null;
-    assume true;
-    assert {:id "id1396"} c#0 != null;
-    assert {:id "id1397"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id1398"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-    assert {:id "id1399"} c#0 != null;
-    assume true;
-    assert {:id "id1400"} c#0 != null;
-    assert {:id "id1401"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id1402"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-    assert {:id "id1403"} c#0 != null;
-    assume true;
-    assert {:id "id1404"} c#0 != null;
-    assert {:id "id1405"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id1406"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-    assert {:id "id1407"} d#0 != null;
-    assume true;
-    assert {:id "id1408"} d#0 != null;
-    assert {:id "id1409"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id1410"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-    assert {:id "id1411"} d#0 != null;
-    assume true;
-    assert {:id "id1412"} d#0 != null;
-    assert {:id "id1413"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id1414"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-    assert {:id "id1415"} d#0 != null;
-    assume true;
-    assert {:id "id1416"} d#0 != null;
-    assert {:id "id1417"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id1418"} $Unbox(read($Heap, d#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-    assert {:id "id1419"} d#0 != null;
-    assume true;
-    assert {:id "id1420"} d#0 != null;
-    assert {:id "id1421"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id1422"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-    assert {:id "id1423"} e#0 != null;
-    assume true;
-    assert {:id "id1424"} e#0 != null;
-    assert {:id "id1425"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id1426"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-    assert {:id "id1427"} e#0 != null;
-    assume true;
-    assert {:id "id1428"} e#0 != null;
-    assert {:id "id1429"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id1430"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-    assert {:id "id1431"} e#0 != null;
-    assume true;
-    assert {:id "id1432"} e#0 != null;
-    assert {:id "id1433"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id1434"} $Unbox(read($Heap, e#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-    assert {:id "id1435"} e#0 != null;
-    assume true;
-    assert {:id "id1436"} e#0 != null;
-    assert {:id "id1437"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id1438"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-    assert {:id "id1439"} f#0 != null;
-    assume true;
-    assert {:id "id1440"} f#0 != null;
-    assert {:id "id1441"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id1442"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-    assert {:id "id1443"} f#0 != null;
-    assume true;
-    assert {:id "id1444"} f#0 != null;
-    assert {:id "id1445"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id1446"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-    assert {:id "id1447"} f#0 != null;
-    assume true;
-    assert {:id "id1448"} f#0 != null;
-    assert {:id "id1449"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id1450"} $Unbox(read($Heap, f#0, _module.Node.score)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-    assert {:id "id1451"} f#0 != null;
-    assume true;
-    assert {:id "id1452"} f#0 != null;
-    assert {:id "id1453"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id1454"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-}
-
-
-
-procedure {:verboseName "BumpNQuad (call)"} Call$$_module.__default.BumpNQuad(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    d#0: ref where $Is(d#0, Tclass._module.Node()) && (d#0 == null || $Alloc[d#0]), 
-    e#0: ref where $Is(e#0, Tclass._module.Node()) && (e#0 == null || $Alloc[e#0]), 
-    f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]), 
-    n#0: int);
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id1455"} n#0 >= LitInt(0);
-  free requires {:always_assume} true;
-  requires {:id "id1456"} a#0 != b#0;
-  free requires {:always_assume} true;
-  requires {:id "id1457"} a#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id1458"} a#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id1459"} a#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id1460"} a#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id1461"} b#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id1462"} b#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id1463"} b#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id1464"} b#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id1465"} c#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id1466"} c#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id1467"} c#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id1468"} d#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id1469"} d#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id1470"} e#0 != f#0;
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id1471"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1472"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1473"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1474"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1475"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1476"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1477"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1478"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1479"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1480"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1481"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1482"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1483"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1484"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1485"} $Unbox(read($Heap, d#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1486"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1487"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1488"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1489"} $Unbox(read($Heap, e#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1490"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1491"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1492"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1493"} $Unbox(read($Heap, f#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1494"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-
-
-
-procedure {:verboseName "BumpNQuad (correctness)"} Impl$$_module.__default.BumpNQuad(a#0: ref where $Is(a#0, Tclass._module.Node()) && (a#0 == null || $Alloc[a#0]), 
-    b#0: ref where $Is(b#0, Tclass._module.Node()) && (b#0 == null || $Alloc[b#0]), 
-    c#0: ref where $Is(c#0, Tclass._module.Node()) && (c#0 == null || $Alloc[c#0]), 
-    d#0: ref where $Is(d#0, Tclass._module.Node()) && (d#0 == null || $Alloc[d#0]), 
-    e#0: ref where $Is(e#0, Tclass._module.Node()) && (e#0 == null || $Alloc[e#0]), 
-    f#0: ref where $Is(f#0, Tclass._module.Node()) && (f#0 == null || $Alloc[f#0]), 
-    n#0: int)
-   returns ($_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id1495"} n#0 >= LitInt(0);
-  free requires {:always_assume} true;
-  requires {:id "id1496"} a#0 != b#0;
-  free requires {:always_assume} true;
-  requires {:id "id1497"} a#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id1498"} a#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id1499"} a#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id1500"} a#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id1501"} b#0 != c#0;
-  free requires {:always_assume} true;
-  requires {:id "id1502"} b#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id1503"} b#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id1504"} b#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id1505"} c#0 != d#0;
-  free requires {:always_assume} true;
-  requires {:id "id1506"} c#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id1507"} c#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id1508"} d#0 != e#0;
-  free requires {:always_assume} true;
-  requires {:id "id1509"} d#0 != f#0;
-  free requires {:always_assume} true;
-  requires {:id "id1510"} e#0 != f#0;
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id1511"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1512"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1513"} $Unbox(read($Heap, a#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1514"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1515"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1516"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1517"} $Unbox(read($Heap, b#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1518"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1519"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1520"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1521"} $Unbox(read($Heap, c#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1522"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1523"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1524"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1525"} $Unbox(read($Heap, d#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1526"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1527"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1528"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1529"} $Unbox(read($Heap, e#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1530"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1531"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(4), n#0);
-  free ensures {:always_assume} true;
-  ensures {:id "id1532"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1533"} $Unbox(read($Heap, f#0, _module.Node.score)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id1534"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "BumpNQuad (correctness)"} Impl$$_module.__default.BumpNQuad(a#0: ref, b#0: ref, c#0: ref, d#0: ref, e#0: ref, f#0: ref, n#0: int)
-   returns ($_reverifyPost: bool)
-{
-  var i#0: int;
-  var $PreLoopHeap$loop#0: Heap;
-  var $PreLoopAlloc$loop#0: [ref]bool;
-  var $decr_init$loop#00: int;
-  var $w$loop#0: bool;
-  var $decr$loop#00: int;
-  var a##0_0: ref;
-  var b##0_0: ref;
-  var c##0_0: ref;
-  var d##0_0: ref;
-  var e##0_0: ref;
-  var f##0_0: ref;
-  var $PreCallHeap#0_0: Heap;
-  var $PreCallAlloc#0_0: [ref]bool;
-
-    // AddMethodImpl: BumpNQuad, Impl$$_module.__default.BumpNQuad
-    assume {:captureState "Test/arith.dfy(165,0): initial state"} true;
-    $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(166,9)
-    assume true;
-    assume true;
-    i#0 := LitInt(0);
-    assume {:captureState "Test/arith.dfy(166,12)"} true;
-    // ----- while statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(167,3)
-    // Assume Fuel Constant
-    $PreLoopHeap$loop#0 := $Heap;
-    $PreLoopAlloc$loop#0 := $Alloc;
-    $decr_init$loop#00 := n#0 - i#0;
-    havoc $w$loop#0;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume $w$loop#0 ==> true;
-    while (true)
-      free invariant true;
-      invariant {:id "id1537"} $w$loop#0 ==> LitInt(0) <= i#0;
-      invariant {:id "id1538"} $w$loop#0 ==> i#0 <= n#0;
-      free invariant true;
-      invariant {:id "id1552"} $w$loop#0
-         ==> $Unbox(read($Heap, a#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(4), i#0);
-      invariant {:id "id1553"} $w$loop#0
-         ==> $Unbox(read($Heap, a#0, _module.Node.tag)): int
-           == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-      invariant {:id "id1554"} $w$loop#0
-         ==> $Unbox(read($Heap, a#0, _module.Node.score)): int
-           == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-      invariant {:id "id1555"} $w$loop#0
-         ==> $Unbox(read($Heap, a#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-      free invariant true;
-      invariant {:id "id1569"} $w$loop#0
-         ==> $Unbox(read($Heap, b#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(4), i#0);
-      invariant {:id "id1570"} $w$loop#0
-         ==> $Unbox(read($Heap, b#0, _module.Node.tag)): int
-           == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-      invariant {:id "id1571"} $w$loop#0
-         ==> $Unbox(read($Heap, b#0, _module.Node.score)): int
-           == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-      invariant {:id "id1572"} $w$loop#0
-         ==> $Unbox(read($Heap, b#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-      free invariant true;
-      invariant {:id "id1586"} $w$loop#0
-         ==> $Unbox(read($Heap, c#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(4), i#0);
-      invariant {:id "id1587"} $w$loop#0
-         ==> $Unbox(read($Heap, c#0, _module.Node.tag)): int
-           == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-      invariant {:id "id1588"} $w$loop#0
-         ==> $Unbox(read($Heap, c#0, _module.Node.score)): int
-           == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-      invariant {:id "id1589"} $w$loop#0
-         ==> $Unbox(read($Heap, c#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-      free invariant true;
-      invariant {:id "id1603"} $w$loop#0
-         ==> $Unbox(read($Heap, d#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(4), i#0);
-      invariant {:id "id1604"} $w$loop#0
-         ==> $Unbox(read($Heap, d#0, _module.Node.tag)): int
-           == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-      invariant {:id "id1605"} $w$loop#0
-         ==> $Unbox(read($Heap, d#0, _module.Node.score)): int
-           == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-      invariant {:id "id1606"} $w$loop#0
-         ==> $Unbox(read($Heap, d#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-      free invariant true;
-      invariant {:id "id1620"} $w$loop#0
-         ==> $Unbox(read($Heap, e#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(4), i#0);
-      invariant {:id "id1621"} $w$loop#0
-         ==> $Unbox(read($Heap, e#0, _module.Node.tag)): int
-           == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-      invariant {:id "id1622"} $w$loop#0
-         ==> $Unbox(read($Heap, e#0, _module.Node.score)): int
-           == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-      invariant {:id "id1623"} $w$loop#0
-         ==> $Unbox(read($Heap, e#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-      free invariant true;
-      invariant {:id "id1637"} $w$loop#0
-         ==> $Unbox(read($Heap, f#0, _module.Node.val)): int
-           == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(4), i#0);
-      invariant {:id "id1638"} $w$loop#0
-         ==> $Unbox(read($Heap, f#0, _module.Node.tag)): int
-           == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-      invariant {:id "id1639"} $w$loop#0
-         ==> $Unbox(read($Heap, f#0, _module.Node.score)): int
-           == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-      invariant {:id "id1640"} $w$loop#0
-         ==> $Unbox(read($Heap, f#0, _module.Node.rank)): int
-           == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-      free invariant a#0 != null
-           && a#0 != a#0
-           && a#0 != b#0
-           && a#0 != c#0
-           && a#0 != d#0
-           && a#0 != e#0
-           && a#0 != f#0
-         ==> read($PreLoopHeap$loop#0, a#0, _module.Node.val)
-           == read($PreLoopHeap$loop#0, a#0, _module.Node.val);
-      free invariant a#0 != null
-           && a#0 != a#0
-           && a#0 != b#0
-           && a#0 != c#0
-           && a#0 != d#0
-           && a#0 != e#0
-           && a#0 != f#0
-         ==> read($PreLoopHeap$loop#0, a#0, _module.Node.tag)
-           == read($PreLoopHeap$loop#0, a#0, _module.Node.tag);
-      free invariant a#0 != null
-           && a#0 != a#0
-           && a#0 != b#0
-           && a#0 != c#0
-           && a#0 != d#0
-           && a#0 != e#0
-           && a#0 != f#0
-         ==> read($PreLoopHeap$loop#0, a#0, _module.Node.score)
-           == read($PreLoopHeap$loop#0, a#0, _module.Node.score);
-      free invariant a#0 != null
-           && a#0 != a#0
-           && a#0 != b#0
-           && a#0 != c#0
-           && a#0 != d#0
-           && a#0 != e#0
-           && a#0 != f#0
-         ==> read($PreLoopHeap$loop#0, a#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, a#0, _module.Node.rank);
-      free invariant b#0 != null
-           && b#0 != a#0
-           && b#0 != b#0
-           && b#0 != c#0
-           && b#0 != d#0
-           && b#0 != e#0
-           && b#0 != f#0
-         ==> read($PreLoopHeap$loop#0, b#0, _module.Node.val)
-           == read($PreLoopHeap$loop#0, b#0, _module.Node.val);
-      free invariant b#0 != null
-           && b#0 != a#0
-           && b#0 != b#0
-           && b#0 != c#0
-           && b#0 != d#0
-           && b#0 != e#0
-           && b#0 != f#0
-         ==> read($PreLoopHeap$loop#0, b#0, _module.Node.tag)
-           == read($PreLoopHeap$loop#0, b#0, _module.Node.tag);
-      free invariant b#0 != null
-           && b#0 != a#0
-           && b#0 != b#0
-           && b#0 != c#0
-           && b#0 != d#0
-           && b#0 != e#0
-           && b#0 != f#0
-         ==> read($PreLoopHeap$loop#0, b#0, _module.Node.score)
-           == read($PreLoopHeap$loop#0, b#0, _module.Node.score);
-      free invariant b#0 != null
-           && b#0 != a#0
-           && b#0 != b#0
-           && b#0 != c#0
-           && b#0 != d#0
-           && b#0 != e#0
-           && b#0 != f#0
-         ==> read($PreLoopHeap$loop#0, b#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, b#0, _module.Node.rank);
-      free invariant c#0 != null
-           && c#0 != a#0
-           && c#0 != b#0
-           && c#0 != c#0
-           && c#0 != d#0
-           && c#0 != e#0
-           && c#0 != f#0
-         ==> read($PreLoopHeap$loop#0, c#0, _module.Node.val)
-           == read($PreLoopHeap$loop#0, c#0, _module.Node.val);
-      free invariant c#0 != null
-           && c#0 != a#0
-           && c#0 != b#0
-           && c#0 != c#0
-           && c#0 != d#0
-           && c#0 != e#0
-           && c#0 != f#0
-         ==> read($PreLoopHeap$loop#0, c#0, _module.Node.tag)
-           == read($PreLoopHeap$loop#0, c#0, _module.Node.tag);
-      free invariant c#0 != null
-           && c#0 != a#0
-           && c#0 != b#0
-           && c#0 != c#0
-           && c#0 != d#0
-           && c#0 != e#0
-           && c#0 != f#0
-         ==> read($PreLoopHeap$loop#0, c#0, _module.Node.score)
-           == read($PreLoopHeap$loop#0, c#0, _module.Node.score);
-      free invariant c#0 != null
-           && c#0 != a#0
-           && c#0 != b#0
-           && c#0 != c#0
-           && c#0 != d#0
-           && c#0 != e#0
-           && c#0 != f#0
-         ==> read($PreLoopHeap$loop#0, c#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, c#0, _module.Node.rank);
-      free invariant d#0 != null
-           && d#0 != a#0
-           && d#0 != b#0
-           && d#0 != c#0
-           && d#0 != d#0
-           && d#0 != e#0
-           && d#0 != f#0
-         ==> read($PreLoopHeap$loop#0, d#0, _module.Node.val)
-           == read($PreLoopHeap$loop#0, d#0, _module.Node.val);
-      free invariant d#0 != null
-           && d#0 != a#0
-           && d#0 != b#0
-           && d#0 != c#0
-           && d#0 != d#0
-           && d#0 != e#0
-           && d#0 != f#0
-         ==> read($PreLoopHeap$loop#0, d#0, _module.Node.tag)
-           == read($PreLoopHeap$loop#0, d#0, _module.Node.tag);
-      free invariant d#0 != null
-           && d#0 != a#0
-           && d#0 != b#0
-           && d#0 != c#0
-           && d#0 != d#0
-           && d#0 != e#0
-           && d#0 != f#0
-         ==> read($PreLoopHeap$loop#0, d#0, _module.Node.score)
-           == read($PreLoopHeap$loop#0, d#0, _module.Node.score);
-      free invariant d#0 != null
-           && d#0 != a#0
-           && d#0 != b#0
-           && d#0 != c#0
-           && d#0 != d#0
-           && d#0 != e#0
-           && d#0 != f#0
-         ==> read($PreLoopHeap$loop#0, d#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, d#0, _module.Node.rank);
-      free invariant e#0 != null
-           && e#0 != a#0
-           && e#0 != b#0
-           && e#0 != c#0
-           && e#0 != d#0
-           && e#0 != e#0
-           && e#0 != f#0
-         ==> read($PreLoopHeap$loop#0, e#0, _module.Node.val)
-           == read($PreLoopHeap$loop#0, e#0, _module.Node.val);
-      free invariant e#0 != null
-           && e#0 != a#0
-           && e#0 != b#0
-           && e#0 != c#0
-           && e#0 != d#0
-           && e#0 != e#0
-           && e#0 != f#0
-         ==> read($PreLoopHeap$loop#0, e#0, _module.Node.tag)
-           == read($PreLoopHeap$loop#0, e#0, _module.Node.tag);
-      free invariant e#0 != null
-           && e#0 != a#0
-           && e#0 != b#0
-           && e#0 != c#0
-           && e#0 != d#0
-           && e#0 != e#0
-           && e#0 != f#0
-         ==> read($PreLoopHeap$loop#0, e#0, _module.Node.score)
-           == read($PreLoopHeap$loop#0, e#0, _module.Node.score);
-      free invariant e#0 != null
-           && e#0 != a#0
-           && e#0 != b#0
-           && e#0 != c#0
-           && e#0 != d#0
-           && e#0 != e#0
-           && e#0 != f#0
-         ==> read($PreLoopHeap$loop#0, e#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, e#0, _module.Node.rank);
-      free invariant f#0 != null
-           && f#0 != a#0
-           && f#0 != b#0
-           && f#0 != c#0
-           && f#0 != d#0
-           && f#0 != e#0
-           && f#0 != f#0
-         ==> read($PreLoopHeap$loop#0, f#0, _module.Node.val)
-           == read($PreLoopHeap$loop#0, f#0, _module.Node.val);
-      free invariant f#0 != null
-           && f#0 != a#0
-           && f#0 != b#0
-           && f#0 != c#0
-           && f#0 != d#0
-           && f#0 != e#0
-           && f#0 != f#0
-         ==> read($PreLoopHeap$loop#0, f#0, _module.Node.tag)
-           == read($PreLoopHeap$loop#0, f#0, _module.Node.tag);
-      free invariant f#0 != null
-           && f#0 != a#0
-           && f#0 != b#0
-           && f#0 != c#0
-           && f#0 != d#0
-           && f#0 != e#0
-           && f#0 != f#0
-         ==> read($PreLoopHeap$loop#0, f#0, _module.Node.score)
-           == read($PreLoopHeap$loop#0, f#0, _module.Node.score);
-      free invariant f#0 != null
-           && f#0 != a#0
-           && f#0 != b#0
-           && f#0 != c#0
-           && f#0 != d#0
-           && f#0 != e#0
-           && f#0 != f#0
-         ==> read($PreLoopHeap$loop#0, f#0, _module.Node.rank)
-           == read($PreLoopHeap$loop#0, f#0, _module.Node.rank);
-      free invariant n#0 - i#0 <= $decr_init$loop#00;
-    {
-        assume {:captureState "Test/arith.dfy(167,2): after some loop iterations"} true;
-        if (!$w$loop#0)
-        {
-            if (LitInt(0) <= i#0)
-            {
-            }
-
-            assume true;
-            assume {:id "id1536"} LitInt(0) <= i#0 && i#0 <= n#0;
-            assert {:id "id1539"} {:subsumption 0} a#0 != null;
-            assume true;
-            assert {:id "id1540"} {:subsumption 0} a#0 != null;
-            assert {:id "id1541"} a#0 == null || old($Alloc)[a#0];
-            assume true;
-            if ($Unbox(read($Heap, a#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(4), i#0))
-            {
-                assert {:id "id1542"} {:subsumption 0} a#0 != null;
-                assume true;
-                assert {:id "id1543"} {:subsumption 0} a#0 != null;
-                assert {:id "id1544"} a#0 == null || old($Alloc)[a#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, a#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, a#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int)
-            {
-                assert {:id "id1545"} {:subsumption 0} a#0 != null;
-                assume true;
-                assert {:id "id1546"} {:subsumption 0} a#0 != null;
-                assert {:id "id1547"} a#0 == null || old($Alloc)[a#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, a#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, a#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, a#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.score)): int)
-            {
-                assert {:id "id1548"} {:subsumption 0} a#0 != null;
-                assume true;
-                assert {:id "id1549"} {:subsumption 0} a#0 != null;
-                assert {:id "id1550"} a#0 == null || old($Alloc)[a#0];
-                assume true;
-            }
-
-            assume true;
-            assume {:id "id1551"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, a#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, a#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.score)): int
-               && $Unbox(read($Heap, a#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-            assert {:id "id1556"} {:subsumption 0} b#0 != null;
-            assume true;
-            assert {:id "id1557"} {:subsumption 0} b#0 != null;
-            assert {:id "id1558"} b#0 == null || old($Alloc)[b#0];
-            assume true;
-            if ($Unbox(read($Heap, b#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(4), i#0))
-            {
-                assert {:id "id1559"} {:subsumption 0} b#0 != null;
-                assume true;
-                assert {:id "id1560"} {:subsumption 0} b#0 != null;
-                assert {:id "id1561"} b#0 == null || old($Alloc)[b#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, b#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, b#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int)
-            {
-                assert {:id "id1562"} {:subsumption 0} b#0 != null;
-                assume true;
-                assert {:id "id1563"} {:subsumption 0} b#0 != null;
-                assert {:id "id1564"} b#0 == null || old($Alloc)[b#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, b#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, b#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, b#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.score)): int)
-            {
-                assert {:id "id1565"} {:subsumption 0} b#0 != null;
-                assume true;
-                assert {:id "id1566"} {:subsumption 0} b#0 != null;
-                assert {:id "id1567"} b#0 == null || old($Alloc)[b#0];
-                assume true;
-            }
-
-            assume true;
-            assume {:id "id1568"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, b#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, b#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.score)): int
-               && $Unbox(read($Heap, b#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-            assert {:id "id1573"} {:subsumption 0} c#0 != null;
-            assume true;
-            assert {:id "id1574"} {:subsumption 0} c#0 != null;
-            assert {:id "id1575"} c#0 == null || old($Alloc)[c#0];
-            assume true;
-            if ($Unbox(read($Heap, c#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(4), i#0))
-            {
-                assert {:id "id1576"} {:subsumption 0} c#0 != null;
-                assume true;
-                assert {:id "id1577"} {:subsumption 0} c#0 != null;
-                assert {:id "id1578"} c#0 == null || old($Alloc)[c#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, c#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, c#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int)
-            {
-                assert {:id "id1579"} {:subsumption 0} c#0 != null;
-                assume true;
-                assert {:id "id1580"} {:subsumption 0} c#0 != null;
-                assert {:id "id1581"} c#0 == null || old($Alloc)[c#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, c#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, c#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, c#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.score)): int)
-            {
-                assert {:id "id1582"} {:subsumption 0} c#0 != null;
-                assume true;
-                assert {:id "id1583"} {:subsumption 0} c#0 != null;
-                assert {:id "id1584"} c#0 == null || old($Alloc)[c#0];
-                assume true;
-            }
-
-            assume true;
-            assume {:id "id1585"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, c#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, c#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.score)): int
-               && $Unbox(read($Heap, c#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-            assert {:id "id1590"} {:subsumption 0} d#0 != null;
-            assume true;
-            assert {:id "id1591"} {:subsumption 0} d#0 != null;
-            assert {:id "id1592"} d#0 == null || old($Alloc)[d#0];
-            assume true;
-            if ($Unbox(read($Heap, d#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(4), i#0))
-            {
-                assert {:id "id1593"} {:subsumption 0} d#0 != null;
-                assume true;
-                assert {:id "id1594"} {:subsumption 0} d#0 != null;
-                assert {:id "id1595"} d#0 == null || old($Alloc)[d#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, d#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, d#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int)
-            {
-                assert {:id "id1596"} {:subsumption 0} d#0 != null;
-                assume true;
-                assert {:id "id1597"} {:subsumption 0} d#0 != null;
-                assert {:id "id1598"} d#0 == null || old($Alloc)[d#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, d#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, d#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, d#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.score)): int)
-            {
-                assert {:id "id1599"} {:subsumption 0} d#0 != null;
-                assume true;
-                assert {:id "id1600"} {:subsumption 0} d#0 != null;
-                assert {:id "id1601"} d#0 == null || old($Alloc)[d#0];
-                assume true;
-            }
-
-            assume true;
-            assume {:id "id1602"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, d#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, d#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.score)): int
-               && $Unbox(read($Heap, d#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-            assert {:id "id1607"} {:subsumption 0} e#0 != null;
-            assume true;
-            assert {:id "id1608"} {:subsumption 0} e#0 != null;
-            assert {:id "id1609"} e#0 == null || old($Alloc)[e#0];
-            assume true;
-            if ($Unbox(read($Heap, e#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(4), i#0))
-            {
-                assert {:id "id1610"} {:subsumption 0} e#0 != null;
-                assume true;
-                assert {:id "id1611"} {:subsumption 0} e#0 != null;
-                assert {:id "id1612"} e#0 == null || old($Alloc)[e#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, e#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, e#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int)
-            {
-                assert {:id "id1613"} {:subsumption 0} e#0 != null;
-                assume true;
-                assert {:id "id1614"} {:subsumption 0} e#0 != null;
-                assert {:id "id1615"} e#0 == null || old($Alloc)[e#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, e#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, e#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, e#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.score)): int)
-            {
-                assert {:id "id1616"} {:subsumption 0} e#0 != null;
-                assume true;
-                assert {:id "id1617"} {:subsumption 0} e#0 != null;
-                assert {:id "id1618"} e#0 == null || old($Alloc)[e#0];
-                assume true;
-            }
-
-            assume true;
-            assume {:id "id1619"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, e#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, e#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.score)): int
-               && $Unbox(read($Heap, e#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-            assert {:id "id1624"} {:subsumption 0} f#0 != null;
-            assume true;
-            assert {:id "id1625"} {:subsumption 0} f#0 != null;
-            assert {:id "id1626"} f#0 == null || old($Alloc)[f#0];
-            assume true;
-            if ($Unbox(read($Heap, f#0, _module.Node.val)): int
-               == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(4), i#0))
-            {
-                assert {:id "id1627"} {:subsumption 0} f#0 != null;
-                assume true;
-                assert {:id "id1628"} {:subsumption 0} f#0 != null;
-                assert {:id "id1629"} f#0 == null || old($Alloc)[f#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, f#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, f#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int)
-            {
-                assert {:id "id1630"} {:subsumption 0} f#0 != null;
-                assume true;
-                assert {:id "id1631"} {:subsumption 0} f#0 != null;
-                assert {:id "id1632"} f#0 == null || old($Alloc)[f#0];
-                assume true;
-            }
-
-            if ($Unbox(read($Heap, f#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, f#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, f#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.score)): int)
-            {
-                assert {:id "id1633"} {:subsumption 0} f#0 != null;
-                assume true;
-                assert {:id "id1634"} {:subsumption 0} f#0 != null;
-                assert {:id "id1635"} f#0 == null || old($Alloc)[f#0];
-                assume true;
-            }
-
-            assume true;
-            assume {:id "id1636"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + Mul(LitInt(4), i#0)
-               && $Unbox(read($Heap, f#0, _module.Node.tag)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int
-               && $Unbox(read($Heap, f#0, _module.Node.score)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.score)): int
-               && $Unbox(read($Heap, f#0, _module.Node.rank)): int
-                 == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-            assume true;
-            assume false;
-        }
-
-        assume true;
-        if (n#0 <= i#0)
-        {
-            break;
-        }
-
-        assume true;
-        $decr$loop#00 := n#0 - i#0;
-        // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(176,13)
-        // TrCallStmt: Before ProcessCallStmt
-        assume true;
-        // ProcessCallStmt: CheckSubrange
-        a##0_0 := a#0;
-        assume true;
-        // ProcessCallStmt: CheckSubrange
-        b##0_0 := b#0;
-        assume true;
-        // ProcessCallStmt: CheckSubrange
-        c##0_0 := c#0;
-        assume true;
-        // ProcessCallStmt: CheckSubrange
-        d##0_0 := d#0;
-        assume true;
-        // ProcessCallStmt: CheckSubrange
-        e##0_0 := e#0;
-        assume true;
-        // ProcessCallStmt: CheckSubrange
-        f##0_0 := f#0;
-        $PreCallHeap#0_0 := $Heap;
-        $PreCallAlloc#0_0 := $Alloc;
-        assume true;
-        assume true;
-        assume true;
-        assume true;
-        assume true;
-        assume true;
-        assert {:id "id1641"} a##0_0 == a#0
-           || a##0_0 == b#0
-           || a##0_0 == c#0
-           || a##0_0 == d#0
-           || a##0_0 == e#0
-           || a##0_0 == f#0
-           || !old($Alloc)[a##0_0];
-        assert {:id "id1642"} b##0_0 == a#0
-           || b##0_0 == b#0
-           || b##0_0 == c#0
-           || b##0_0 == d#0
-           || b##0_0 == e#0
-           || b##0_0 == f#0
-           || !old($Alloc)[b##0_0];
-        assert {:id "id1643"} c##0_0 == a#0
-           || c##0_0 == b#0
-           || c##0_0 == c#0
-           || c##0_0 == d#0
-           || c##0_0 == e#0
-           || c##0_0 == f#0
-           || !old($Alloc)[c##0_0];
-        assert {:id "id1644"} d##0_0 == a#0
-           || d##0_0 == b#0
-           || d##0_0 == c#0
-           || d##0_0 == d#0
-           || d##0_0 == e#0
-           || d##0_0 == f#0
-           || !old($Alloc)[d##0_0];
-        assert {:id "id1645"} e##0_0 == a#0
-           || e##0_0 == b#0
-           || e##0_0 == c#0
-           || e##0_0 == d#0
-           || e##0_0 == e#0
-           || e##0_0 == f#0
-           || !old($Alloc)[e##0_0];
-        assert {:id "id1646"} f##0_0 == a#0
-           || f##0_0 == b#0
-           || f##0_0 == c#0
-           || f##0_0 == d#0
-           || f##0_0 == e#0
-           || f##0_0 == f#0
-           || !old($Alloc)[f##0_0];
-        call {:id "id1647"} Call$$_module.__default.QuadBump(a##0_0, b##0_0, c##0_0, d##0_0, e##0_0, f##0_0);
-        // qf-call-frame QuadBump: supports=12 reads=48 modified=6
-        assume a#0 != null
-             && a#0 != a#0
-             && a#0 != b#0
-             && a#0 != c#0
-             && a#0 != d#0
-             && a#0 != e#0
-             && a#0 != f#0
-           ==> read($Heap, a#0, _module.Node.val)
-             == read($PreCallHeap#0_0, a#0, _module.Node.val);
-        assume a#0 != null
-             && a#0 != a#0
-             && a#0 != b#0
-             && a#0 != c#0
-             && a#0 != d#0
-             && a#0 != e#0
-             && a#0 != f#0
-           ==> read($Heap, a#0, _module.Node.tag)
-             == read($PreCallHeap#0_0, a#0, _module.Node.tag);
-        assume a#0 != null
-             && a#0 != a#0
-             && a#0 != b#0
-             && a#0 != c#0
-             && a#0 != d#0
-             && a#0 != e#0
-             && a#0 != f#0
-           ==> read($Heap, a#0, _module.Node.score)
-             == read($PreCallHeap#0_0, a#0, _module.Node.score);
-        assume a#0 != null
-             && a#0 != a#0
-             && a#0 != b#0
-             && a#0 != c#0
-             && a#0 != d#0
-             && a#0 != e#0
-             && a#0 != f#0
-           ==> read($Heap, a#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, a#0, _module.Node.rank);
-        assume b#0 != null
-             && b#0 != a#0
-             && b#0 != b#0
-             && b#0 != c#0
-             && b#0 != d#0
-             && b#0 != e#0
-             && b#0 != f#0
-           ==> read($Heap, b#0, _module.Node.val)
-             == read($PreCallHeap#0_0, b#0, _module.Node.val);
-        assume b#0 != null
-             && b#0 != a#0
-             && b#0 != b#0
-             && b#0 != c#0
-             && b#0 != d#0
-             && b#0 != e#0
-             && b#0 != f#0
-           ==> read($Heap, b#0, _module.Node.tag)
-             == read($PreCallHeap#0_0, b#0, _module.Node.tag);
-        assume b#0 != null
-             && b#0 != a#0
-             && b#0 != b#0
-             && b#0 != c#0
-             && b#0 != d#0
-             && b#0 != e#0
-             && b#0 != f#0
-           ==> read($Heap, b#0, _module.Node.score)
-             == read($PreCallHeap#0_0, b#0, _module.Node.score);
-        assume b#0 != null
-             && b#0 != a#0
-             && b#0 != b#0
-             && b#0 != c#0
-             && b#0 != d#0
-             && b#0 != e#0
-             && b#0 != f#0
-           ==> read($Heap, b#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, b#0, _module.Node.rank);
-        assume c#0 != null
-             && c#0 != a#0
-             && c#0 != b#0
-             && c#0 != c#0
-             && c#0 != d#0
-             && c#0 != e#0
-             && c#0 != f#0
-           ==> read($Heap, c#0, _module.Node.val)
-             == read($PreCallHeap#0_0, c#0, _module.Node.val);
-        assume c#0 != null
-             && c#0 != a#0
-             && c#0 != b#0
-             && c#0 != c#0
-             && c#0 != d#0
-             && c#0 != e#0
-             && c#0 != f#0
-           ==> read($Heap, c#0, _module.Node.tag)
-             == read($PreCallHeap#0_0, c#0, _module.Node.tag);
-        assume c#0 != null
-             && c#0 != a#0
-             && c#0 != b#0
-             && c#0 != c#0
-             && c#0 != d#0
-             && c#0 != e#0
-             && c#0 != f#0
-           ==> read($Heap, c#0, _module.Node.score)
-             == read($PreCallHeap#0_0, c#0, _module.Node.score);
-        assume c#0 != null
-             && c#0 != a#0
-             && c#0 != b#0
-             && c#0 != c#0
-             && c#0 != d#0
-             && c#0 != e#0
-             && c#0 != f#0
-           ==> read($Heap, c#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, c#0, _module.Node.rank);
-        assume d#0 != null
-             && d#0 != a#0
-             && d#0 != b#0
-             && d#0 != c#0
-             && d#0 != d#0
-             && d#0 != e#0
-             && d#0 != f#0
-           ==> read($Heap, d#0, _module.Node.val)
-             == read($PreCallHeap#0_0, d#0, _module.Node.val);
-        assume d#0 != null
-             && d#0 != a#0
-             && d#0 != b#0
-             && d#0 != c#0
-             && d#0 != d#0
-             && d#0 != e#0
-             && d#0 != f#0
-           ==> read($Heap, d#0, _module.Node.tag)
-             == read($PreCallHeap#0_0, d#0, _module.Node.tag);
-        assume d#0 != null
-             && d#0 != a#0
-             && d#0 != b#0
-             && d#0 != c#0
-             && d#0 != d#0
-             && d#0 != e#0
-             && d#0 != f#0
-           ==> read($Heap, d#0, _module.Node.score)
-             == read($PreCallHeap#0_0, d#0, _module.Node.score);
-        assume d#0 != null
-             && d#0 != a#0
-             && d#0 != b#0
-             && d#0 != c#0
-             && d#0 != d#0
-             && d#0 != e#0
-             && d#0 != f#0
-           ==> read($Heap, d#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, d#0, _module.Node.rank);
-        assume e#0 != null
-             && e#0 != a#0
-             && e#0 != b#0
-             && e#0 != c#0
-             && e#0 != d#0
-             && e#0 != e#0
-             && e#0 != f#0
-           ==> read($Heap, e#0, _module.Node.val)
-             == read($PreCallHeap#0_0, e#0, _module.Node.val);
-        assume e#0 != null
-             && e#0 != a#0
-             && e#0 != b#0
-             && e#0 != c#0
-             && e#0 != d#0
-             && e#0 != e#0
-             && e#0 != f#0
-           ==> read($Heap, e#0, _module.Node.tag)
-             == read($PreCallHeap#0_0, e#0, _module.Node.tag);
-        assume e#0 != null
-             && e#0 != a#0
-             && e#0 != b#0
-             && e#0 != c#0
-             && e#0 != d#0
-             && e#0 != e#0
-             && e#0 != f#0
-           ==> read($Heap, e#0, _module.Node.score)
-             == read($PreCallHeap#0_0, e#0, _module.Node.score);
-        assume e#0 != null
-             && e#0 != a#0
-             && e#0 != b#0
-             && e#0 != c#0
-             && e#0 != d#0
-             && e#0 != e#0
-             && e#0 != f#0
-           ==> read($Heap, e#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, e#0, _module.Node.rank);
-        assume f#0 != null
-             && f#0 != a#0
-             && f#0 != b#0
-             && f#0 != c#0
-             && f#0 != d#0
-             && f#0 != e#0
-             && f#0 != f#0
-           ==> read($Heap, f#0, _module.Node.val)
-             == read($PreCallHeap#0_0, f#0, _module.Node.val);
-        assume f#0 != null
-             && f#0 != a#0
-             && f#0 != b#0
-             && f#0 != c#0
-             && f#0 != d#0
-             && f#0 != e#0
-             && f#0 != f#0
-           ==> read($Heap, f#0, _module.Node.tag)
-             == read($PreCallHeap#0_0, f#0, _module.Node.tag);
-        assume f#0 != null
-             && f#0 != a#0
-             && f#0 != b#0
-             && f#0 != c#0
-             && f#0 != d#0
-             && f#0 != e#0
-             && f#0 != f#0
-           ==> read($Heap, f#0, _module.Node.score)
-             == read($PreCallHeap#0_0, f#0, _module.Node.score);
-        assume f#0 != null
-             && f#0 != a#0
-             && f#0 != b#0
-             && f#0 != c#0
-             && f#0 != d#0
-             && f#0 != e#0
-             && f#0 != f#0
-           ==> read($Heap, f#0, _module.Node.rank)
-             == read($PreCallHeap#0_0, f#0, _module.Node.rank);
-        assume a##0_0 != null
-             && a##0_0 != a#0
-             && a##0_0 != b#0
-             && a##0_0 != c#0
-             && a##0_0 != d#0
-             && a##0_0 != e#0
-             && a##0_0 != f#0
-           ==> read($Heap, a##0_0, _module.Node.val)
-             == read($PreCallHeap#0_0, a##0_0, _module.Node.val);
-        assume a##0_0 != null
-             && a##0_0 != a#0
-             && a##0_0 != b#0
-             && a##0_0 != c#0
-             && a##0_0 != d#0
-             && a##0_0 != e#0
-             && a##0_0 != f#0
-           ==> read($Heap, a##0_0, _module.Node.tag)
-             == read($PreCallHeap#0_0, a##0_0, _module.Node.tag);
-        assume a##0_0 != null
-             && a##0_0 != a#0
-             && a##0_0 != b#0
-             && a##0_0 != c#0
-             && a##0_0 != d#0
-             && a##0_0 != e#0
-             && a##0_0 != f#0
-           ==> read($Heap, a##0_0, _module.Node.score)
-             == read($PreCallHeap#0_0, a##0_0, _module.Node.score);
-        assume a##0_0 != null
-             && a##0_0 != a#0
-             && a##0_0 != b#0
-             && a##0_0 != c#0
-             && a##0_0 != d#0
-             && a##0_0 != e#0
-             && a##0_0 != f#0
-           ==> read($Heap, a##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, a##0_0, _module.Node.rank);
-        assume b##0_0 != null
-             && b##0_0 != a#0
-             && b##0_0 != b#0
-             && b##0_0 != c#0
-             && b##0_0 != d#0
-             && b##0_0 != e#0
-             && b##0_0 != f#0
-           ==> read($Heap, b##0_0, _module.Node.val)
-             == read($PreCallHeap#0_0, b##0_0, _module.Node.val);
-        assume b##0_0 != null
-             && b##0_0 != a#0
-             && b##0_0 != b#0
-             && b##0_0 != c#0
-             && b##0_0 != d#0
-             && b##0_0 != e#0
-             && b##0_0 != f#0
-           ==> read($Heap, b##0_0, _module.Node.tag)
-             == read($PreCallHeap#0_0, b##0_0, _module.Node.tag);
-        assume b##0_0 != null
-             && b##0_0 != a#0
-             && b##0_0 != b#0
-             && b##0_0 != c#0
-             && b##0_0 != d#0
-             && b##0_0 != e#0
-             && b##0_0 != f#0
-           ==> read($Heap, b##0_0, _module.Node.score)
-             == read($PreCallHeap#0_0, b##0_0, _module.Node.score);
-        assume b##0_0 != null
-             && b##0_0 != a#0
-             && b##0_0 != b#0
-             && b##0_0 != c#0
-             && b##0_0 != d#0
-             && b##0_0 != e#0
-             && b##0_0 != f#0
-           ==> read($Heap, b##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, b##0_0, _module.Node.rank);
-        assume c##0_0 != null
-             && c##0_0 != a#0
-             && c##0_0 != b#0
-             && c##0_0 != c#0
-             && c##0_0 != d#0
-             && c##0_0 != e#0
-             && c##0_0 != f#0
-           ==> read($Heap, c##0_0, _module.Node.val)
-             == read($PreCallHeap#0_0, c##0_0, _module.Node.val);
-        assume c##0_0 != null
-             && c##0_0 != a#0
-             && c##0_0 != b#0
-             && c##0_0 != c#0
-             && c##0_0 != d#0
-             && c##0_0 != e#0
-             && c##0_0 != f#0
-           ==> read($Heap, c##0_0, _module.Node.tag)
-             == read($PreCallHeap#0_0, c##0_0, _module.Node.tag);
-        assume c##0_0 != null
-             && c##0_0 != a#0
-             && c##0_0 != b#0
-             && c##0_0 != c#0
-             && c##0_0 != d#0
-             && c##0_0 != e#0
-             && c##0_0 != f#0
-           ==> read($Heap, c##0_0, _module.Node.score)
-             == read($PreCallHeap#0_0, c##0_0, _module.Node.score);
-        assume c##0_0 != null
-             && c##0_0 != a#0
-             && c##0_0 != b#0
-             && c##0_0 != c#0
-             && c##0_0 != d#0
-             && c##0_0 != e#0
-             && c##0_0 != f#0
-           ==> read($Heap, c##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, c##0_0, _module.Node.rank);
-        assume d##0_0 != null
-             && d##0_0 != a#0
-             && d##0_0 != b#0
-             && d##0_0 != c#0
-             && d##0_0 != d#0
-             && d##0_0 != e#0
-             && d##0_0 != f#0
-           ==> read($Heap, d##0_0, _module.Node.val)
-             == read($PreCallHeap#0_0, d##0_0, _module.Node.val);
-        assume d##0_0 != null
-             && d##0_0 != a#0
-             && d##0_0 != b#0
-             && d##0_0 != c#0
-             && d##0_0 != d#0
-             && d##0_0 != e#0
-             && d##0_0 != f#0
-           ==> read($Heap, d##0_0, _module.Node.tag)
-             == read($PreCallHeap#0_0, d##0_0, _module.Node.tag);
-        assume d##0_0 != null
-             && d##0_0 != a#0
-             && d##0_0 != b#0
-             && d##0_0 != c#0
-             && d##0_0 != d#0
-             && d##0_0 != e#0
-             && d##0_0 != f#0
-           ==> read($Heap, d##0_0, _module.Node.score)
-             == read($PreCallHeap#0_0, d##0_0, _module.Node.score);
-        assume d##0_0 != null
-             && d##0_0 != a#0
-             && d##0_0 != b#0
-             && d##0_0 != c#0
-             && d##0_0 != d#0
-             && d##0_0 != e#0
-             && d##0_0 != f#0
-           ==> read($Heap, d##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, d##0_0, _module.Node.rank);
-        assume e##0_0 != null
-             && e##0_0 != a#0
-             && e##0_0 != b#0
-             && e##0_0 != c#0
-             && e##0_0 != d#0
-             && e##0_0 != e#0
-             && e##0_0 != f#0
-           ==> read($Heap, e##0_0, _module.Node.val)
-             == read($PreCallHeap#0_0, e##0_0, _module.Node.val);
-        assume e##0_0 != null
-             && e##0_0 != a#0
-             && e##0_0 != b#0
-             && e##0_0 != c#0
-             && e##0_0 != d#0
-             && e##0_0 != e#0
-             && e##0_0 != f#0
-           ==> read($Heap, e##0_0, _module.Node.tag)
-             == read($PreCallHeap#0_0, e##0_0, _module.Node.tag);
-        assume e##0_0 != null
-             && e##0_0 != a#0
-             && e##0_0 != b#0
-             && e##0_0 != c#0
-             && e##0_0 != d#0
-             && e##0_0 != e#0
-             && e##0_0 != f#0
-           ==> read($Heap, e##0_0, _module.Node.score)
-             == read($PreCallHeap#0_0, e##0_0, _module.Node.score);
-        assume e##0_0 != null
-             && e##0_0 != a#0
-             && e##0_0 != b#0
-             && e##0_0 != c#0
-             && e##0_0 != d#0
-             && e##0_0 != e#0
-             && e##0_0 != f#0
-           ==> read($Heap, e##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, e##0_0, _module.Node.rank);
-        assume f##0_0 != null
-             && f##0_0 != a#0
-             && f##0_0 != b#0
-             && f##0_0 != c#0
-             && f##0_0 != d#0
-             && f##0_0 != e#0
-             && f##0_0 != f#0
-           ==> read($Heap, f##0_0, _module.Node.val)
-             == read($PreCallHeap#0_0, f##0_0, _module.Node.val);
-        assume f##0_0 != null
-             && f##0_0 != a#0
-             && f##0_0 != b#0
-             && f##0_0 != c#0
-             && f##0_0 != d#0
-             && f##0_0 != e#0
-             && f##0_0 != f#0
-           ==> read($Heap, f##0_0, _module.Node.tag)
-             == read($PreCallHeap#0_0, f##0_0, _module.Node.tag);
-        assume f##0_0 != null
-             && f##0_0 != a#0
-             && f##0_0 != b#0
-             && f##0_0 != c#0
-             && f##0_0 != d#0
-             && f##0_0 != e#0
-             && f##0_0 != f#0
-           ==> read($Heap, f##0_0, _module.Node.score)
-             == read($PreCallHeap#0_0, f##0_0, _module.Node.score);
-        assume f##0_0 != null
-             && f##0_0 != a#0
-             && f##0_0 != b#0
-             && f##0_0 != c#0
-             && f##0_0 != d#0
-             && f##0_0 != e#0
-             && f##0_0 != f#0
-           ==> read($Heap, f##0_0, _module.Node.rank)
-             == read($PreCallHeap#0_0, f##0_0, _module.Node.rank);
-        // TrCallStmt: After ProcessCallStmt
-        assume {:captureState "Test/arith.dfy(176,30)"} true;
-        // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(177,7)
-        assume true;
-        assume true;
-        i#0 := i#0 + 1;
-        assume {:captureState "Test/arith.dfy(177,14)"} true;
-        assume true;
-        // ----- loop termination check ----- /Users/saline/development/projects/dafny/Test/arith.dfy(167,3)
-        assert {:id "id1649"} 0 <= $decr$loop#00 || n#0 - i#0 == $decr$loop#00;
-        assert {:id "id1650"} n#0 - i#0 < $decr$loop#00;
+        // ----- loop termination check ----- /Users/saline/development/projects/dafny/Test/arith.dfy(81,3)
+        assert {:id "id757"} 0 <= $decr$loop#00 || n#0 - i#0 == $decr$loop#00;
+        assert {:id "id758"} n#0 - i#0 < $decr$loop#00;
         assume true;
     }
 }
@@ -10806,7 +5901,6 @@ procedure {:verboseName "StressTest (well-formedness)"} CheckWellFormed$$_module
     s#0: ref where $Is(s#0, Tclass._module.Node()) && (s#0 == null || $Alloc[s#0]), 
     t#0: ref where $Is(t#0, Tclass._module.Node()) && (t#0 == null || $Alloc[t#0]), 
     u#0: ref where $Is(u#0, Tclass._module.Node()) && (u#0 == null || $Alloc[u#0]), 
-    m#0: int, 
     n#0: int);
   modifies $Heap, $Alloc;
 
@@ -10824,436 +5918,332 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
     s#0: ref, 
     t#0: ref, 
     u#0: ref, 
-    m#0: int, 
     n#0: int)
 {
 
     // AddMethodImpl: StressTest, CheckWellFormed$$_module.__default.StressTest
-    assume {:captureState "Test/arith.dfy(190,7): initial state"} true;
-    assume {:id "id1651"} m#0 >= LitInt(0);
-    assume {:id "id1652"} n#0 >= LitInt(0);
-    assume {:id "id1653"} a#0 != b#0;
-    assume {:id "id1654"} a#0 != c#0;
-    assume {:id "id1655"} a#0 != d#0;
-    assume {:id "id1656"} a#0 != e#0;
-    assume {:id "id1657"} a#0 != f#0;
-    assume {:id "id1658"} b#0 != c#0;
-    assume {:id "id1659"} b#0 != d#0;
-    assume {:id "id1660"} b#0 != e#0;
-    assume {:id "id1661"} b#0 != f#0;
-    assume {:id "id1662"} c#0 != d#0;
-    assume {:id "id1663"} c#0 != e#0;
-    assume {:id "id1664"} c#0 != f#0;
-    assume {:id "id1665"} d#0 != e#0;
-    assume {:id "id1666"} d#0 != f#0;
-    assume {:id "id1667"} e#0 != f#0;
-    assume {:id "id1668"} p#0 != q#0;
-    assume {:id "id1669"} p#0 != r#0;
-    assume {:id "id1670"} p#0 != s#0;
-    assume {:id "id1671"} p#0 != t#0;
-    assume {:id "id1672"} p#0 != u#0;
-    assume {:id "id1673"} q#0 != r#0;
-    assume {:id "id1674"} q#0 != s#0;
-    assume {:id "id1675"} q#0 != t#0;
-    assume {:id "id1676"} q#0 != u#0;
-    assume {:id "id1677"} r#0 != s#0;
-    assume {:id "id1678"} r#0 != t#0;
-    assume {:id "id1679"} r#0 != u#0;
-    assume {:id "id1680"} s#0 != t#0;
-    assume {:id "id1681"} s#0 != u#0;
-    assume {:id "id1682"} t#0 != u#0;
-    assume {:id "id1683"} a#0 != p#0;
-    assume {:id "id1684"} a#0 != q#0;
-    assume {:id "id1685"} a#0 != r#0;
-    assume {:id "id1686"} a#0 != s#0;
-    assume {:id "id1687"} a#0 != t#0;
-    assume {:id "id1688"} a#0 != u#0;
-    assume {:id "id1689"} b#0 != p#0;
-    assume {:id "id1690"} b#0 != q#0;
-    assume {:id "id1691"} b#0 != r#0;
-    assume {:id "id1692"} b#0 != s#0;
-    assume {:id "id1693"} b#0 != t#0;
-    assume {:id "id1694"} b#0 != u#0;
-    assume {:id "id1695"} c#0 != p#0;
-    assume {:id "id1696"} c#0 != q#0;
-    assume {:id "id1697"} c#0 != r#0;
-    assume {:id "id1698"} c#0 != s#0;
-    assume {:id "id1699"} c#0 != t#0;
-    assume {:id "id1700"} c#0 != u#0;
-    assume {:id "id1701"} d#0 != p#0;
-    assume {:id "id1702"} d#0 != q#0;
-    assume {:id "id1703"} d#0 != r#0;
-    assume {:id "id1704"} d#0 != s#0;
-    assume {:id "id1705"} d#0 != t#0;
-    assume {:id "id1706"} d#0 != u#0;
-    assume {:id "id1707"} e#0 != p#0;
-    assume {:id "id1708"} e#0 != q#0;
-    assume {:id "id1709"} e#0 != r#0;
-    assume {:id "id1710"} e#0 != s#0;
-    assume {:id "id1711"} e#0 != t#0;
-    assume {:id "id1712"} e#0 != u#0;
-    assume {:id "id1713"} f#0 != p#0;
-    assume {:id "id1714"} f#0 != q#0;
-    assume {:id "id1715"} f#0 != r#0;
-    assume {:id "id1716"} f#0 != s#0;
-    assume {:id "id1717"} f#0 != t#0;
-    assume {:id "id1718"} f#0 != u#0;
+    assume {:captureState "Test/arith.dfy(95,7): initial state"} true;
+    assume {:id "id759"} n#0 >= LitInt(0);
+    assume {:id "id760"} a#0 != b#0;
+    assume {:id "id761"} a#0 != c#0;
+    assume {:id "id762"} a#0 != d#0;
+    assume {:id "id763"} a#0 != e#0;
+    assume {:id "id764"} a#0 != f#0;
+    assume {:id "id765"} b#0 != c#0;
+    assume {:id "id766"} b#0 != d#0;
+    assume {:id "id767"} b#0 != e#0;
+    assume {:id "id768"} b#0 != f#0;
+    assume {:id "id769"} c#0 != d#0;
+    assume {:id "id770"} c#0 != e#0;
+    assume {:id "id771"} c#0 != f#0;
+    assume {:id "id772"} d#0 != e#0;
+    assume {:id "id773"} d#0 != f#0;
+    assume {:id "id774"} e#0 != f#0;
+    assume {:id "id775"} p#0 != q#0;
+    assume {:id "id776"} p#0 != r#0;
+    assume {:id "id777"} p#0 != s#0;
+    assume {:id "id778"} p#0 != t#0;
+    assume {:id "id779"} p#0 != u#0;
+    assume {:id "id780"} q#0 != r#0;
+    assume {:id "id781"} q#0 != s#0;
+    assume {:id "id782"} q#0 != t#0;
+    assume {:id "id783"} q#0 != u#0;
+    assume {:id "id784"} r#0 != s#0;
+    assume {:id "id785"} r#0 != t#0;
+    assume {:id "id786"} r#0 != u#0;
+    assume {:id "id787"} s#0 != t#0;
+    assume {:id "id788"} s#0 != u#0;
+    assume {:id "id789"} t#0 != u#0;
+    assume {:id "id790"} a#0 != p#0;
+    assume {:id "id791"} a#0 != q#0;
+    assume {:id "id792"} a#0 != r#0;
+    assume {:id "id793"} a#0 != s#0;
+    assume {:id "id794"} a#0 != t#0;
+    assume {:id "id795"} a#0 != u#0;
+    assume {:id "id796"} b#0 != p#0;
+    assume {:id "id797"} b#0 != q#0;
+    assume {:id "id798"} b#0 != r#0;
+    assume {:id "id799"} b#0 != s#0;
+    assume {:id "id800"} b#0 != t#0;
+    assume {:id "id801"} b#0 != u#0;
+    assume {:id "id802"} c#0 != p#0;
+    assume {:id "id803"} c#0 != q#0;
+    assume {:id "id804"} c#0 != r#0;
+    assume {:id "id805"} c#0 != s#0;
+    assume {:id "id806"} c#0 != t#0;
+    assume {:id "id807"} c#0 != u#0;
+    assume {:id "id808"} d#0 != p#0;
+    assume {:id "id809"} d#0 != q#0;
+    assume {:id "id810"} d#0 != r#0;
+    assume {:id "id811"} d#0 != s#0;
+    assume {:id "id812"} d#0 != t#0;
+    assume {:id "id813"} d#0 != u#0;
+    assume {:id "id814"} e#0 != p#0;
+    assume {:id "id815"} e#0 != q#0;
+    assume {:id "id816"} e#0 != r#0;
+    assume {:id "id817"} e#0 != s#0;
+    assume {:id "id818"} e#0 != t#0;
+    assume {:id "id819"} e#0 != u#0;
+    assume {:id "id820"} f#0 != p#0;
+    assume {:id "id821"} f#0 != q#0;
+    assume {:id "id822"} f#0 != r#0;
+    assume {:id "id823"} f#0 != s#0;
+    assume {:id "id824"} f#0 != t#0;
+    assume {:id "id825"} f#0 != u#0;
     havoc $Heap;
-    assume {:captureState "Test/arith.dfy(214,96): post-state"} true;
-    assert {:id "id1719"} a#0 != null;
+    assume {:captureState "Test/arith.dfy(118,61): post-state"} true;
+    assert {:id "id826"} a#0 != null;
     assume true;
-    assert {:id "id1720"} a#0 != null;
-    assert {:id "id1721"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id827"} a#0 != null;
+    assert {:id "id828"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id1722"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.val)): int
-         + Mul(LitInt(2), m#0)
-         + Mul(LitInt(4), n#0)
-         + 9;
-    assert {:id "id1723"} a#0 != null;
+    assume {:id "id829"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + n#0 + 4;
+    assert {:id "id830"} a#0 != null;
     assume true;
-    assert {:id "id1724"} a#0 != null;
-    assert {:id "id1725"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id831"} a#0 != null;
+    assert {:id "id832"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id1726"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+    assume {:id "id833"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
-    assert {:id "id1727"} a#0 != null;
+    assert {:id "id834"} a#0 != null;
     assume true;
-    assert {:id "id1728"} a#0 != null;
-    assert {:id "id1729"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id835"} a#0 != null;
+    assert {:id "id836"} a#0 == null || old($Alloc)[a#0];
     assume true;
-    assume {:id "id1730"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+    assume {:id "id837"} $Unbox(read($Heap, a#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
-    assert {:id "id1731"} a#0 != null;
+    assert {:id "id838"} b#0 != null;
     assume true;
-    assert {:id "id1732"} a#0 != null;
-    assert {:id "id1733"} a#0 == null || old($Alloc)[a#0];
+    assert {:id "id839"} b#0 != null;
+    assert {:id "id840"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id1734"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
-    assert {:id "id1735"} b#0 != null;
+    assume {:id "id841"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + n#0 + 4;
+    assert {:id "id842"} b#0 != null;
     assume true;
-    assert {:id "id1736"} b#0 != null;
-    assert {:id "id1737"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id843"} b#0 != null;
+    assert {:id "id844"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id1738"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.val)): int
-         + Mul(LitInt(2), m#0)
-         + Mul(LitInt(4), n#0)
-         + 9;
-    assert {:id "id1739"} b#0 != null;
-    assume true;
-    assert {:id "id1740"} b#0 != null;
-    assert {:id "id1741"} b#0 == null || old($Alloc)[b#0];
-    assume true;
-    assume {:id "id1742"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+    assume {:id "id845"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
-    assert {:id "id1743"} b#0 != null;
+    assert {:id "id846"} b#0 != null;
     assume true;
-    assert {:id "id1744"} b#0 != null;
-    assert {:id "id1745"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id847"} b#0 != null;
+    assert {:id "id848"} b#0 == null || old($Alloc)[b#0];
     assume true;
-    assume {:id "id1746"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+    assume {:id "id849"} $Unbox(read($Heap, b#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
-    assert {:id "id1747"} b#0 != null;
+    assert {:id "id850"} c#0 != null;
     assume true;
-    assert {:id "id1748"} b#0 != null;
-    assert {:id "id1749"} b#0 == null || old($Alloc)[b#0];
+    assert {:id "id851"} c#0 != null;
+    assert {:id "id852"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id1750"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
-    assert {:id "id1751"} c#0 != null;
+    assume {:id "id853"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + n#0 + 4;
+    assert {:id "id854"} c#0 != null;
     assume true;
-    assert {:id "id1752"} c#0 != null;
-    assert {:id "id1753"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id855"} c#0 != null;
+    assert {:id "id856"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id1754"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.val)): int
-         + Mul(LitInt(2), m#0)
-         + Mul(LitInt(4), n#0)
-         + 9;
-    assert {:id "id1755"} c#0 != null;
-    assume true;
-    assert {:id "id1756"} c#0 != null;
-    assert {:id "id1757"} c#0 == null || old($Alloc)[c#0];
-    assume true;
-    assume {:id "id1758"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+    assume {:id "id857"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
-    assert {:id "id1759"} c#0 != null;
+    assert {:id "id858"} c#0 != null;
     assume true;
-    assert {:id "id1760"} c#0 != null;
-    assert {:id "id1761"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id859"} c#0 != null;
+    assert {:id "id860"} c#0 == null || old($Alloc)[c#0];
     assume true;
-    assume {:id "id1762"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+    assume {:id "id861"} $Unbox(read($Heap, c#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
-    assert {:id "id1763"} c#0 != null;
+    assert {:id "id862"} d#0 != null;
     assume true;
-    assert {:id "id1764"} c#0 != null;
-    assert {:id "id1765"} c#0 == null || old($Alloc)[c#0];
+    assert {:id "id863"} d#0 != null;
+    assert {:id "id864"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id1766"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
-    assert {:id "id1767"} d#0 != null;
+    assume {:id "id865"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + n#0 + 4;
+    assert {:id "id866"} d#0 != null;
     assume true;
-    assert {:id "id1768"} d#0 != null;
-    assert {:id "id1769"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id867"} d#0 != null;
+    assert {:id "id868"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id1770"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.val)): int
-         + Mul(LitInt(2), m#0)
-         + Mul(LitInt(4), n#0)
-         + 8;
-    assert {:id "id1771"} d#0 != null;
-    assume true;
-    assert {:id "id1772"} d#0 != null;
-    assert {:id "id1773"} d#0 == null || old($Alloc)[d#0];
-    assume true;
-    assume {:id "id1774"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+    assume {:id "id869"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
-    assert {:id "id1775"} d#0 != null;
+    assert {:id "id870"} d#0 != null;
     assume true;
-    assert {:id "id1776"} d#0 != null;
-    assert {:id "id1777"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id871"} d#0 != null;
+    assert {:id "id872"} d#0 == null || old($Alloc)[d#0];
     assume true;
-    assume {:id "id1778"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+    assume {:id "id873"} $Unbox(read($Heap, d#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
-    assert {:id "id1779"} d#0 != null;
+    assert {:id "id874"} e#0 != null;
     assume true;
-    assert {:id "id1780"} d#0 != null;
-    assert {:id "id1781"} d#0 == null || old($Alloc)[d#0];
+    assert {:id "id875"} e#0 != null;
+    assert {:id "id876"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id1782"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
-    assert {:id "id1783"} e#0 != null;
+    assume {:id "id877"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + n#0 + 4;
+    assert {:id "id878"} e#0 != null;
     assume true;
-    assert {:id "id1784"} e#0 != null;
-    assert {:id "id1785"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id879"} e#0 != null;
+    assert {:id "id880"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id1786"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.val)): int
-         + Mul(LitInt(2), m#0)
-         + Mul(LitInt(4), n#0)
-         + 8;
-    assert {:id "id1787"} e#0 != null;
-    assume true;
-    assert {:id "id1788"} e#0 != null;
-    assert {:id "id1789"} e#0 == null || old($Alloc)[e#0];
-    assume true;
-    assume {:id "id1790"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+    assume {:id "id881"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
-    assert {:id "id1791"} e#0 != null;
+    assert {:id "id882"} e#0 != null;
     assume true;
-    assert {:id "id1792"} e#0 != null;
-    assert {:id "id1793"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id883"} e#0 != null;
+    assert {:id "id884"} e#0 == null || old($Alloc)[e#0];
     assume true;
-    assume {:id "id1794"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+    assume {:id "id885"} $Unbox(read($Heap, e#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
-    assert {:id "id1795"} e#0 != null;
+    assert {:id "id886"} f#0 != null;
     assume true;
-    assert {:id "id1796"} e#0 != null;
-    assert {:id "id1797"} e#0 == null || old($Alloc)[e#0];
+    assert {:id "id887"} f#0 != null;
+    assert {:id "id888"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id1798"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
-    assert {:id "id1799"} f#0 != null;
+    assume {:id "id889"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + n#0 + 4;
+    assert {:id "id890"} f#0 != null;
     assume true;
-    assert {:id "id1800"} f#0 != null;
-    assert {:id "id1801"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id891"} f#0 != null;
+    assert {:id "id892"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id1802"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.val)): int
-         + Mul(LitInt(2), m#0)
-         + Mul(LitInt(4), n#0)
-         + 8;
-    assert {:id "id1803"} f#0 != null;
-    assume true;
-    assert {:id "id1804"} f#0 != null;
-    assert {:id "id1805"} f#0 == null || old($Alloc)[f#0];
-    assume true;
-    assume {:id "id1806"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+    assume {:id "id893"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
-    assert {:id "id1807"} f#0 != null;
+    assert {:id "id894"} f#0 != null;
     assume true;
-    assert {:id "id1808"} f#0 != null;
-    assert {:id "id1809"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id895"} f#0 != null;
+    assert {:id "id896"} f#0 == null || old($Alloc)[f#0];
     assume true;
-    assume {:id "id1810"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+    assume {:id "id897"} $Unbox(read($Heap, f#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
-    assert {:id "id1811"} f#0 != null;
+    assert {:id "id898"} p#0 != null;
     assume true;
-    assert {:id "id1812"} f#0 != null;
-    assert {:id "id1813"} f#0 == null || old($Alloc)[f#0];
+    assert {:id "id899"} p#0 != null;
+    assert {:id "id900"} p#0 == null || old($Alloc)[p#0];
     assume true;
-    assume {:id "id1814"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
-    assert {:id "id1815"} p#0 != null;
+    assume {:id "id901"} $Unbox(read($Heap, p#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 2;
+    assert {:id "id902"} p#0 != null;
     assume true;
-    assert {:id "id1816"} p#0 != null;
-    assert {:id "id1817"} p#0 == null || old($Alloc)[p#0];
+    assert {:id "id903"} p#0 != null;
+    assert {:id "id904"} p#0 == null || old($Alloc)[p#0];
     assume true;
-    assume {:id "id1818"} $Unbox(read($Heap, p#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 5;
-    assert {:id "id1819"} p#0 != null;
-    assume true;
-    assert {:id "id1820"} p#0 != null;
-    assert {:id "id1821"} p#0 == null || old($Alloc)[p#0];
-    assume true;
-    assume {:id "id1822"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
+    assume {:id "id905"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), p#0, _module.Node.tag)): int;
-    assert {:id "id1823"} p#0 != null;
+    assert {:id "id906"} p#0 != null;
     assume true;
-    assert {:id "id1824"} p#0 != null;
-    assert {:id "id1825"} p#0 == null || old($Alloc)[p#0];
+    assert {:id "id907"} p#0 != null;
+    assert {:id "id908"} p#0 == null || old($Alloc)[p#0];
     assume true;
-    assume {:id "id1826"} $Unbox(read($Heap, p#0, _module.Node.score)): int
+    assume {:id "id909"} $Unbox(read($Heap, p#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), p#0, _module.Node.score)): int;
-    assert {:id "id1827"} p#0 != null;
+    assert {:id "id910"} q#0 != null;
     assume true;
-    assert {:id "id1828"} p#0 != null;
-    assert {:id "id1829"} p#0 == null || old($Alloc)[p#0];
+    assert {:id "id911"} q#0 != null;
+    assert {:id "id912"} q#0 == null || old($Alloc)[q#0];
     assume true;
-    assume {:id "id1830"} $Unbox(read($Heap, p#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), p#0, _module.Node.rank)): int;
-    assert {:id "id1831"} q#0 != null;
+    assume {:id "id913"} $Unbox(read($Heap, q#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 2;
+    assert {:id "id914"} q#0 != null;
     assume true;
-    assert {:id "id1832"} q#0 != null;
-    assert {:id "id1833"} q#0 == null || old($Alloc)[q#0];
+    assert {:id "id915"} q#0 != null;
+    assert {:id "id916"} q#0 == null || old($Alloc)[q#0];
     assume true;
-    assume {:id "id1834"} $Unbox(read($Heap, q#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 5;
-    assert {:id "id1835"} q#0 != null;
-    assume true;
-    assert {:id "id1836"} q#0 != null;
-    assert {:id "id1837"} q#0 == null || old($Alloc)[q#0];
-    assume true;
-    assume {:id "id1838"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
+    assume {:id "id917"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), q#0, _module.Node.tag)): int;
-    assert {:id "id1839"} q#0 != null;
+    assert {:id "id918"} q#0 != null;
     assume true;
-    assert {:id "id1840"} q#0 != null;
-    assert {:id "id1841"} q#0 == null || old($Alloc)[q#0];
+    assert {:id "id919"} q#0 != null;
+    assert {:id "id920"} q#0 == null || old($Alloc)[q#0];
     assume true;
-    assume {:id "id1842"} $Unbox(read($Heap, q#0, _module.Node.score)): int
+    assume {:id "id921"} $Unbox(read($Heap, q#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), q#0, _module.Node.score)): int;
-    assert {:id "id1843"} q#0 != null;
+    assert {:id "id922"} r#0 != null;
     assume true;
-    assert {:id "id1844"} q#0 != null;
-    assert {:id "id1845"} q#0 == null || old($Alloc)[q#0];
+    assert {:id "id923"} r#0 != null;
+    assert {:id "id924"} r#0 == null || old($Alloc)[r#0];
     assume true;
-    assume {:id "id1846"} $Unbox(read($Heap, q#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), q#0, _module.Node.rank)): int;
-    assert {:id "id1847"} r#0 != null;
+    assume {:id "id925"} $Unbox(read($Heap, r#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 2;
+    assert {:id "id926"} r#0 != null;
     assume true;
-    assert {:id "id1848"} r#0 != null;
-    assert {:id "id1849"} r#0 == null || old($Alloc)[r#0];
+    assert {:id "id927"} r#0 != null;
+    assert {:id "id928"} r#0 == null || old($Alloc)[r#0];
     assume true;
-    assume {:id "id1850"} $Unbox(read($Heap, r#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 5;
-    assert {:id "id1851"} r#0 != null;
-    assume true;
-    assert {:id "id1852"} r#0 != null;
-    assert {:id "id1853"} r#0 == null || old($Alloc)[r#0];
-    assume true;
-    assume {:id "id1854"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
+    assume {:id "id929"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), r#0, _module.Node.tag)): int;
-    assert {:id "id1855"} r#0 != null;
+    assert {:id "id930"} r#0 != null;
     assume true;
-    assert {:id "id1856"} r#0 != null;
-    assert {:id "id1857"} r#0 == null || old($Alloc)[r#0];
+    assert {:id "id931"} r#0 != null;
+    assert {:id "id932"} r#0 == null || old($Alloc)[r#0];
     assume true;
-    assume {:id "id1858"} $Unbox(read($Heap, r#0, _module.Node.score)): int
+    assume {:id "id933"} $Unbox(read($Heap, r#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), r#0, _module.Node.score)): int;
-    assert {:id "id1859"} r#0 != null;
+    assert {:id "id934"} s#0 != null;
     assume true;
-    assert {:id "id1860"} r#0 != null;
-    assert {:id "id1861"} r#0 == null || old($Alloc)[r#0];
+    assert {:id "id935"} s#0 != null;
+    assert {:id "id936"} s#0 == null || old($Alloc)[s#0];
     assume true;
-    assume {:id "id1862"} $Unbox(read($Heap, r#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), r#0, _module.Node.rank)): int;
-    assert {:id "id1863"} s#0 != null;
+    assume {:id "id937"} $Unbox(read($Heap, s#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), s#0, _module.Node.val)): int + 2;
+    assert {:id "id938"} s#0 != null;
     assume true;
-    assert {:id "id1864"} s#0 != null;
-    assert {:id "id1865"} s#0 == null || old($Alloc)[s#0];
+    assert {:id "id939"} s#0 != null;
+    assert {:id "id940"} s#0 == null || old($Alloc)[s#0];
     assume true;
-    assume {:id "id1866"} $Unbox(read($Heap, s#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), s#0, _module.Node.val)): int + 4;
-    assert {:id "id1867"} s#0 != null;
-    assume true;
-    assert {:id "id1868"} s#0 != null;
-    assert {:id "id1869"} s#0 == null || old($Alloc)[s#0];
-    assume true;
-    assume {:id "id1870"} $Unbox(read($Heap, s#0, _module.Node.tag)): int
+    assume {:id "id941"} $Unbox(read($Heap, s#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), s#0, _module.Node.tag)): int;
-    assert {:id "id1871"} s#0 != null;
+    assert {:id "id942"} s#0 != null;
     assume true;
-    assert {:id "id1872"} s#0 != null;
-    assert {:id "id1873"} s#0 == null || old($Alloc)[s#0];
+    assert {:id "id943"} s#0 != null;
+    assert {:id "id944"} s#0 == null || old($Alloc)[s#0];
     assume true;
-    assume {:id "id1874"} $Unbox(read($Heap, s#0, _module.Node.score)): int
+    assume {:id "id945"} $Unbox(read($Heap, s#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), s#0, _module.Node.score)): int;
-    assert {:id "id1875"} s#0 != null;
+    assert {:id "id946"} t#0 != null;
     assume true;
-    assert {:id "id1876"} s#0 != null;
-    assert {:id "id1877"} s#0 == null || old($Alloc)[s#0];
+    assert {:id "id947"} t#0 != null;
+    assert {:id "id948"} t#0 == null || old($Alloc)[t#0];
     assume true;
-    assume {:id "id1878"} $Unbox(read($Heap, s#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), s#0, _module.Node.rank)): int;
-    assert {:id "id1879"} t#0 != null;
+    assume {:id "id949"} $Unbox(read($Heap, t#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), t#0, _module.Node.val)): int + 2;
+    assert {:id "id950"} t#0 != null;
     assume true;
-    assert {:id "id1880"} t#0 != null;
-    assert {:id "id1881"} t#0 == null || old($Alloc)[t#0];
+    assert {:id "id951"} t#0 != null;
+    assert {:id "id952"} t#0 == null || old($Alloc)[t#0];
     assume true;
-    assume {:id "id1882"} $Unbox(read($Heap, t#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), t#0, _module.Node.val)): int + 4;
-    assert {:id "id1883"} t#0 != null;
-    assume true;
-    assert {:id "id1884"} t#0 != null;
-    assert {:id "id1885"} t#0 == null || old($Alloc)[t#0];
-    assume true;
-    assume {:id "id1886"} $Unbox(read($Heap, t#0, _module.Node.tag)): int
+    assume {:id "id953"} $Unbox(read($Heap, t#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), t#0, _module.Node.tag)): int;
-    assert {:id "id1887"} t#0 != null;
+    assert {:id "id954"} t#0 != null;
     assume true;
-    assert {:id "id1888"} t#0 != null;
-    assert {:id "id1889"} t#0 == null || old($Alloc)[t#0];
+    assert {:id "id955"} t#0 != null;
+    assert {:id "id956"} t#0 == null || old($Alloc)[t#0];
     assume true;
-    assume {:id "id1890"} $Unbox(read($Heap, t#0, _module.Node.score)): int
+    assume {:id "id957"} $Unbox(read($Heap, t#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), t#0, _module.Node.score)): int;
-    assert {:id "id1891"} t#0 != null;
+    assert {:id "id958"} u#0 != null;
     assume true;
-    assert {:id "id1892"} t#0 != null;
-    assert {:id "id1893"} t#0 == null || old($Alloc)[t#0];
+    assert {:id "id959"} u#0 != null;
+    assert {:id "id960"} u#0 == null || old($Alloc)[u#0];
     assume true;
-    assume {:id "id1894"} $Unbox(read($Heap, t#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), t#0, _module.Node.rank)): int;
-    assert {:id "id1895"} u#0 != null;
+    assume {:id "id961"} $Unbox(read($Heap, u#0, _module.Node.val)): int
+       == $Unbox(read(old($Heap), u#0, _module.Node.val)): int + 2;
+    assert {:id "id962"} u#0 != null;
     assume true;
-    assert {:id "id1896"} u#0 != null;
-    assert {:id "id1897"} u#0 == null || old($Alloc)[u#0];
+    assert {:id "id963"} u#0 != null;
+    assert {:id "id964"} u#0 == null || old($Alloc)[u#0];
     assume true;
-    assume {:id "id1898"} $Unbox(read($Heap, u#0, _module.Node.val)): int
-       == $Unbox(read(old($Heap), u#0, _module.Node.val)): int + 4;
-    assert {:id "id1899"} u#0 != null;
-    assume true;
-    assert {:id "id1900"} u#0 != null;
-    assert {:id "id1901"} u#0 == null || old($Alloc)[u#0];
-    assume true;
-    assume {:id "id1902"} $Unbox(read($Heap, u#0, _module.Node.tag)): int
+    assume {:id "id965"} $Unbox(read($Heap, u#0, _module.Node.tag)): int
        == $Unbox(read(old($Heap), u#0, _module.Node.tag)): int;
-    assert {:id "id1903"} u#0 != null;
+    assert {:id "id966"} u#0 != null;
     assume true;
-    assert {:id "id1904"} u#0 != null;
-    assert {:id "id1905"} u#0 == null || old($Alloc)[u#0];
+    assert {:id "id967"} u#0 != null;
+    assert {:id "id968"} u#0 == null || old($Alloc)[u#0];
     assume true;
-    assume {:id "id1906"} $Unbox(read($Heap, u#0, _module.Node.score)): int
+    assume {:id "id969"} $Unbox(read($Heap, u#0, _module.Node.score)): int
        == $Unbox(read(old($Heap), u#0, _module.Node.score)): int;
-    assert {:id "id1907"} u#0 != null;
-    assume true;
-    assert {:id "id1908"} u#0 != null;
-    assert {:id "id1909"} u#0 == null || old($Alloc)[u#0];
-    assume true;
-    assume {:id "id1910"} $Unbox(read($Heap, u#0, _module.Node.rank)): int
-       == $Unbox(read(old($Heap), u#0, _module.Node.rank)): int;
 }
 
 
@@ -11270,145 +6260,142 @@ procedure {:verboseName "StressTest (call)"} Call$$_module.__default.StressTest(
     s#0: ref where $Is(s#0, Tclass._module.Node()) && (s#0 == null || $Alloc[s#0]), 
     t#0: ref where $Is(t#0, Tclass._module.Node()) && (t#0 == null || $Alloc[t#0]), 
     u#0: ref where $Is(u#0, Tclass._module.Node()) && (u#0 == null || $Alloc[u#0]), 
-    m#0: int, 
     n#0: int);
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id1911"} m#0 >= LitInt(0);
+  requires {:id "id970"} n#0 >= LitInt(0);
   free requires {:always_assume} true;
-  requires {:id "id1912"} n#0 >= LitInt(0);
+  requires {:id "id971"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id1913"} a#0 != b#0;
+  requires {:id "id972"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id1914"} a#0 != c#0;
+  requires {:id "id973"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1915"} a#0 != d#0;
+  requires {:id "id974"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1916"} a#0 != e#0;
+  requires {:id "id975"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1917"} a#0 != f#0;
+  requires {:id "id976"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id1918"} b#0 != c#0;
+  requires {:id "id977"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1919"} b#0 != d#0;
+  requires {:id "id978"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1920"} b#0 != e#0;
+  requires {:id "id979"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1921"} b#0 != f#0;
+  requires {:id "id980"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id1922"} c#0 != d#0;
+  requires {:id "id981"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1923"} c#0 != e#0;
+  requires {:id "id982"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1924"} c#0 != f#0;
+  requires {:id "id983"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id1925"} d#0 != e#0;
+  requires {:id "id984"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1926"} d#0 != f#0;
+  requires {:id "id985"} e#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id1927"} e#0 != f#0;
+  requires {:id "id986"} p#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id1928"} p#0 != q#0;
+  requires {:id "id987"} p#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id1929"} p#0 != r#0;
+  requires {:id "id988"} p#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1930"} p#0 != s#0;
+  requires {:id "id989"} p#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1931"} p#0 != t#0;
+  requires {:id "id990"} p#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1932"} p#0 != u#0;
+  requires {:id "id991"} q#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id1933"} q#0 != r#0;
+  requires {:id "id992"} q#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1934"} q#0 != s#0;
+  requires {:id "id993"} q#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1935"} q#0 != t#0;
+  requires {:id "id994"} q#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1936"} q#0 != u#0;
+  requires {:id "id995"} r#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1937"} r#0 != s#0;
+  requires {:id "id996"} r#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1938"} r#0 != t#0;
+  requires {:id "id997"} r#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1939"} r#0 != u#0;
+  requires {:id "id998"} s#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1940"} s#0 != t#0;
+  requires {:id "id999"} s#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1941"} s#0 != u#0;
+  requires {:id "id1000"} t#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1942"} t#0 != u#0;
+  requires {:id "id1001"} a#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id1943"} a#0 != p#0;
+  requires {:id "id1002"} a#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id1944"} a#0 != q#0;
+  requires {:id "id1003"} a#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id1945"} a#0 != r#0;
+  requires {:id "id1004"} a#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1946"} a#0 != s#0;
+  requires {:id "id1005"} a#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1947"} a#0 != t#0;
+  requires {:id "id1006"} a#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1948"} a#0 != u#0;
+  requires {:id "id1007"} b#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id1949"} b#0 != p#0;
+  requires {:id "id1008"} b#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id1950"} b#0 != q#0;
+  requires {:id "id1009"} b#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id1951"} b#0 != r#0;
+  requires {:id "id1010"} b#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1952"} b#0 != s#0;
+  requires {:id "id1011"} b#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1953"} b#0 != t#0;
+  requires {:id "id1012"} b#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1954"} b#0 != u#0;
+  requires {:id "id1013"} c#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id1955"} c#0 != p#0;
+  requires {:id "id1014"} c#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id1956"} c#0 != q#0;
+  requires {:id "id1015"} c#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id1957"} c#0 != r#0;
+  requires {:id "id1016"} c#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1958"} c#0 != s#0;
+  requires {:id "id1017"} c#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1959"} c#0 != t#0;
+  requires {:id "id1018"} c#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1960"} c#0 != u#0;
+  requires {:id "id1019"} d#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id1961"} d#0 != p#0;
+  requires {:id "id1020"} d#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id1962"} d#0 != q#0;
+  requires {:id "id1021"} d#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id1963"} d#0 != r#0;
+  requires {:id "id1022"} d#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1964"} d#0 != s#0;
+  requires {:id "id1023"} d#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1965"} d#0 != t#0;
+  requires {:id "id1024"} d#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1966"} d#0 != u#0;
+  requires {:id "id1025"} e#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id1967"} e#0 != p#0;
+  requires {:id "id1026"} e#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id1968"} e#0 != q#0;
+  requires {:id "id1027"} e#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id1969"} e#0 != r#0;
+  requires {:id "id1028"} e#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1970"} e#0 != s#0;
+  requires {:id "id1029"} e#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1971"} e#0 != t#0;
+  requires {:id "id1030"} e#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id1972"} e#0 != u#0;
+  requires {:id "id1031"} f#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id1973"} f#0 != p#0;
+  requires {:id "id1032"} f#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id1974"} f#0 != q#0;
+  requires {:id "id1033"} f#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id1975"} f#0 != r#0;
+  requires {:id "id1034"} f#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id1976"} f#0 != s#0;
+  requires {:id "id1035"} f#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id1977"} f#0 != t#0;
-  free requires {:always_assume} true;
-  requires {:id "id1978"} f#0 != u#0;
+  requires {:id "id1036"} f#0 != u#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -11425,167 +6412,113 @@ procedure {:verboseName "StressTest (call)"} Call$$_module.__default.StressTest(
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id1979"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 9;
+  ensures {:id "id1037"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id1980"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id1038"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1981"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id1039"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1982"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
+  ensures {:id "id1040"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id1983"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 9;
-  free ensures {:always_assume} true;
-  ensures {:id "id1984"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id1041"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1985"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id1042"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1986"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
+  ensures {:id "id1043"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id1987"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 9;
-  free ensures {:always_assume} true;
-  ensures {:id "id1988"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id1044"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1989"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id1045"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1990"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
+  ensures {:id "id1046"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id1991"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id1992"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id1047"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1993"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id1048"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1994"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
+  ensures {:id "id1049"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id1995"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id1996"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id1050"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1997"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id1051"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id1998"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
+  ensures {:id "id1052"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id1999"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id2000"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id1053"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2001"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id1054"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2002"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
+  ensures {:id "id1055"} $Unbox(read($Heap, p#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2003"} $Unbox(read($Heap, p#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 5;
-  free ensures {:always_assume} true;
-  ensures {:id "id2004"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
+  ensures {:id "id1056"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), p#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2005"} $Unbox(read($Heap, p#0, _module.Node.score)): int
+  ensures {:id "id1057"} $Unbox(read($Heap, p#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), p#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2006"} $Unbox(read($Heap, p#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.rank)): int;
+  ensures {:id "id1058"} $Unbox(read($Heap, q#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2007"} $Unbox(read($Heap, q#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 5;
-  free ensures {:always_assume} true;
-  ensures {:id "id2008"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
+  ensures {:id "id1059"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), q#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2009"} $Unbox(read($Heap, q#0, _module.Node.score)): int
+  ensures {:id "id1060"} $Unbox(read($Heap, q#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), q#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2010"} $Unbox(read($Heap, q#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.rank)): int;
+  ensures {:id "id1061"} $Unbox(read($Heap, r#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2011"} $Unbox(read($Heap, r#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 5;
-  free ensures {:always_assume} true;
-  ensures {:id "id2012"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
+  ensures {:id "id1062"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), r#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2013"} $Unbox(read($Heap, r#0, _module.Node.score)): int
+  ensures {:id "id1063"} $Unbox(read($Heap, r#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), r#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2014"} $Unbox(read($Heap, r#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.rank)): int;
+  ensures {:id "id1064"} $Unbox(read($Heap, s#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), s#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2015"} $Unbox(read($Heap, s#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), s#0, _module.Node.val)): int + 4;
-  free ensures {:always_assume} true;
-  ensures {:id "id2016"} $Unbox(read($Heap, s#0, _module.Node.tag)): int
+  ensures {:id "id1065"} $Unbox(read($Heap, s#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), s#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2017"} $Unbox(read($Heap, s#0, _module.Node.score)): int
+  ensures {:id "id1066"} $Unbox(read($Heap, s#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), s#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2018"} $Unbox(read($Heap, s#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), s#0, _module.Node.rank)): int;
+  ensures {:id "id1067"} $Unbox(read($Heap, t#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), t#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2019"} $Unbox(read($Heap, t#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), t#0, _module.Node.val)): int + 4;
-  free ensures {:always_assume} true;
-  ensures {:id "id2020"} $Unbox(read($Heap, t#0, _module.Node.tag)): int
+  ensures {:id "id1068"} $Unbox(read($Heap, t#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), t#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2021"} $Unbox(read($Heap, t#0, _module.Node.score)): int
+  ensures {:id "id1069"} $Unbox(read($Heap, t#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), t#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2022"} $Unbox(read($Heap, t#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), t#0, _module.Node.rank)): int;
+  ensures {:id "id1070"} $Unbox(read($Heap, u#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), u#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2023"} $Unbox(read($Heap, u#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), u#0, _module.Node.val)): int + 4;
-  free ensures {:always_assume} true;
-  ensures {:id "id2024"} $Unbox(read($Heap, u#0, _module.Node.tag)): int
+  ensures {:id "id1071"} $Unbox(read($Heap, u#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), u#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2025"} $Unbox(read($Heap, u#0, _module.Node.score)): int
+  ensures {:id "id1072"} $Unbox(read($Heap, u#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), u#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id2026"} $Unbox(read($Heap, u#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), u#0, _module.Node.rank)): int;
 
 
 
@@ -11601,146 +6534,143 @@ procedure {:verboseName "StressTest (correctness)"} Impl$$_module.__default.Stre
     s#0: ref where $Is(s#0, Tclass._module.Node()) && (s#0 == null || $Alloc[s#0]), 
     t#0: ref where $Is(t#0, Tclass._module.Node()) && (t#0 == null || $Alloc[t#0]), 
     u#0: ref where $Is(u#0, Tclass._module.Node()) && (u#0 == null || $Alloc[u#0]), 
-    m#0: int, 
     n#0: int)
    returns ($_reverifyPost: bool);
   // user-defined preconditions
   free requires {:always_assume} true;
-  requires {:id "id2027"} m#0 >= LitInt(0);
+  requires {:id "id1073"} n#0 >= LitInt(0);
   free requires {:always_assume} true;
-  requires {:id "id2028"} n#0 >= LitInt(0);
+  requires {:id "id1074"} a#0 != b#0;
   free requires {:always_assume} true;
-  requires {:id "id2029"} a#0 != b#0;
+  requires {:id "id1075"} a#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id2030"} a#0 != c#0;
+  requires {:id "id1076"} a#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id2031"} a#0 != d#0;
+  requires {:id "id1077"} a#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id2032"} a#0 != e#0;
+  requires {:id "id1078"} a#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id2033"} a#0 != f#0;
+  requires {:id "id1079"} b#0 != c#0;
   free requires {:always_assume} true;
-  requires {:id "id2034"} b#0 != c#0;
+  requires {:id "id1080"} b#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id2035"} b#0 != d#0;
+  requires {:id "id1081"} b#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id2036"} b#0 != e#0;
+  requires {:id "id1082"} b#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id2037"} b#0 != f#0;
+  requires {:id "id1083"} c#0 != d#0;
   free requires {:always_assume} true;
-  requires {:id "id2038"} c#0 != d#0;
+  requires {:id "id1084"} c#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id2039"} c#0 != e#0;
+  requires {:id "id1085"} c#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id2040"} c#0 != f#0;
+  requires {:id "id1086"} d#0 != e#0;
   free requires {:always_assume} true;
-  requires {:id "id2041"} d#0 != e#0;
+  requires {:id "id1087"} d#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id2042"} d#0 != f#0;
+  requires {:id "id1088"} e#0 != f#0;
   free requires {:always_assume} true;
-  requires {:id "id2043"} e#0 != f#0;
+  requires {:id "id1089"} p#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id2044"} p#0 != q#0;
+  requires {:id "id1090"} p#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id2045"} p#0 != r#0;
+  requires {:id "id1091"} p#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2046"} p#0 != s#0;
+  requires {:id "id1092"} p#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2047"} p#0 != t#0;
+  requires {:id "id1093"} p#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2048"} p#0 != u#0;
+  requires {:id "id1094"} q#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id2049"} q#0 != r#0;
+  requires {:id "id1095"} q#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2050"} q#0 != s#0;
+  requires {:id "id1096"} q#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2051"} q#0 != t#0;
+  requires {:id "id1097"} q#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2052"} q#0 != u#0;
+  requires {:id "id1098"} r#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2053"} r#0 != s#0;
+  requires {:id "id1099"} r#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2054"} r#0 != t#0;
+  requires {:id "id1100"} r#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2055"} r#0 != u#0;
+  requires {:id "id1101"} s#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2056"} s#0 != t#0;
+  requires {:id "id1102"} s#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2057"} s#0 != u#0;
+  requires {:id "id1103"} t#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2058"} t#0 != u#0;
+  requires {:id "id1104"} a#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id2059"} a#0 != p#0;
+  requires {:id "id1105"} a#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id2060"} a#0 != q#0;
+  requires {:id "id1106"} a#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id2061"} a#0 != r#0;
+  requires {:id "id1107"} a#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2062"} a#0 != s#0;
+  requires {:id "id1108"} a#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2063"} a#0 != t#0;
+  requires {:id "id1109"} a#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2064"} a#0 != u#0;
+  requires {:id "id1110"} b#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id2065"} b#0 != p#0;
+  requires {:id "id1111"} b#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id2066"} b#0 != q#0;
+  requires {:id "id1112"} b#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id2067"} b#0 != r#0;
+  requires {:id "id1113"} b#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2068"} b#0 != s#0;
+  requires {:id "id1114"} b#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2069"} b#0 != t#0;
+  requires {:id "id1115"} b#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2070"} b#0 != u#0;
+  requires {:id "id1116"} c#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id2071"} c#0 != p#0;
+  requires {:id "id1117"} c#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id2072"} c#0 != q#0;
+  requires {:id "id1118"} c#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id2073"} c#0 != r#0;
+  requires {:id "id1119"} c#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2074"} c#0 != s#0;
+  requires {:id "id1120"} c#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2075"} c#0 != t#0;
+  requires {:id "id1121"} c#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2076"} c#0 != u#0;
+  requires {:id "id1122"} d#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id2077"} d#0 != p#0;
+  requires {:id "id1123"} d#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id2078"} d#0 != q#0;
+  requires {:id "id1124"} d#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id2079"} d#0 != r#0;
+  requires {:id "id1125"} d#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2080"} d#0 != s#0;
+  requires {:id "id1126"} d#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2081"} d#0 != t#0;
+  requires {:id "id1127"} d#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2082"} d#0 != u#0;
+  requires {:id "id1128"} e#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id2083"} e#0 != p#0;
+  requires {:id "id1129"} e#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id2084"} e#0 != q#0;
+  requires {:id "id1130"} e#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id2085"} e#0 != r#0;
+  requires {:id "id1131"} e#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2086"} e#0 != s#0;
+  requires {:id "id1132"} e#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2087"} e#0 != t#0;
+  requires {:id "id1133"} e#0 != u#0;
   free requires {:always_assume} true;
-  requires {:id "id2088"} e#0 != u#0;
+  requires {:id "id1134"} f#0 != p#0;
   free requires {:always_assume} true;
-  requires {:id "id2089"} f#0 != p#0;
+  requires {:id "id1135"} f#0 != q#0;
   free requires {:always_assume} true;
-  requires {:id "id2090"} f#0 != q#0;
+  requires {:id "id1136"} f#0 != r#0;
   free requires {:always_assume} true;
-  requires {:id "id2091"} f#0 != r#0;
+  requires {:id "id1137"} f#0 != s#0;
   free requires {:always_assume} true;
-  requires {:id "id2092"} f#0 != s#0;
+  requires {:id "id1138"} f#0 != t#0;
   free requires {:always_assume} true;
-  requires {:id "id2093"} f#0 != t#0;
-  free requires {:always_assume} true;
-  requires {:id "id2094"} f#0 != u#0;
+  requires {:id "id1139"} f#0 != u#0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   free requires {:always_assume} true;
@@ -11757,167 +6687,113 @@ procedure {:verboseName "StressTest (correctness)"} Impl$$_module.__default.Stre
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id2095"} $Unbox(read($Heap, a#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 9;
+  ensures {:id "id1140"} $Unbox(read($Heap, a#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), a#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id2096"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
+  ensures {:id "id1141"} $Unbox(read($Heap, a#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2097"} $Unbox(read($Heap, a#0, _module.Node.score)): int
+  ensures {:id "id1142"} $Unbox(read($Heap, a#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), a#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2098"} $Unbox(read($Heap, a#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), a#0, _module.Node.rank)): int;
+  ensures {:id "id1143"} $Unbox(read($Heap, b#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id2099"} $Unbox(read($Heap, b#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 9;
-  free ensures {:always_assume} true;
-  ensures {:id "id2100"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
+  ensures {:id "id1144"} $Unbox(read($Heap, b#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2101"} $Unbox(read($Heap, b#0, _module.Node.score)): int
+  ensures {:id "id1145"} $Unbox(read($Heap, b#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), b#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2102"} $Unbox(read($Heap, b#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), b#0, _module.Node.rank)): int;
+  ensures {:id "id1146"} $Unbox(read($Heap, c#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id2103"} $Unbox(read($Heap, c#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 9;
-  free ensures {:always_assume} true;
-  ensures {:id "id2104"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
+  ensures {:id "id1147"} $Unbox(read($Heap, c#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2105"} $Unbox(read($Heap, c#0, _module.Node.score)): int
+  ensures {:id "id1148"} $Unbox(read($Heap, c#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), c#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2106"} $Unbox(read($Heap, c#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), c#0, _module.Node.rank)): int;
+  ensures {:id "id1149"} $Unbox(read($Heap, d#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id2107"} $Unbox(read($Heap, d#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id2108"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
+  ensures {:id "id1150"} $Unbox(read($Heap, d#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2109"} $Unbox(read($Heap, d#0, _module.Node.score)): int
+  ensures {:id "id1151"} $Unbox(read($Heap, d#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), d#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2110"} $Unbox(read($Heap, d#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), d#0, _module.Node.rank)): int;
+  ensures {:id "id1152"} $Unbox(read($Heap, e#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id2111"} $Unbox(read($Heap, e#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id2112"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
+  ensures {:id "id1153"} $Unbox(read($Heap, e#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2113"} $Unbox(read($Heap, e#0, _module.Node.score)): int
+  ensures {:id "id1154"} $Unbox(read($Heap, e#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), e#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2114"} $Unbox(read($Heap, e#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), e#0, _module.Node.rank)): int;
+  ensures {:id "id1155"} $Unbox(read($Heap, f#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int + n#0 + 4;
   free ensures {:always_assume} true;
-  ensures {:id "id2115"} $Unbox(read($Heap, f#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.val)): int
-       + Mul(LitInt(2), m#0)
-       + Mul(LitInt(4), n#0)
-       + 8;
-  free ensures {:always_assume} true;
-  ensures {:id "id2116"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
+  ensures {:id "id1156"} $Unbox(read($Heap, f#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2117"} $Unbox(read($Heap, f#0, _module.Node.score)): int
+  ensures {:id "id1157"} $Unbox(read($Heap, f#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), f#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2118"} $Unbox(read($Heap, f#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), f#0, _module.Node.rank)): int;
+  ensures {:id "id1158"} $Unbox(read($Heap, p#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2119"} $Unbox(read($Heap, p#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.val)): int + 5;
-  free ensures {:always_assume} true;
-  ensures {:id "id2120"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
+  ensures {:id "id1159"} $Unbox(read($Heap, p#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), p#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2121"} $Unbox(read($Heap, p#0, _module.Node.score)): int
+  ensures {:id "id1160"} $Unbox(read($Heap, p#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), p#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2122"} $Unbox(read($Heap, p#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), p#0, _module.Node.rank)): int;
+  ensures {:id "id1161"} $Unbox(read($Heap, q#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2123"} $Unbox(read($Heap, q#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.val)): int + 5;
-  free ensures {:always_assume} true;
-  ensures {:id "id2124"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
+  ensures {:id "id1162"} $Unbox(read($Heap, q#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), q#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2125"} $Unbox(read($Heap, q#0, _module.Node.score)): int
+  ensures {:id "id1163"} $Unbox(read($Heap, q#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), q#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2126"} $Unbox(read($Heap, q#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), q#0, _module.Node.rank)): int;
+  ensures {:id "id1164"} $Unbox(read($Heap, r#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2127"} $Unbox(read($Heap, r#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.val)): int + 5;
-  free ensures {:always_assume} true;
-  ensures {:id "id2128"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
+  ensures {:id "id1165"} $Unbox(read($Heap, r#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), r#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2129"} $Unbox(read($Heap, r#0, _module.Node.score)): int
+  ensures {:id "id1166"} $Unbox(read($Heap, r#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), r#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2130"} $Unbox(read($Heap, r#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), r#0, _module.Node.rank)): int;
+  ensures {:id "id1167"} $Unbox(read($Heap, s#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), s#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2131"} $Unbox(read($Heap, s#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), s#0, _module.Node.val)): int + 4;
-  free ensures {:always_assume} true;
-  ensures {:id "id2132"} $Unbox(read($Heap, s#0, _module.Node.tag)): int
+  ensures {:id "id1168"} $Unbox(read($Heap, s#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), s#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2133"} $Unbox(read($Heap, s#0, _module.Node.score)): int
+  ensures {:id "id1169"} $Unbox(read($Heap, s#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), s#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2134"} $Unbox(read($Heap, s#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), s#0, _module.Node.rank)): int;
+  ensures {:id "id1170"} $Unbox(read($Heap, t#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), t#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2135"} $Unbox(read($Heap, t#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), t#0, _module.Node.val)): int + 4;
-  free ensures {:always_assume} true;
-  ensures {:id "id2136"} $Unbox(read($Heap, t#0, _module.Node.tag)): int
+  ensures {:id "id1171"} $Unbox(read($Heap, t#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), t#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2137"} $Unbox(read($Heap, t#0, _module.Node.score)): int
+  ensures {:id "id1172"} $Unbox(read($Heap, t#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), t#0, _module.Node.score)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2138"} $Unbox(read($Heap, t#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), t#0, _module.Node.rank)): int;
+  ensures {:id "id1173"} $Unbox(read($Heap, u#0, _module.Node.val)): int
+     == $Unbox(read(old($Heap), u#0, _module.Node.val)): int + 2;
   free ensures {:always_assume} true;
-  ensures {:id "id2139"} $Unbox(read($Heap, u#0, _module.Node.val)): int
-     == $Unbox(read(old($Heap), u#0, _module.Node.val)): int + 4;
-  free ensures {:always_assume} true;
-  ensures {:id "id2140"} $Unbox(read($Heap, u#0, _module.Node.tag)): int
+  ensures {:id "id1174"} $Unbox(read($Heap, u#0, _module.Node.tag)): int
      == $Unbox(read(old($Heap), u#0, _module.Node.tag)): int;
   free ensures {:always_assume} true;
-  ensures {:id "id2141"} $Unbox(read($Heap, u#0, _module.Node.score)): int
+  ensures {:id "id1175"} $Unbox(read($Heap, u#0, _module.Node.score)): int
      == $Unbox(read(old($Heap), u#0, _module.Node.score)): int;
-  free ensures {:always_assume} true;
-  ensures {:id "id2142"} $Unbox(read($Heap, u#0, _module.Node.rank)): int
-     == $Unbox(read(old($Heap), u#0, _module.Node.rank)): int;
 
 
 
@@ -11933,7 +6809,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
     s#0: ref, 
     t#0: ref, 
     u#0: ref, 
-    m#0: int, 
     n#0: int)
    returns ($_reverifyPost: bool)
 {
@@ -11952,7 +6827,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
   var d##1: ref;
   var e##1: ref;
   var f##1: ref;
-  var n##1: int;
   var $PreCallHeap#1: Heap;
   var $PreCallAlloc#1: [ref]bool;
   var a##2: ref;
@@ -11963,27 +6837,11 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
   var f##2: ref;
   var $PreCallHeap#2: Heap;
   var $PreCallAlloc#2: [ref]bool;
-  var a##3: ref;
-  var b##3: ref;
-  var c##3: ref;
-  var p##0: ref;
-  var q##0: ref;
-  var r##0: ref;
-  var $PreCallHeap#3: Heap;
-  var $PreCallAlloc#3: [ref]bool;
-  var a##4: ref;
-  var b##4: ref;
-  var c##4: ref;
-  var d##3: ref;
-  var e##3: ref;
-  var f##3: ref;
-  var $PreCallHeap#4: Heap;
-  var $PreCallAlloc#4: [ref]bool;
 
     // AddMethodImpl: StressTest, Impl$$_module.__default.StressTest
-    assume {:captureState "Test/arith.dfy(229,0): initial state"} true;
+    assume {:captureState "Test/arith.dfy(130,0): initial state"} true;
     $_reverifyPost := false;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(230,8)
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(131,8)
     // TrCallStmt: Before ProcessCallStmt
     assume true;
     // ProcessCallStmt: CheckSubrange
@@ -12005,7 +6863,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
     f##0 := f#0;
     assume true;
     // ProcessCallStmt: CheckSubrange
-    n##0 := m#0;
+    n##0 := n#0;
     $PreCallHeap#0 := $Heap;
     $PreCallAlloc#0 := $Alloc;
     assume true;
@@ -12014,7 +6872,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
     assume true;
     assume true;
     assume true;
-    assert {:id "id2143"} a##0 == a#0
+    assert {:id "id1176"} a##0 == a#0
        || a##0 == b#0
        || a##0 == c#0
        || a##0 == d#0
@@ -12027,7 +6885,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || a##0 == t#0
        || a##0 == u#0
        || !old($Alloc)[a##0];
-    assert {:id "id2144"} b##0 == a#0
+    assert {:id "id1177"} b##0 == a#0
        || b##0 == b#0
        || b##0 == c#0
        || b##0 == d#0
@@ -12040,7 +6898,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || b##0 == t#0
        || b##0 == u#0
        || !old($Alloc)[b##0];
-    assert {:id "id2145"} c##0 == a#0
+    assert {:id "id1178"} c##0 == a#0
        || c##0 == b#0
        || c##0 == c#0
        || c##0 == d#0
@@ -12053,7 +6911,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || c##0 == t#0
        || c##0 == u#0
        || !old($Alloc)[c##0];
-    assert {:id "id2146"} d##0 == a#0
+    assert {:id "id1179"} d##0 == a#0
        || d##0 == b#0
        || d##0 == c#0
        || d##0 == d#0
@@ -12066,7 +6924,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || d##0 == t#0
        || d##0 == u#0
        || !old($Alloc)[d##0];
-    assert {:id "id2147"} e##0 == a#0
+    assert {:id "id1180"} e##0 == a#0
        || e##0 == b#0
        || e##0 == c#0
        || e##0 == d#0
@@ -12079,7 +6937,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || e##0 == t#0
        || e##0 == u#0
        || !old($Alloc)[e##0];
-    assert {:id "id2148"} f##0 == a#0
+    assert {:id "id1181"} f##0 == a#0
        || f##0 == b#0
        || f##0 == c#0
        || f##0 == d#0
@@ -12092,8 +6950,8 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || f##0 == t#0
        || f##0 == u#0
        || !old($Alloc)[f##0];
-    call {:id "id2149"} Call$$_module.__default.BumpN(a##0, b##0, c##0, d##0, e##0, f##0, n##0);
-    // qf-call-frame BumpN: supports=18 reads=72 modified=6
+    call {:id "id1182"} Call$$_module.__default.BumpN(a##0, b##0, c##0, d##0, e##0, f##0, n##0);
+    // qf-call-frame BumpN: supports=18 reads=54 modified=6
     assume a#0 != null
          && a#0 != a#0
          && a#0 != b#0
@@ -12121,15 +6979,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && a#0 != f#0
        ==> read($Heap, a#0, _module.Node.score)
          == read($PreCallHeap#0, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#0, a#0, _module.Node.rank);
     assume b#0 != null
          && b#0 != a#0
          && b#0 != b#0
@@ -12157,15 +7006,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && b#0 != f#0
        ==> read($Heap, b#0, _module.Node.score)
          == read($PreCallHeap#0, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#0, b#0, _module.Node.rank);
     assume c#0 != null
          && c#0 != a#0
          && c#0 != b#0
@@ -12193,15 +7033,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && c#0 != f#0
        ==> read($Heap, c#0, _module.Node.score)
          == read($PreCallHeap#0, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#0, c#0, _module.Node.rank);
     assume d#0 != null
          && d#0 != a#0
          && d#0 != b#0
@@ -12229,15 +7060,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && d#0 != f#0
        ==> read($Heap, d#0, _module.Node.score)
          == read($PreCallHeap#0, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#0, d#0, _module.Node.rank);
     assume e#0 != null
          && e#0 != a#0
          && e#0 != b#0
@@ -12265,15 +7087,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && e#0 != f#0
        ==> read($Heap, e#0, _module.Node.score)
          == read($PreCallHeap#0, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#0, e#0, _module.Node.rank);
     assume f#0 != null
          && f#0 != a#0
          && f#0 != b#0
@@ -12301,15 +7114,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && f#0 != f#0
        ==> read($Heap, f#0, _module.Node.score)
          == read($PreCallHeap#0, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#0, f#0, _module.Node.rank);
     assume p#0 != null
          && p#0 != a#0
          && p#0 != b#0
@@ -12337,15 +7141,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && p#0 != f#0
        ==> read($Heap, p#0, _module.Node.score)
          == read($PreCallHeap#0, p#0, _module.Node.score);
-    assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != d#0
-         && p#0 != e#0
-         && p#0 != f#0
-       ==> read($Heap, p#0, _module.Node.rank)
-         == read($PreCallHeap#0, p#0, _module.Node.rank);
     assume q#0 != null
          && q#0 != a#0
          && q#0 != b#0
@@ -12373,15 +7168,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && q#0 != f#0
        ==> read($Heap, q#0, _module.Node.score)
          == read($PreCallHeap#0, q#0, _module.Node.score);
-    assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != d#0
-         && q#0 != e#0
-         && q#0 != f#0
-       ==> read($Heap, q#0, _module.Node.rank)
-         == read($PreCallHeap#0, q#0, _module.Node.rank);
     assume r#0 != null
          && r#0 != a#0
          && r#0 != b#0
@@ -12409,15 +7195,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && r#0 != f#0
        ==> read($Heap, r#0, _module.Node.score)
          == read($PreCallHeap#0, r#0, _module.Node.score);
-    assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != d#0
-         && r#0 != e#0
-         && r#0 != f#0
-       ==> read($Heap, r#0, _module.Node.rank)
-         == read($PreCallHeap#0, r#0, _module.Node.rank);
     assume s#0 != null
          && s#0 != a#0
          && s#0 != b#0
@@ -12445,15 +7222,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && s#0 != f#0
        ==> read($Heap, s#0, _module.Node.score)
          == read($PreCallHeap#0, s#0, _module.Node.score);
-    assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != d#0
-         && s#0 != e#0
-         && s#0 != f#0
-       ==> read($Heap, s#0, _module.Node.rank)
-         == read($PreCallHeap#0, s#0, _module.Node.rank);
     assume t#0 != null
          && t#0 != a#0
          && t#0 != b#0
@@ -12481,15 +7249,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && t#0 != f#0
        ==> read($Heap, t#0, _module.Node.score)
          == read($PreCallHeap#0, t#0, _module.Node.score);
-    assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != d#0
-         && t#0 != e#0
-         && t#0 != f#0
-       ==> read($Heap, t#0, _module.Node.rank)
-         == read($PreCallHeap#0, t#0, _module.Node.rank);
     assume u#0 != null
          && u#0 != a#0
          && u#0 != b#0
@@ -12517,15 +7276,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && u#0 != f#0
        ==> read($Heap, u#0, _module.Node.score)
          == read($PreCallHeap#0, u#0, _module.Node.score);
-    assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != d#0
-         && u#0 != e#0
-         && u#0 != f#0
-       ==> read($Heap, u#0, _module.Node.rank)
-         == read($PreCallHeap#0, u#0, _module.Node.rank);
     assume a##0 != null
          && a##0 != a#0
          && a##0 != b#0
@@ -12553,15 +7303,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && a##0 != f#0
        ==> read($Heap, a##0, _module.Node.score)
          == read($PreCallHeap#0, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#0, a##0, _module.Node.rank);
     assume b##0 != null
          && b##0 != a#0
          && b##0 != b#0
@@ -12589,15 +7330,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && b##0 != f#0
        ==> read($Heap, b##0, _module.Node.score)
          == read($PreCallHeap#0, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#0, b##0, _module.Node.rank);
     assume c##0 != null
          && c##0 != a#0
          && c##0 != b#0
@@ -12625,15 +7357,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && c##0 != f#0
        ==> read($Heap, c##0, _module.Node.score)
          == read($PreCallHeap#0, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#0, c##0, _module.Node.rank);
     assume d##0 != null
          && d##0 != a#0
          && d##0 != b#0
@@ -12661,15 +7384,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && d##0 != f#0
        ==> read($Heap, d##0, _module.Node.score)
          == read($PreCallHeap#0, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#0, d##0, _module.Node.rank);
     assume e##0 != null
          && e##0 != a#0
          && e##0 != b#0
@@ -12697,15 +7411,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && e##0 != f#0
        ==> read($Heap, e##0, _module.Node.score)
          == read($PreCallHeap#0, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#0, e##0, _module.Node.rank);
     assume f##0 != null
          && f##0 != a#0
          && f##0 != b#0
@@ -12733,18 +7438,9 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && f##0 != f#0
        ==> read($Heap, f##0, _module.Node.score)
          == read($PreCallHeap#0, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#0, f##0, _module.Node.rank);
     // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(230,28)"} true;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(231,12)
+    assume {:captureState "Test/arith.dfy(131,28)"} true;
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(132,11)
     // TrCallStmt: Before ProcessCallStmt
     assume true;
     // ProcessCallStmt: CheckSubrange
@@ -12764,9 +7460,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
     assume true;
     // ProcessCallStmt: CheckSubrange
     f##1 := f#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    n##1 := n#0;
     $PreCallHeap#1 := $Heap;
     $PreCallAlloc#1 := $Alloc;
     assume true;
@@ -12775,7 +7468,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
     assume true;
     assume true;
     assume true;
-    assert {:id "id2150"} a##1 == a#0
+    assert {:id "id1183"} a##1 == a#0
        || a##1 == b#0
        || a##1 == c#0
        || a##1 == d#0
@@ -12788,7 +7481,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || a##1 == t#0
        || a##1 == u#0
        || !old($Alloc)[a##1];
-    assert {:id "id2151"} b##1 == a#0
+    assert {:id "id1184"} b##1 == a#0
        || b##1 == b#0
        || b##1 == c#0
        || b##1 == d#0
@@ -12801,7 +7494,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || b##1 == t#0
        || b##1 == u#0
        || !old($Alloc)[b##1];
-    assert {:id "id2152"} c##1 == a#0
+    assert {:id "id1185"} c##1 == a#0
        || c##1 == b#0
        || c##1 == c#0
        || c##1 == d#0
@@ -12814,7 +7507,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || c##1 == t#0
        || c##1 == u#0
        || !old($Alloc)[c##1];
-    assert {:id "id2153"} d##1 == a#0
+    assert {:id "id1186"} d##1 == a#0
        || d##1 == b#0
        || d##1 == c#0
        || d##1 == d#0
@@ -12827,7 +7520,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || d##1 == t#0
        || d##1 == u#0
        || !old($Alloc)[d##1];
-    assert {:id "id2154"} e##1 == a#0
+    assert {:id "id1187"} e##1 == a#0
        || e##1 == b#0
        || e##1 == c#0
        || e##1 == d#0
@@ -12840,7 +7533,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || e##1 == t#0
        || e##1 == u#0
        || !old($Alloc)[e##1];
-    assert {:id "id2155"} f##1 == a#0
+    assert {:id "id1188"} f##1 == a#0
        || f##1 == b#0
        || f##1 == c#0
        || f##1 == d#0
@@ -12853,8 +7546,8 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || f##1 == t#0
        || f##1 == u#0
        || !old($Alloc)[f##1];
-    call {:id "id2156"} Call$$_module.__default.BumpNQuad(a##1, b##1, c##1, d##1, e##1, f##1, n##1);
-    // qf-call-frame BumpNQuad: supports=24 reads=96 modified=6
+    call {:id "id1189"} Call$$_module.__default.QuadBump(a##1, b##1, c##1, d##1, e##1, f##1);
+    // qf-call-frame QuadBump: supports=24 reads=72 modified=6
     assume a#0 != null
          && a#0 != a#0
          && a#0 != b#0
@@ -12882,15 +7575,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && a#0 != f#0
        ==> read($Heap, a#0, _module.Node.score)
          == read($PreCallHeap#1, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#1, a#0, _module.Node.rank);
     assume b#0 != null
          && b#0 != a#0
          && b#0 != b#0
@@ -12918,15 +7602,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && b#0 != f#0
        ==> read($Heap, b#0, _module.Node.score)
          == read($PreCallHeap#1, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#1, b#0, _module.Node.rank);
     assume c#0 != null
          && c#0 != a#0
          && c#0 != b#0
@@ -12954,15 +7629,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && c#0 != f#0
        ==> read($Heap, c#0, _module.Node.score)
          == read($PreCallHeap#1, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#1, c#0, _module.Node.rank);
     assume d#0 != null
          && d#0 != a#0
          && d#0 != b#0
@@ -12990,15 +7656,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && d#0 != f#0
        ==> read($Heap, d#0, _module.Node.score)
          == read($PreCallHeap#1, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#1, d#0, _module.Node.rank);
     assume e#0 != null
          && e#0 != a#0
          && e#0 != b#0
@@ -13026,15 +7683,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && e#0 != f#0
        ==> read($Heap, e#0, _module.Node.score)
          == read($PreCallHeap#1, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#1, e#0, _module.Node.rank);
     assume f#0 != null
          && f#0 != a#0
          && f#0 != b#0
@@ -13062,15 +7710,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && f#0 != f#0
        ==> read($Heap, f#0, _module.Node.score)
          == read($PreCallHeap#1, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#1, f#0, _module.Node.rank);
     assume p#0 != null
          && p#0 != a#0
          && p#0 != b#0
@@ -13098,15 +7737,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && p#0 != f#0
        ==> read($Heap, p#0, _module.Node.score)
          == read($PreCallHeap#1, p#0, _module.Node.score);
-    assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != d#0
-         && p#0 != e#0
-         && p#0 != f#0
-       ==> read($Heap, p#0, _module.Node.rank)
-         == read($PreCallHeap#1, p#0, _module.Node.rank);
     assume q#0 != null
          && q#0 != a#0
          && q#0 != b#0
@@ -13134,15 +7764,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && q#0 != f#0
        ==> read($Heap, q#0, _module.Node.score)
          == read($PreCallHeap#1, q#0, _module.Node.score);
-    assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != d#0
-         && q#0 != e#0
-         && q#0 != f#0
-       ==> read($Heap, q#0, _module.Node.rank)
-         == read($PreCallHeap#1, q#0, _module.Node.rank);
     assume r#0 != null
          && r#0 != a#0
          && r#0 != b#0
@@ -13170,15 +7791,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && r#0 != f#0
        ==> read($Heap, r#0, _module.Node.score)
          == read($PreCallHeap#1, r#0, _module.Node.score);
-    assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != d#0
-         && r#0 != e#0
-         && r#0 != f#0
-       ==> read($Heap, r#0, _module.Node.rank)
-         == read($PreCallHeap#1, r#0, _module.Node.rank);
     assume s#0 != null
          && s#0 != a#0
          && s#0 != b#0
@@ -13206,15 +7818,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && s#0 != f#0
        ==> read($Heap, s#0, _module.Node.score)
          == read($PreCallHeap#1, s#0, _module.Node.score);
-    assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != d#0
-         && s#0 != e#0
-         && s#0 != f#0
-       ==> read($Heap, s#0, _module.Node.rank)
-         == read($PreCallHeap#1, s#0, _module.Node.rank);
     assume t#0 != null
          && t#0 != a#0
          && t#0 != b#0
@@ -13242,15 +7845,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && t#0 != f#0
        ==> read($Heap, t#0, _module.Node.score)
          == read($PreCallHeap#1, t#0, _module.Node.score);
-    assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != d#0
-         && t#0 != e#0
-         && t#0 != f#0
-       ==> read($Heap, t#0, _module.Node.rank)
-         == read($PreCallHeap#1, t#0, _module.Node.rank);
     assume u#0 != null
          && u#0 != a#0
          && u#0 != b#0
@@ -13278,15 +7872,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && u#0 != f#0
        ==> read($Heap, u#0, _module.Node.score)
          == read($PreCallHeap#1, u#0, _module.Node.score);
-    assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != d#0
-         && u#0 != e#0
-         && u#0 != f#0
-       ==> read($Heap, u#0, _module.Node.rank)
-         == read($PreCallHeap#1, u#0, _module.Node.rank);
     assume a##0 != null
          && a##0 != a#0
          && a##0 != b#0
@@ -13314,15 +7899,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && a##0 != f#0
        ==> read($Heap, a##0, _module.Node.score)
          == read($PreCallHeap#1, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#1, a##0, _module.Node.rank);
     assume b##0 != null
          && b##0 != a#0
          && b##0 != b#0
@@ -13350,15 +7926,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && b##0 != f#0
        ==> read($Heap, b##0, _module.Node.score)
          == read($PreCallHeap#1, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#1, b##0, _module.Node.rank);
     assume c##0 != null
          && c##0 != a#0
          && c##0 != b#0
@@ -13386,15 +7953,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && c##0 != f#0
        ==> read($Heap, c##0, _module.Node.score)
          == read($PreCallHeap#1, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#1, c##0, _module.Node.rank);
     assume d##0 != null
          && d##0 != a#0
          && d##0 != b#0
@@ -13422,15 +7980,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && d##0 != f#0
        ==> read($Heap, d##0, _module.Node.score)
          == read($PreCallHeap#1, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#1, d##0, _module.Node.rank);
     assume e##0 != null
          && e##0 != a#0
          && e##0 != b#0
@@ -13458,15 +8007,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && e##0 != f#0
        ==> read($Heap, e##0, _module.Node.score)
          == read($PreCallHeap#1, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#1, e##0, _module.Node.rank);
     assume f##0 != null
          && f##0 != a#0
          && f##0 != b#0
@@ -13494,15 +8034,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && f##0 != f#0
        ==> read($Heap, f##0, _module.Node.score)
          == read($PreCallHeap#1, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#1, f##0, _module.Node.rank);
     assume a##1 != null
          && a##1 != a#0
          && a##1 != b#0
@@ -13530,15 +8061,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && a##1 != f#0
        ==> read($Heap, a##1, _module.Node.score)
          == read($PreCallHeap#1, a##1, _module.Node.score);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
-       ==> read($Heap, a##1, _module.Node.rank)
-         == read($PreCallHeap#1, a##1, _module.Node.rank);
     assume b##1 != null
          && b##1 != a#0
          && b##1 != b#0
@@ -13566,15 +8088,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && b##1 != f#0
        ==> read($Heap, b##1, _module.Node.score)
          == read($PreCallHeap#1, b##1, _module.Node.score);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
-       ==> read($Heap, b##1, _module.Node.rank)
-         == read($PreCallHeap#1, b##1, _module.Node.rank);
     assume c##1 != null
          && c##1 != a#0
          && c##1 != b#0
@@ -13602,15 +8115,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && c##1 != f#0
        ==> read($Heap, c##1, _module.Node.score)
          == read($PreCallHeap#1, c##1, _module.Node.score);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
-       ==> read($Heap, c##1, _module.Node.rank)
-         == read($PreCallHeap#1, c##1, _module.Node.rank);
     assume d##1 != null
          && d##1 != a#0
          && d##1 != b#0
@@ -13638,15 +8142,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && d##1 != f#0
        ==> read($Heap, d##1, _module.Node.score)
          == read($PreCallHeap#1, d##1, _module.Node.score);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
-       ==> read($Heap, d##1, _module.Node.rank)
-         == read($PreCallHeap#1, d##1, _module.Node.rank);
     assume e##1 != null
          && e##1 != a#0
          && e##1 != b#0
@@ -13674,15 +8169,6 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && e##1 != f#0
        ==> read($Heap, e##1, _module.Node.score)
          == read($PreCallHeap#1, e##1, _module.Node.score);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
-       ==> read($Heap, e##1, _module.Node.rank)
-         == read($PreCallHeap#1, e##1, _module.Node.rank);
     assume f##1 != null
          && f##1 != a#0
          && f##1 != b#0
@@ -13710,37 +8196,28 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
          && f##1 != f#0
        ==> read($Heap, f##1, _module.Node.score)
          == read($PreCallHeap#1, f##1, _module.Node.score);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
-       ==> read($Heap, f##1, _module.Node.rank)
-         == read($PreCallHeap#1, f##1, _module.Node.rank);
     // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(231,32)"} true;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(232,11)
+    assume {:captureState "Test/arith.dfy(132,28)"} true;
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(133,13)
     // TrCallStmt: Before ProcessCallStmt
     assume true;
     // ProcessCallStmt: CheckSubrange
-    a##2 := a#0;
+    a##2 := p#0;
     assume true;
     // ProcessCallStmt: CheckSubrange
-    b##2 := b#0;
+    b##2 := q#0;
     assume true;
     // ProcessCallStmt: CheckSubrange
-    c##2 := c#0;
+    c##2 := r#0;
     assume true;
     // ProcessCallStmt: CheckSubrange
-    d##2 := d#0;
+    d##2 := s#0;
     assume true;
     // ProcessCallStmt: CheckSubrange
-    e##2 := e#0;
+    e##2 := t#0;
     assume true;
     // ProcessCallStmt: CheckSubrange
-    f##2 := f#0;
+    f##2 := u#0;
     $PreCallHeap#2 := $Heap;
     $PreCallAlloc#2 := $Alloc;
     assume true;
@@ -13749,7 +8226,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
     assume true;
     assume true;
     assume true;
-    assert {:id "id2157"} a##2 == a#0
+    assert {:id "id1190"} a##2 == a#0
        || a##2 == b#0
        || a##2 == c#0
        || a##2 == d#0
@@ -13762,7 +8239,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || a##2 == t#0
        || a##2 == u#0
        || !old($Alloc)[a##2];
-    assert {:id "id2158"} b##2 == a#0
+    assert {:id "id1191"} b##2 == a#0
        || b##2 == b#0
        || b##2 == c#0
        || b##2 == d#0
@@ -13775,7 +8252,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || b##2 == t#0
        || b##2 == u#0
        || !old($Alloc)[b##2];
-    assert {:id "id2159"} c##2 == a#0
+    assert {:id "id1192"} c##2 == a#0
        || c##2 == b#0
        || c##2 == c#0
        || c##2 == d#0
@@ -13788,7 +8265,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || c##2 == t#0
        || c##2 == u#0
        || !old($Alloc)[c##2];
-    assert {:id "id2160"} d##2 == a#0
+    assert {:id "id1193"} d##2 == a#0
        || d##2 == b#0
        || d##2 == c#0
        || d##2 == d#0
@@ -13801,7 +8278,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || d##2 == t#0
        || d##2 == u#0
        || !old($Alloc)[d##2];
-    assert {:id "id2161"} e##2 == a#0
+    assert {:id "id1194"} e##2 == a#0
        || e##2 == b#0
        || e##2 == c#0
        || e##2 == d#0
@@ -13814,7 +8291,7 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || e##2 == t#0
        || e##2 == u#0
        || !old($Alloc)[e##2];
-    assert {:id "id2162"} f##2 == a#0
+    assert {:id "id1195"} f##2 == a#0
        || f##2 == b#0
        || f##2 == c#0
        || f##2 == d#0
@@ -13827,4118 +8304,820 @@ implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "StressTest (
        || f##2 == t#0
        || f##2 == u#0
        || !old($Alloc)[f##2];
-    call {:id "id2163"} Call$$_module.__default.OctoBump(a##2, b##2, c##2, d##2, e##2, f##2);
-    // qf-call-frame OctoBump: supports=30 reads=120 modified=6
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.val)
-         == read($PreCallHeap#2, a#0, _module.Node.val);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.tag)
-         == read($PreCallHeap#2, a#0, _module.Node.tag);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.score)
-         == read($PreCallHeap#2, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != d#0
-         && a#0 != e#0
-         && a#0 != f#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#2, a#0, _module.Node.rank);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.val)
-         == read($PreCallHeap#2, b#0, _module.Node.val);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.tag)
-         == read($PreCallHeap#2, b#0, _module.Node.tag);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.score)
-         == read($PreCallHeap#2, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != d#0
-         && b#0 != e#0
-         && b#0 != f#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#2, b#0, _module.Node.rank);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.val)
-         == read($PreCallHeap#2, c#0, _module.Node.val);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.tag)
-         == read($PreCallHeap#2, c#0, _module.Node.tag);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.score)
-         == read($PreCallHeap#2, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != d#0
-         && c#0 != e#0
-         && c#0 != f#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#2, c#0, _module.Node.rank);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.val)
-         == read($PreCallHeap#2, d#0, _module.Node.val);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.tag)
-         == read($PreCallHeap#2, d#0, _module.Node.tag);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.score)
-         == read($PreCallHeap#2, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != d#0
-         && d#0 != e#0
-         && d#0 != f#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#2, d#0, _module.Node.rank);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.val)
-         == read($PreCallHeap#2, e#0, _module.Node.val);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.tag)
-         == read($PreCallHeap#2, e#0, _module.Node.tag);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.score)
-         == read($PreCallHeap#2, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != d#0
-         && e#0 != e#0
-         && e#0 != f#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#2, e#0, _module.Node.rank);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.val)
-         == read($PreCallHeap#2, f#0, _module.Node.val);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.tag)
-         == read($PreCallHeap#2, f#0, _module.Node.tag);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.score)
-         == read($PreCallHeap#2, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != d#0
-         && f#0 != e#0
-         && f#0 != f#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#2, f#0, _module.Node.rank);
+    call {:id "id1196"} Call$$_module.__default.DoubleBump(a##2, b##2, c##2, d##2, e##2, f##2);
+    // qf-call-frame DoubleBump: supports=30 reads=90 modified=6
     assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != d#0
-         && p#0 != e#0
-         && p#0 != f#0
+         && p#0 != p#0
+         && p#0 != q#0
+         && p#0 != r#0
+         && p#0 != s#0
+         && p#0 != t#0
+         && p#0 != u#0
        ==> read($Heap, p#0, _module.Node.val)
          == read($PreCallHeap#2, p#0, _module.Node.val);
     assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != d#0
-         && p#0 != e#0
-         && p#0 != f#0
+         && p#0 != p#0
+         && p#0 != q#0
+         && p#0 != r#0
+         && p#0 != s#0
+         && p#0 != t#0
+         && p#0 != u#0
        ==> read($Heap, p#0, _module.Node.tag)
          == read($PreCallHeap#2, p#0, _module.Node.tag);
     assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != d#0
-         && p#0 != e#0
-         && p#0 != f#0
+         && p#0 != p#0
+         && p#0 != q#0
+         && p#0 != r#0
+         && p#0 != s#0
+         && p#0 != t#0
+         && p#0 != u#0
        ==> read($Heap, p#0, _module.Node.score)
          == read($PreCallHeap#2, p#0, _module.Node.score);
-    assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != d#0
-         && p#0 != e#0
-         && p#0 != f#0
-       ==> read($Heap, p#0, _module.Node.rank)
-         == read($PreCallHeap#2, p#0, _module.Node.rank);
     assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != d#0
-         && q#0 != e#0
-         && q#0 != f#0
+         && q#0 != p#0
+         && q#0 != q#0
+         && q#0 != r#0
+         && q#0 != s#0
+         && q#0 != t#0
+         && q#0 != u#0
        ==> read($Heap, q#0, _module.Node.val)
          == read($PreCallHeap#2, q#0, _module.Node.val);
     assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != d#0
-         && q#0 != e#0
-         && q#0 != f#0
+         && q#0 != p#0
+         && q#0 != q#0
+         && q#0 != r#0
+         && q#0 != s#0
+         && q#0 != t#0
+         && q#0 != u#0
        ==> read($Heap, q#0, _module.Node.tag)
          == read($PreCallHeap#2, q#0, _module.Node.tag);
     assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != d#0
-         && q#0 != e#0
-         && q#0 != f#0
+         && q#0 != p#0
+         && q#0 != q#0
+         && q#0 != r#0
+         && q#0 != s#0
+         && q#0 != t#0
+         && q#0 != u#0
        ==> read($Heap, q#0, _module.Node.score)
          == read($PreCallHeap#2, q#0, _module.Node.score);
-    assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != d#0
-         && q#0 != e#0
-         && q#0 != f#0
-       ==> read($Heap, q#0, _module.Node.rank)
-         == read($PreCallHeap#2, q#0, _module.Node.rank);
     assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != d#0
-         && r#0 != e#0
-         && r#0 != f#0
+         && r#0 != p#0
+         && r#0 != q#0
+         && r#0 != r#0
+         && r#0 != s#0
+         && r#0 != t#0
+         && r#0 != u#0
        ==> read($Heap, r#0, _module.Node.val)
          == read($PreCallHeap#2, r#0, _module.Node.val);
     assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != d#0
-         && r#0 != e#0
-         && r#0 != f#0
+         && r#0 != p#0
+         && r#0 != q#0
+         && r#0 != r#0
+         && r#0 != s#0
+         && r#0 != t#0
+         && r#0 != u#0
        ==> read($Heap, r#0, _module.Node.tag)
          == read($PreCallHeap#2, r#0, _module.Node.tag);
     assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != d#0
-         && r#0 != e#0
-         && r#0 != f#0
+         && r#0 != p#0
+         && r#0 != q#0
+         && r#0 != r#0
+         && r#0 != s#0
+         && r#0 != t#0
+         && r#0 != u#0
        ==> read($Heap, r#0, _module.Node.score)
          == read($PreCallHeap#2, r#0, _module.Node.score);
-    assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != d#0
-         && r#0 != e#0
-         && r#0 != f#0
-       ==> read($Heap, r#0, _module.Node.rank)
-         == read($PreCallHeap#2, r#0, _module.Node.rank);
     assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != d#0
-         && s#0 != e#0
-         && s#0 != f#0
+         && s#0 != p#0
+         && s#0 != q#0
+         && s#0 != r#0
+         && s#0 != s#0
+         && s#0 != t#0
+         && s#0 != u#0
        ==> read($Heap, s#0, _module.Node.val)
          == read($PreCallHeap#2, s#0, _module.Node.val);
     assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != d#0
-         && s#0 != e#0
-         && s#0 != f#0
+         && s#0 != p#0
+         && s#0 != q#0
+         && s#0 != r#0
+         && s#0 != s#0
+         && s#0 != t#0
+         && s#0 != u#0
        ==> read($Heap, s#0, _module.Node.tag)
          == read($PreCallHeap#2, s#0, _module.Node.tag);
     assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != d#0
-         && s#0 != e#0
-         && s#0 != f#0
+         && s#0 != p#0
+         && s#0 != q#0
+         && s#0 != r#0
+         && s#0 != s#0
+         && s#0 != t#0
+         && s#0 != u#0
        ==> read($Heap, s#0, _module.Node.score)
          == read($PreCallHeap#2, s#0, _module.Node.score);
-    assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != d#0
-         && s#0 != e#0
-         && s#0 != f#0
-       ==> read($Heap, s#0, _module.Node.rank)
-         == read($PreCallHeap#2, s#0, _module.Node.rank);
     assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != d#0
-         && t#0 != e#0
-         && t#0 != f#0
+         && t#0 != p#0
+         && t#0 != q#0
+         && t#0 != r#0
+         && t#0 != s#0
+         && t#0 != t#0
+         && t#0 != u#0
        ==> read($Heap, t#0, _module.Node.val)
          == read($PreCallHeap#2, t#0, _module.Node.val);
     assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != d#0
-         && t#0 != e#0
-         && t#0 != f#0
+         && t#0 != p#0
+         && t#0 != q#0
+         && t#0 != r#0
+         && t#0 != s#0
+         && t#0 != t#0
+         && t#0 != u#0
        ==> read($Heap, t#0, _module.Node.tag)
          == read($PreCallHeap#2, t#0, _module.Node.tag);
     assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != d#0
-         && t#0 != e#0
-         && t#0 != f#0
+         && t#0 != p#0
+         && t#0 != q#0
+         && t#0 != r#0
+         && t#0 != s#0
+         && t#0 != t#0
+         && t#0 != u#0
        ==> read($Heap, t#0, _module.Node.score)
          == read($PreCallHeap#2, t#0, _module.Node.score);
-    assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != d#0
-         && t#0 != e#0
-         && t#0 != f#0
-       ==> read($Heap, t#0, _module.Node.rank)
-         == read($PreCallHeap#2, t#0, _module.Node.rank);
     assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != d#0
-         && u#0 != e#0
-         && u#0 != f#0
+         && u#0 != p#0
+         && u#0 != q#0
+         && u#0 != r#0
+         && u#0 != s#0
+         && u#0 != t#0
+         && u#0 != u#0
        ==> read($Heap, u#0, _module.Node.val)
          == read($PreCallHeap#2, u#0, _module.Node.val);
     assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != d#0
-         && u#0 != e#0
-         && u#0 != f#0
+         && u#0 != p#0
+         && u#0 != q#0
+         && u#0 != r#0
+         && u#0 != s#0
+         && u#0 != t#0
+         && u#0 != u#0
        ==> read($Heap, u#0, _module.Node.tag)
          == read($PreCallHeap#2, u#0, _module.Node.tag);
     assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != d#0
-         && u#0 != e#0
-         && u#0 != f#0
+         && u#0 != p#0
+         && u#0 != q#0
+         && u#0 != r#0
+         && u#0 != s#0
+         && u#0 != t#0
+         && u#0 != u#0
        ==> read($Heap, u#0, _module.Node.score)
          == read($PreCallHeap#2, u#0, _module.Node.score);
-    assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != d#0
-         && u#0 != e#0
-         && u#0 != f#0
-       ==> read($Heap, u#0, _module.Node.rank)
-         == read($PreCallHeap#2, u#0, _module.Node.rank);
+    assume a#0 != null
+         && a#0 != p#0
+         && a#0 != q#0
+         && a#0 != r#0
+         && a#0 != s#0
+         && a#0 != t#0
+         && a#0 != u#0
+       ==> read($Heap, a#0, _module.Node.val)
+         == read($PreCallHeap#2, a#0, _module.Node.val);
+    assume a#0 != null
+         && a#0 != p#0
+         && a#0 != q#0
+         && a#0 != r#0
+         && a#0 != s#0
+         && a#0 != t#0
+         && a#0 != u#0
+       ==> read($Heap, a#0, _module.Node.tag)
+         == read($PreCallHeap#2, a#0, _module.Node.tag);
+    assume a#0 != null
+         && a#0 != p#0
+         && a#0 != q#0
+         && a#0 != r#0
+         && a#0 != s#0
+         && a#0 != t#0
+         && a#0 != u#0
+       ==> read($Heap, a#0, _module.Node.score)
+         == read($PreCallHeap#2, a#0, _module.Node.score);
+    assume b#0 != null
+         && b#0 != p#0
+         && b#0 != q#0
+         && b#0 != r#0
+         && b#0 != s#0
+         && b#0 != t#0
+         && b#0 != u#0
+       ==> read($Heap, b#0, _module.Node.val)
+         == read($PreCallHeap#2, b#0, _module.Node.val);
+    assume b#0 != null
+         && b#0 != p#0
+         && b#0 != q#0
+         && b#0 != r#0
+         && b#0 != s#0
+         && b#0 != t#0
+         && b#0 != u#0
+       ==> read($Heap, b#0, _module.Node.tag)
+         == read($PreCallHeap#2, b#0, _module.Node.tag);
+    assume b#0 != null
+         && b#0 != p#0
+         && b#0 != q#0
+         && b#0 != r#0
+         && b#0 != s#0
+         && b#0 != t#0
+         && b#0 != u#0
+       ==> read($Heap, b#0, _module.Node.score)
+         == read($PreCallHeap#2, b#0, _module.Node.score);
+    assume c#0 != null
+         && c#0 != p#0
+         && c#0 != q#0
+         && c#0 != r#0
+         && c#0 != s#0
+         && c#0 != t#0
+         && c#0 != u#0
+       ==> read($Heap, c#0, _module.Node.val)
+         == read($PreCallHeap#2, c#0, _module.Node.val);
+    assume c#0 != null
+         && c#0 != p#0
+         && c#0 != q#0
+         && c#0 != r#0
+         && c#0 != s#0
+         && c#0 != t#0
+         && c#0 != u#0
+       ==> read($Heap, c#0, _module.Node.tag)
+         == read($PreCallHeap#2, c#0, _module.Node.tag);
+    assume c#0 != null
+         && c#0 != p#0
+         && c#0 != q#0
+         && c#0 != r#0
+         && c#0 != s#0
+         && c#0 != t#0
+         && c#0 != u#0
+       ==> read($Heap, c#0, _module.Node.score)
+         == read($PreCallHeap#2, c#0, _module.Node.score);
+    assume d#0 != null
+         && d#0 != p#0
+         && d#0 != q#0
+         && d#0 != r#0
+         && d#0 != s#0
+         && d#0 != t#0
+         && d#0 != u#0
+       ==> read($Heap, d#0, _module.Node.val)
+         == read($PreCallHeap#2, d#0, _module.Node.val);
+    assume d#0 != null
+         && d#0 != p#0
+         && d#0 != q#0
+         && d#0 != r#0
+         && d#0 != s#0
+         && d#0 != t#0
+         && d#0 != u#0
+       ==> read($Heap, d#0, _module.Node.tag)
+         == read($PreCallHeap#2, d#0, _module.Node.tag);
+    assume d#0 != null
+         && d#0 != p#0
+         && d#0 != q#0
+         && d#0 != r#0
+         && d#0 != s#0
+         && d#0 != t#0
+         && d#0 != u#0
+       ==> read($Heap, d#0, _module.Node.score)
+         == read($PreCallHeap#2, d#0, _module.Node.score);
+    assume e#0 != null
+         && e#0 != p#0
+         && e#0 != q#0
+         && e#0 != r#0
+         && e#0 != s#0
+         && e#0 != t#0
+         && e#0 != u#0
+       ==> read($Heap, e#0, _module.Node.val)
+         == read($PreCallHeap#2, e#0, _module.Node.val);
+    assume e#0 != null
+         && e#0 != p#0
+         && e#0 != q#0
+         && e#0 != r#0
+         && e#0 != s#0
+         && e#0 != t#0
+         && e#0 != u#0
+       ==> read($Heap, e#0, _module.Node.tag)
+         == read($PreCallHeap#2, e#0, _module.Node.tag);
+    assume e#0 != null
+         && e#0 != p#0
+         && e#0 != q#0
+         && e#0 != r#0
+         && e#0 != s#0
+         && e#0 != t#0
+         && e#0 != u#0
+       ==> read($Heap, e#0, _module.Node.score)
+         == read($PreCallHeap#2, e#0, _module.Node.score);
+    assume f#0 != null
+         && f#0 != p#0
+         && f#0 != q#0
+         && f#0 != r#0
+         && f#0 != s#0
+         && f#0 != t#0
+         && f#0 != u#0
+       ==> read($Heap, f#0, _module.Node.val)
+         == read($PreCallHeap#2, f#0, _module.Node.val);
+    assume f#0 != null
+         && f#0 != p#0
+         && f#0 != q#0
+         && f#0 != r#0
+         && f#0 != s#0
+         && f#0 != t#0
+         && f#0 != u#0
+       ==> read($Heap, f#0, _module.Node.tag)
+         == read($PreCallHeap#2, f#0, _module.Node.tag);
+    assume f#0 != null
+         && f#0 != p#0
+         && f#0 != q#0
+         && f#0 != r#0
+         && f#0 != s#0
+         && f#0 != t#0
+         && f#0 != u#0
+       ==> read($Heap, f#0, _module.Node.score)
+         == read($PreCallHeap#2, f#0, _module.Node.score);
     assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
+         && a##0 != p#0
+         && a##0 != q#0
+         && a##0 != r#0
+         && a##0 != s#0
+         && a##0 != t#0
+         && a##0 != u#0
        ==> read($Heap, a##0, _module.Node.val)
          == read($PreCallHeap#2, a##0, _module.Node.val);
     assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
+         && a##0 != p#0
+         && a##0 != q#0
+         && a##0 != r#0
+         && a##0 != s#0
+         && a##0 != t#0
+         && a##0 != u#0
        ==> read($Heap, a##0, _module.Node.tag)
          == read($PreCallHeap#2, a##0, _module.Node.tag);
     assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
+         && a##0 != p#0
+         && a##0 != q#0
+         && a##0 != r#0
+         && a##0 != s#0
+         && a##0 != t#0
+         && a##0 != u#0
        ==> read($Heap, a##0, _module.Node.score)
          == read($PreCallHeap#2, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != d#0
-         && a##0 != e#0
-         && a##0 != f#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#2, a##0, _module.Node.rank);
     assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
+         && b##0 != p#0
+         && b##0 != q#0
+         && b##0 != r#0
+         && b##0 != s#0
+         && b##0 != t#0
+         && b##0 != u#0
        ==> read($Heap, b##0, _module.Node.val)
          == read($PreCallHeap#2, b##0, _module.Node.val);
     assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
+         && b##0 != p#0
+         && b##0 != q#0
+         && b##0 != r#0
+         && b##0 != s#0
+         && b##0 != t#0
+         && b##0 != u#0
        ==> read($Heap, b##0, _module.Node.tag)
          == read($PreCallHeap#2, b##0, _module.Node.tag);
     assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
+         && b##0 != p#0
+         && b##0 != q#0
+         && b##0 != r#0
+         && b##0 != s#0
+         && b##0 != t#0
+         && b##0 != u#0
        ==> read($Heap, b##0, _module.Node.score)
          == read($PreCallHeap#2, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != d#0
-         && b##0 != e#0
-         && b##0 != f#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#2, b##0, _module.Node.rank);
     assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
+         && c##0 != p#0
+         && c##0 != q#0
+         && c##0 != r#0
+         && c##0 != s#0
+         && c##0 != t#0
+         && c##0 != u#0
        ==> read($Heap, c##0, _module.Node.val)
          == read($PreCallHeap#2, c##0, _module.Node.val);
     assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
+         && c##0 != p#0
+         && c##0 != q#0
+         && c##0 != r#0
+         && c##0 != s#0
+         && c##0 != t#0
+         && c##0 != u#0
        ==> read($Heap, c##0, _module.Node.tag)
          == read($PreCallHeap#2, c##0, _module.Node.tag);
     assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
+         && c##0 != p#0
+         && c##0 != q#0
+         && c##0 != r#0
+         && c##0 != s#0
+         && c##0 != t#0
+         && c##0 != u#0
        ==> read($Heap, c##0, _module.Node.score)
          == read($PreCallHeap#2, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != d#0
-         && c##0 != e#0
-         && c##0 != f#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#2, c##0, _module.Node.rank);
     assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
+         && d##0 != p#0
+         && d##0 != q#0
+         && d##0 != r#0
+         && d##0 != s#0
+         && d##0 != t#0
+         && d##0 != u#0
        ==> read($Heap, d##0, _module.Node.val)
          == read($PreCallHeap#2, d##0, _module.Node.val);
     assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
+         && d##0 != p#0
+         && d##0 != q#0
+         && d##0 != r#0
+         && d##0 != s#0
+         && d##0 != t#0
+         && d##0 != u#0
        ==> read($Heap, d##0, _module.Node.tag)
          == read($PreCallHeap#2, d##0, _module.Node.tag);
     assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
+         && d##0 != p#0
+         && d##0 != q#0
+         && d##0 != r#0
+         && d##0 != s#0
+         && d##0 != t#0
+         && d##0 != u#0
        ==> read($Heap, d##0, _module.Node.score)
          == read($PreCallHeap#2, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != d#0
-         && d##0 != e#0
-         && d##0 != f#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#2, d##0, _module.Node.rank);
     assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
+         && e##0 != p#0
+         && e##0 != q#0
+         && e##0 != r#0
+         && e##0 != s#0
+         && e##0 != t#0
+         && e##0 != u#0
        ==> read($Heap, e##0, _module.Node.val)
          == read($PreCallHeap#2, e##0, _module.Node.val);
     assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
+         && e##0 != p#0
+         && e##0 != q#0
+         && e##0 != r#0
+         && e##0 != s#0
+         && e##0 != t#0
+         && e##0 != u#0
        ==> read($Heap, e##0, _module.Node.tag)
          == read($PreCallHeap#2, e##0, _module.Node.tag);
     assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
+         && e##0 != p#0
+         && e##0 != q#0
+         && e##0 != r#0
+         && e##0 != s#0
+         && e##0 != t#0
+         && e##0 != u#0
        ==> read($Heap, e##0, _module.Node.score)
          == read($PreCallHeap#2, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != d#0
-         && e##0 != e#0
-         && e##0 != f#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#2, e##0, _module.Node.rank);
     assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
+         && f##0 != p#0
+         && f##0 != q#0
+         && f##0 != r#0
+         && f##0 != s#0
+         && f##0 != t#0
+         && f##0 != u#0
        ==> read($Heap, f##0, _module.Node.val)
          == read($PreCallHeap#2, f##0, _module.Node.val);
     assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
+         && f##0 != p#0
+         && f##0 != q#0
+         && f##0 != r#0
+         && f##0 != s#0
+         && f##0 != t#0
+         && f##0 != u#0
        ==> read($Heap, f##0, _module.Node.tag)
          == read($PreCallHeap#2, f##0, _module.Node.tag);
     assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
+         && f##0 != p#0
+         && f##0 != q#0
+         && f##0 != r#0
+         && f##0 != s#0
+         && f##0 != t#0
+         && f##0 != u#0
        ==> read($Heap, f##0, _module.Node.score)
          == read($PreCallHeap#2, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != d#0
-         && f##0 != e#0
-         && f##0 != f#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#2, f##0, _module.Node.rank);
     assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
+         && a##1 != p#0
+         && a##1 != q#0
+         && a##1 != r#0
+         && a##1 != s#0
+         && a##1 != t#0
+         && a##1 != u#0
        ==> read($Heap, a##1, _module.Node.val)
          == read($PreCallHeap#2, a##1, _module.Node.val);
     assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
+         && a##1 != p#0
+         && a##1 != q#0
+         && a##1 != r#0
+         && a##1 != s#0
+         && a##1 != t#0
+         && a##1 != u#0
        ==> read($Heap, a##1, _module.Node.tag)
          == read($PreCallHeap#2, a##1, _module.Node.tag);
     assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
+         && a##1 != p#0
+         && a##1 != q#0
+         && a##1 != r#0
+         && a##1 != s#0
+         && a##1 != t#0
+         && a##1 != u#0
        ==> read($Heap, a##1, _module.Node.score)
          == read($PreCallHeap#2, a##1, _module.Node.score);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != d#0
-         && a##1 != e#0
-         && a##1 != f#0
-       ==> read($Heap, a##1, _module.Node.rank)
-         == read($PreCallHeap#2, a##1, _module.Node.rank);
     assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
+         && b##1 != p#0
+         && b##1 != q#0
+         && b##1 != r#0
+         && b##1 != s#0
+         && b##1 != t#0
+         && b##1 != u#0
        ==> read($Heap, b##1, _module.Node.val)
          == read($PreCallHeap#2, b##1, _module.Node.val);
     assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
+         && b##1 != p#0
+         && b##1 != q#0
+         && b##1 != r#0
+         && b##1 != s#0
+         && b##1 != t#0
+         && b##1 != u#0
        ==> read($Heap, b##1, _module.Node.tag)
          == read($PreCallHeap#2, b##1, _module.Node.tag);
     assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
+         && b##1 != p#0
+         && b##1 != q#0
+         && b##1 != r#0
+         && b##1 != s#0
+         && b##1 != t#0
+         && b##1 != u#0
        ==> read($Heap, b##1, _module.Node.score)
          == read($PreCallHeap#2, b##1, _module.Node.score);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != d#0
-         && b##1 != e#0
-         && b##1 != f#0
-       ==> read($Heap, b##1, _module.Node.rank)
-         == read($PreCallHeap#2, b##1, _module.Node.rank);
     assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
+         && c##1 != p#0
+         && c##1 != q#0
+         && c##1 != r#0
+         && c##1 != s#0
+         && c##1 != t#0
+         && c##1 != u#0
        ==> read($Heap, c##1, _module.Node.val)
          == read($PreCallHeap#2, c##1, _module.Node.val);
     assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
+         && c##1 != p#0
+         && c##1 != q#0
+         && c##1 != r#0
+         && c##1 != s#0
+         && c##1 != t#0
+         && c##1 != u#0
        ==> read($Heap, c##1, _module.Node.tag)
          == read($PreCallHeap#2, c##1, _module.Node.tag);
     assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
+         && c##1 != p#0
+         && c##1 != q#0
+         && c##1 != r#0
+         && c##1 != s#0
+         && c##1 != t#0
+         && c##1 != u#0
        ==> read($Heap, c##1, _module.Node.score)
          == read($PreCallHeap#2, c##1, _module.Node.score);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != d#0
-         && c##1 != e#0
-         && c##1 != f#0
-       ==> read($Heap, c##1, _module.Node.rank)
-         == read($PreCallHeap#2, c##1, _module.Node.rank);
     assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
+         && d##1 != p#0
+         && d##1 != q#0
+         && d##1 != r#0
+         && d##1 != s#0
+         && d##1 != t#0
+         && d##1 != u#0
        ==> read($Heap, d##1, _module.Node.val)
          == read($PreCallHeap#2, d##1, _module.Node.val);
     assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
+         && d##1 != p#0
+         && d##1 != q#0
+         && d##1 != r#0
+         && d##1 != s#0
+         && d##1 != t#0
+         && d##1 != u#0
        ==> read($Heap, d##1, _module.Node.tag)
          == read($PreCallHeap#2, d##1, _module.Node.tag);
     assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
+         && d##1 != p#0
+         && d##1 != q#0
+         && d##1 != r#0
+         && d##1 != s#0
+         && d##1 != t#0
+         && d##1 != u#0
        ==> read($Heap, d##1, _module.Node.score)
          == read($PreCallHeap#2, d##1, _module.Node.score);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != d#0
-         && d##1 != e#0
-         && d##1 != f#0
-       ==> read($Heap, d##1, _module.Node.rank)
-         == read($PreCallHeap#2, d##1, _module.Node.rank);
     assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
+         && e##1 != p#0
+         && e##1 != q#0
+         && e##1 != r#0
+         && e##1 != s#0
+         && e##1 != t#0
+         && e##1 != u#0
        ==> read($Heap, e##1, _module.Node.val)
          == read($PreCallHeap#2, e##1, _module.Node.val);
     assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
+         && e##1 != p#0
+         && e##1 != q#0
+         && e##1 != r#0
+         && e##1 != s#0
+         && e##1 != t#0
+         && e##1 != u#0
        ==> read($Heap, e##1, _module.Node.tag)
          == read($PreCallHeap#2, e##1, _module.Node.tag);
     assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
+         && e##1 != p#0
+         && e##1 != q#0
+         && e##1 != r#0
+         && e##1 != s#0
+         && e##1 != t#0
+         && e##1 != u#0
        ==> read($Heap, e##1, _module.Node.score)
          == read($PreCallHeap#2, e##1, _module.Node.score);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != d#0
-         && e##1 != e#0
-         && e##1 != f#0
-       ==> read($Heap, e##1, _module.Node.rank)
-         == read($PreCallHeap#2, e##1, _module.Node.rank);
     assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
+         && f##1 != p#0
+         && f##1 != q#0
+         && f##1 != r#0
+         && f##1 != s#0
+         && f##1 != t#0
+         && f##1 != u#0
        ==> read($Heap, f##1, _module.Node.val)
          == read($PreCallHeap#2, f##1, _module.Node.val);
     assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
+         && f##1 != p#0
+         && f##1 != q#0
+         && f##1 != r#0
+         && f##1 != s#0
+         && f##1 != t#0
+         && f##1 != u#0
        ==> read($Heap, f##1, _module.Node.tag)
          == read($PreCallHeap#2, f##1, _module.Node.tag);
     assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
+         && f##1 != p#0
+         && f##1 != q#0
+         && f##1 != r#0
+         && f##1 != s#0
+         && f##1 != t#0
+         && f##1 != u#0
        ==> read($Heap, f##1, _module.Node.score)
          == read($PreCallHeap#2, f##1, _module.Node.score);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != d#0
-         && f##1 != e#0
-         && f##1 != f#0
-       ==> read($Heap, f##1, _module.Node.rank)
-         == read($PreCallHeap#2, f##1, _module.Node.rank);
     assume a##2 != null
-         && a##2 != a#0
-         && a##2 != b#0
-         && a##2 != c#0
-         && a##2 != d#0
-         && a##2 != e#0
-         && a##2 != f#0
+         && a##2 != p#0
+         && a##2 != q#0
+         && a##2 != r#0
+         && a##2 != s#0
+         && a##2 != t#0
+         && a##2 != u#0
        ==> read($Heap, a##2, _module.Node.val)
          == read($PreCallHeap#2, a##2, _module.Node.val);
     assume a##2 != null
-         && a##2 != a#0
-         && a##2 != b#0
-         && a##2 != c#0
-         && a##2 != d#0
-         && a##2 != e#0
-         && a##2 != f#0
+         && a##2 != p#0
+         && a##2 != q#0
+         && a##2 != r#0
+         && a##2 != s#0
+         && a##2 != t#0
+         && a##2 != u#0
        ==> read($Heap, a##2, _module.Node.tag)
          == read($PreCallHeap#2, a##2, _module.Node.tag);
     assume a##2 != null
-         && a##2 != a#0
-         && a##2 != b#0
-         && a##2 != c#0
-         && a##2 != d#0
-         && a##2 != e#0
-         && a##2 != f#0
+         && a##2 != p#0
+         && a##2 != q#0
+         && a##2 != r#0
+         && a##2 != s#0
+         && a##2 != t#0
+         && a##2 != u#0
        ==> read($Heap, a##2, _module.Node.score)
          == read($PreCallHeap#2, a##2, _module.Node.score);
-    assume a##2 != null
-         && a##2 != a#0
-         && a##2 != b#0
-         && a##2 != c#0
-         && a##2 != d#0
-         && a##2 != e#0
-         && a##2 != f#0
-       ==> read($Heap, a##2, _module.Node.rank)
-         == read($PreCallHeap#2, a##2, _module.Node.rank);
     assume b##2 != null
-         && b##2 != a#0
-         && b##2 != b#0
-         && b##2 != c#0
-         && b##2 != d#0
-         && b##2 != e#0
-         && b##2 != f#0
+         && b##2 != p#0
+         && b##2 != q#0
+         && b##2 != r#0
+         && b##2 != s#0
+         && b##2 != t#0
+         && b##2 != u#0
        ==> read($Heap, b##2, _module.Node.val)
          == read($PreCallHeap#2, b##2, _module.Node.val);
     assume b##2 != null
-         && b##2 != a#0
-         && b##2 != b#0
-         && b##2 != c#0
-         && b##2 != d#0
-         && b##2 != e#0
-         && b##2 != f#0
+         && b##2 != p#0
+         && b##2 != q#0
+         && b##2 != r#0
+         && b##2 != s#0
+         && b##2 != t#0
+         && b##2 != u#0
        ==> read($Heap, b##2, _module.Node.tag)
          == read($PreCallHeap#2, b##2, _module.Node.tag);
     assume b##2 != null
-         && b##2 != a#0
-         && b##2 != b#0
-         && b##2 != c#0
-         && b##2 != d#0
-         && b##2 != e#0
-         && b##2 != f#0
+         && b##2 != p#0
+         && b##2 != q#0
+         && b##2 != r#0
+         && b##2 != s#0
+         && b##2 != t#0
+         && b##2 != u#0
        ==> read($Heap, b##2, _module.Node.score)
          == read($PreCallHeap#2, b##2, _module.Node.score);
-    assume b##2 != null
-         && b##2 != a#0
-         && b##2 != b#0
-         && b##2 != c#0
-         && b##2 != d#0
-         && b##2 != e#0
-         && b##2 != f#0
-       ==> read($Heap, b##2, _module.Node.rank)
-         == read($PreCallHeap#2, b##2, _module.Node.rank);
     assume c##2 != null
-         && c##2 != a#0
-         && c##2 != b#0
-         && c##2 != c#0
-         && c##2 != d#0
-         && c##2 != e#0
-         && c##2 != f#0
+         && c##2 != p#0
+         && c##2 != q#0
+         && c##2 != r#0
+         && c##2 != s#0
+         && c##2 != t#0
+         && c##2 != u#0
        ==> read($Heap, c##2, _module.Node.val)
          == read($PreCallHeap#2, c##2, _module.Node.val);
     assume c##2 != null
-         && c##2 != a#0
-         && c##2 != b#0
-         && c##2 != c#0
-         && c##2 != d#0
-         && c##2 != e#0
-         && c##2 != f#0
+         && c##2 != p#0
+         && c##2 != q#0
+         && c##2 != r#0
+         && c##2 != s#0
+         && c##2 != t#0
+         && c##2 != u#0
        ==> read($Heap, c##2, _module.Node.tag)
          == read($PreCallHeap#2, c##2, _module.Node.tag);
     assume c##2 != null
-         && c##2 != a#0
-         && c##2 != b#0
-         && c##2 != c#0
-         && c##2 != d#0
-         && c##2 != e#0
-         && c##2 != f#0
+         && c##2 != p#0
+         && c##2 != q#0
+         && c##2 != r#0
+         && c##2 != s#0
+         && c##2 != t#0
+         && c##2 != u#0
        ==> read($Heap, c##2, _module.Node.score)
          == read($PreCallHeap#2, c##2, _module.Node.score);
-    assume c##2 != null
-         && c##2 != a#0
-         && c##2 != b#0
-         && c##2 != c#0
-         && c##2 != d#0
-         && c##2 != e#0
-         && c##2 != f#0
-       ==> read($Heap, c##2, _module.Node.rank)
-         == read($PreCallHeap#2, c##2, _module.Node.rank);
     assume d##2 != null
-         && d##2 != a#0
-         && d##2 != b#0
-         && d##2 != c#0
-         && d##2 != d#0
-         && d##2 != e#0
-         && d##2 != f#0
+         && d##2 != p#0
+         && d##2 != q#0
+         && d##2 != r#0
+         && d##2 != s#0
+         && d##2 != t#0
+         && d##2 != u#0
        ==> read($Heap, d##2, _module.Node.val)
          == read($PreCallHeap#2, d##2, _module.Node.val);
     assume d##2 != null
-         && d##2 != a#0
-         && d##2 != b#0
-         && d##2 != c#0
-         && d##2 != d#0
-         && d##2 != e#0
-         && d##2 != f#0
+         && d##2 != p#0
+         && d##2 != q#0
+         && d##2 != r#0
+         && d##2 != s#0
+         && d##2 != t#0
+         && d##2 != u#0
        ==> read($Heap, d##2, _module.Node.tag)
          == read($PreCallHeap#2, d##2, _module.Node.tag);
     assume d##2 != null
-         && d##2 != a#0
-         && d##2 != b#0
-         && d##2 != c#0
-         && d##2 != d#0
-         && d##2 != e#0
-         && d##2 != f#0
+         && d##2 != p#0
+         && d##2 != q#0
+         && d##2 != r#0
+         && d##2 != s#0
+         && d##2 != t#0
+         && d##2 != u#0
        ==> read($Heap, d##2, _module.Node.score)
          == read($PreCallHeap#2, d##2, _module.Node.score);
-    assume d##2 != null
-         && d##2 != a#0
-         && d##2 != b#0
-         && d##2 != c#0
-         && d##2 != d#0
-         && d##2 != e#0
-         && d##2 != f#0
-       ==> read($Heap, d##2, _module.Node.rank)
-         == read($PreCallHeap#2, d##2, _module.Node.rank);
     assume e##2 != null
-         && e##2 != a#0
-         && e##2 != b#0
-         && e##2 != c#0
-         && e##2 != d#0
-         && e##2 != e#0
-         && e##2 != f#0
+         && e##2 != p#0
+         && e##2 != q#0
+         && e##2 != r#0
+         && e##2 != s#0
+         && e##2 != t#0
+         && e##2 != u#0
        ==> read($Heap, e##2, _module.Node.val)
          == read($PreCallHeap#2, e##2, _module.Node.val);
     assume e##2 != null
-         && e##2 != a#0
-         && e##2 != b#0
-         && e##2 != c#0
-         && e##2 != d#0
-         && e##2 != e#0
-         && e##2 != f#0
+         && e##2 != p#0
+         && e##2 != q#0
+         && e##2 != r#0
+         && e##2 != s#0
+         && e##2 != t#0
+         && e##2 != u#0
        ==> read($Heap, e##2, _module.Node.tag)
          == read($PreCallHeap#2, e##2, _module.Node.tag);
     assume e##2 != null
-         && e##2 != a#0
-         && e##2 != b#0
-         && e##2 != c#0
-         && e##2 != d#0
-         && e##2 != e#0
-         && e##2 != f#0
+         && e##2 != p#0
+         && e##2 != q#0
+         && e##2 != r#0
+         && e##2 != s#0
+         && e##2 != t#0
+         && e##2 != u#0
        ==> read($Heap, e##2, _module.Node.score)
          == read($PreCallHeap#2, e##2, _module.Node.score);
-    assume e##2 != null
-         && e##2 != a#0
-         && e##2 != b#0
-         && e##2 != c#0
-         && e##2 != d#0
-         && e##2 != e#0
-         && e##2 != f#0
-       ==> read($Heap, e##2, _module.Node.rank)
-         == read($PreCallHeap#2, e##2, _module.Node.rank);
     assume f##2 != null
-         && f##2 != a#0
-         && f##2 != b#0
-         && f##2 != c#0
-         && f##2 != d#0
-         && f##2 != e#0
-         && f##2 != f#0
+         && f##2 != p#0
+         && f##2 != q#0
+         && f##2 != r#0
+         && f##2 != s#0
+         && f##2 != t#0
+         && f##2 != u#0
        ==> read($Heap, f##2, _module.Node.val)
          == read($PreCallHeap#2, f##2, _module.Node.val);
     assume f##2 != null
-         && f##2 != a#0
-         && f##2 != b#0
-         && f##2 != c#0
-         && f##2 != d#0
-         && f##2 != e#0
-         && f##2 != f#0
+         && f##2 != p#0
+         && f##2 != q#0
+         && f##2 != r#0
+         && f##2 != s#0
+         && f##2 != t#0
+         && f##2 != u#0
        ==> read($Heap, f##2, _module.Node.tag)
          == read($PreCallHeap#2, f##2, _module.Node.tag);
     assume f##2 != null
-         && f##2 != a#0
-         && f##2 != b#0
-         && f##2 != c#0
-         && f##2 != d#0
-         && f##2 != e#0
-         && f##2 != f#0
+         && f##2 != p#0
+         && f##2 != q#0
+         && f##2 != r#0
+         && f##2 != s#0
+         && f##2 != t#0
+         && f##2 != u#0
        ==> read($Heap, f##2, _module.Node.score)
          == read($PreCallHeap#2, f##2, _module.Node.score);
-    assume f##2 != null
-         && f##2 != a#0
-         && f##2 != b#0
-         && f##2 != c#0
-         && f##2 != d#0
-         && f##2 != e#0
-         && f##2 != f#0
-       ==> read($Heap, f##2, _module.Node.rank)
-         == read($PreCallHeap#2, f##2, _module.Node.rank);
     // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(232,28)"} true;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(233,12)
-    // TrCallStmt: Before ProcessCallStmt
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    a##3 := a#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    b##3 := b#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    c##3 := c#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    p##0 := p#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    q##0 := q#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    r##0 := r#0;
-    $PreCallHeap#3 := $Heap;
-    $PreCallAlloc#3 := $Alloc;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assert {:id "id2164"} a##3 == a#0
-       || a##3 == b#0
-       || a##3 == c#0
-       || a##3 == d#0
-       || a##3 == e#0
-       || a##3 == f#0
-       || a##3 == p#0
-       || a##3 == q#0
-       || a##3 == r#0
-       || a##3 == s#0
-       || a##3 == t#0
-       || a##3 == u#0
-       || !old($Alloc)[a##3];
-    assert {:id "id2165"} b##3 == a#0
-       || b##3 == b#0
-       || b##3 == c#0
-       || b##3 == d#0
-       || b##3 == e#0
-       || b##3 == f#0
-       || b##3 == p#0
-       || b##3 == q#0
-       || b##3 == r#0
-       || b##3 == s#0
-       || b##3 == t#0
-       || b##3 == u#0
-       || !old($Alloc)[b##3];
-    assert {:id "id2166"} c##3 == a#0
-       || c##3 == b#0
-       || c##3 == c#0
-       || c##3 == d#0
-       || c##3 == e#0
-       || c##3 == f#0
-       || c##3 == p#0
-       || c##3 == q#0
-       || c##3 == r#0
-       || c##3 == s#0
-       || c##3 == t#0
-       || c##3 == u#0
-       || !old($Alloc)[c##3];
-    assert {:id "id2167"} p##0 == a#0
-       || p##0 == b#0
-       || p##0 == c#0
-       || p##0 == d#0
-       || p##0 == e#0
-       || p##0 == f#0
-       || p##0 == p#0
-       || p##0 == q#0
-       || p##0 == r#0
-       || p##0 == s#0
-       || p##0 == t#0
-       || p##0 == u#0
-       || !old($Alloc)[p##0];
-    assert {:id "id2168"} q##0 == a#0
-       || q##0 == b#0
-       || q##0 == c#0
-       || q##0 == d#0
-       || q##0 == e#0
-       || q##0 == f#0
-       || q##0 == p#0
-       || q##0 == q#0
-       || q##0 == r#0
-       || q##0 == s#0
-       || q##0 == t#0
-       || q##0 == u#0
-       || !old($Alloc)[q##0];
-    assert {:id "id2169"} r##0 == a#0
-       || r##0 == b#0
-       || r##0 == c#0
-       || r##0 == d#0
-       || r##0 == e#0
-       || r##0 == f#0
-       || r##0 == p#0
-       || r##0 == q#0
-       || r##0 == r#0
-       || r##0 == s#0
-       || r##0 == t#0
-       || r##0 == u#0
-       || !old($Alloc)[r##0];
-    call {:id "id2170"} Call$$_module.__default.CrossBump(a##3, b##3, c##3, p##0, q##0, r##0);
-    // qf-call-frame CrossBump: supports=36 reads=144 modified=6
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != p#0
-         && a#0 != q#0
-         && a#0 != r#0
-       ==> read($Heap, a#0, _module.Node.val)
-         == read($PreCallHeap#3, a#0, _module.Node.val);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != p#0
-         && a#0 != q#0
-         && a#0 != r#0
-       ==> read($Heap, a#0, _module.Node.tag)
-         == read($PreCallHeap#3, a#0, _module.Node.tag);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != p#0
-         && a#0 != q#0
-         && a#0 != r#0
-       ==> read($Heap, a#0, _module.Node.score)
-         == read($PreCallHeap#3, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != a#0
-         && a#0 != b#0
-         && a#0 != c#0
-         && a#0 != p#0
-         && a#0 != q#0
-         && a#0 != r#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#3, a#0, _module.Node.rank);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != p#0
-         && b#0 != q#0
-         && b#0 != r#0
-       ==> read($Heap, b#0, _module.Node.val)
-         == read($PreCallHeap#3, b#0, _module.Node.val);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != p#0
-         && b#0 != q#0
-         && b#0 != r#0
-       ==> read($Heap, b#0, _module.Node.tag)
-         == read($PreCallHeap#3, b#0, _module.Node.tag);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != p#0
-         && b#0 != q#0
-         && b#0 != r#0
-       ==> read($Heap, b#0, _module.Node.score)
-         == read($PreCallHeap#3, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != a#0
-         && b#0 != b#0
-         && b#0 != c#0
-         && b#0 != p#0
-         && b#0 != q#0
-         && b#0 != r#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#3, b#0, _module.Node.rank);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != p#0
-         && c#0 != q#0
-         && c#0 != r#0
-       ==> read($Heap, c#0, _module.Node.val)
-         == read($PreCallHeap#3, c#0, _module.Node.val);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != p#0
-         && c#0 != q#0
-         && c#0 != r#0
-       ==> read($Heap, c#0, _module.Node.tag)
-         == read($PreCallHeap#3, c#0, _module.Node.tag);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != p#0
-         && c#0 != q#0
-         && c#0 != r#0
-       ==> read($Heap, c#0, _module.Node.score)
-         == read($PreCallHeap#3, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != a#0
-         && c#0 != b#0
-         && c#0 != c#0
-         && c#0 != p#0
-         && c#0 != q#0
-         && c#0 != r#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#3, c#0, _module.Node.rank);
-    assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != p#0
-         && p#0 != q#0
-         && p#0 != r#0
-       ==> read($Heap, p#0, _module.Node.val)
-         == read($PreCallHeap#3, p#0, _module.Node.val);
-    assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != p#0
-         && p#0 != q#0
-         && p#0 != r#0
-       ==> read($Heap, p#0, _module.Node.tag)
-         == read($PreCallHeap#3, p#0, _module.Node.tag);
-    assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != p#0
-         && p#0 != q#0
-         && p#0 != r#0
-       ==> read($Heap, p#0, _module.Node.score)
-         == read($PreCallHeap#3, p#0, _module.Node.score);
-    assume p#0 != null
-         && p#0 != a#0
-         && p#0 != b#0
-         && p#0 != c#0
-         && p#0 != p#0
-         && p#0 != q#0
-         && p#0 != r#0
-       ==> read($Heap, p#0, _module.Node.rank)
-         == read($PreCallHeap#3, p#0, _module.Node.rank);
-    assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != p#0
-         && q#0 != q#0
-         && q#0 != r#0
-       ==> read($Heap, q#0, _module.Node.val)
-         == read($PreCallHeap#3, q#0, _module.Node.val);
-    assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != p#0
-         && q#0 != q#0
-         && q#0 != r#0
-       ==> read($Heap, q#0, _module.Node.tag)
-         == read($PreCallHeap#3, q#0, _module.Node.tag);
-    assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != p#0
-         && q#0 != q#0
-         && q#0 != r#0
-       ==> read($Heap, q#0, _module.Node.score)
-         == read($PreCallHeap#3, q#0, _module.Node.score);
-    assume q#0 != null
-         && q#0 != a#0
-         && q#0 != b#0
-         && q#0 != c#0
-         && q#0 != p#0
-         && q#0 != q#0
-         && q#0 != r#0
-       ==> read($Heap, q#0, _module.Node.rank)
-         == read($PreCallHeap#3, q#0, _module.Node.rank);
-    assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != p#0
-         && r#0 != q#0
-         && r#0 != r#0
-       ==> read($Heap, r#0, _module.Node.val)
-         == read($PreCallHeap#3, r#0, _module.Node.val);
-    assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != p#0
-         && r#0 != q#0
-         && r#0 != r#0
-       ==> read($Heap, r#0, _module.Node.tag)
-         == read($PreCallHeap#3, r#0, _module.Node.tag);
-    assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != p#0
-         && r#0 != q#0
-         && r#0 != r#0
-       ==> read($Heap, r#0, _module.Node.score)
-         == read($PreCallHeap#3, r#0, _module.Node.score);
-    assume r#0 != null
-         && r#0 != a#0
-         && r#0 != b#0
-         && r#0 != c#0
-         && r#0 != p#0
-         && r#0 != q#0
-         && r#0 != r#0
-       ==> read($Heap, r#0, _module.Node.rank)
-         == read($PreCallHeap#3, r#0, _module.Node.rank);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != p#0
-         && d#0 != q#0
-         && d#0 != r#0
-       ==> read($Heap, d#0, _module.Node.val)
-         == read($PreCallHeap#3, d#0, _module.Node.val);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != p#0
-         && d#0 != q#0
-         && d#0 != r#0
-       ==> read($Heap, d#0, _module.Node.tag)
-         == read($PreCallHeap#3, d#0, _module.Node.tag);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != p#0
-         && d#0 != q#0
-         && d#0 != r#0
-       ==> read($Heap, d#0, _module.Node.score)
-         == read($PreCallHeap#3, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != a#0
-         && d#0 != b#0
-         && d#0 != c#0
-         && d#0 != p#0
-         && d#0 != q#0
-         && d#0 != r#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#3, d#0, _module.Node.rank);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != p#0
-         && e#0 != q#0
-         && e#0 != r#0
-       ==> read($Heap, e#0, _module.Node.val)
-         == read($PreCallHeap#3, e#0, _module.Node.val);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != p#0
-         && e#0 != q#0
-         && e#0 != r#0
-       ==> read($Heap, e#0, _module.Node.tag)
-         == read($PreCallHeap#3, e#0, _module.Node.tag);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != p#0
-         && e#0 != q#0
-         && e#0 != r#0
-       ==> read($Heap, e#0, _module.Node.score)
-         == read($PreCallHeap#3, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != a#0
-         && e#0 != b#0
-         && e#0 != c#0
-         && e#0 != p#0
-         && e#0 != q#0
-         && e#0 != r#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#3, e#0, _module.Node.rank);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != p#0
-         && f#0 != q#0
-         && f#0 != r#0
-       ==> read($Heap, f#0, _module.Node.val)
-         == read($PreCallHeap#3, f#0, _module.Node.val);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != p#0
-         && f#0 != q#0
-         && f#0 != r#0
-       ==> read($Heap, f#0, _module.Node.tag)
-         == read($PreCallHeap#3, f#0, _module.Node.tag);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != p#0
-         && f#0 != q#0
-         && f#0 != r#0
-       ==> read($Heap, f#0, _module.Node.score)
-         == read($PreCallHeap#3, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != a#0
-         && f#0 != b#0
-         && f#0 != c#0
-         && f#0 != p#0
-         && f#0 != q#0
-         && f#0 != r#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#3, f#0, _module.Node.rank);
-    assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != p#0
-         && s#0 != q#0
-         && s#0 != r#0
-       ==> read($Heap, s#0, _module.Node.val)
-         == read($PreCallHeap#3, s#0, _module.Node.val);
-    assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != p#0
-         && s#0 != q#0
-         && s#0 != r#0
-       ==> read($Heap, s#0, _module.Node.tag)
-         == read($PreCallHeap#3, s#0, _module.Node.tag);
-    assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != p#0
-         && s#0 != q#0
-         && s#0 != r#0
-       ==> read($Heap, s#0, _module.Node.score)
-         == read($PreCallHeap#3, s#0, _module.Node.score);
-    assume s#0 != null
-         && s#0 != a#0
-         && s#0 != b#0
-         && s#0 != c#0
-         && s#0 != p#0
-         && s#0 != q#0
-         && s#0 != r#0
-       ==> read($Heap, s#0, _module.Node.rank)
-         == read($PreCallHeap#3, s#0, _module.Node.rank);
-    assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != p#0
-         && t#0 != q#0
-         && t#0 != r#0
-       ==> read($Heap, t#0, _module.Node.val)
-         == read($PreCallHeap#3, t#0, _module.Node.val);
-    assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != p#0
-         && t#0 != q#0
-         && t#0 != r#0
-       ==> read($Heap, t#0, _module.Node.tag)
-         == read($PreCallHeap#3, t#0, _module.Node.tag);
-    assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != p#0
-         && t#0 != q#0
-         && t#0 != r#0
-       ==> read($Heap, t#0, _module.Node.score)
-         == read($PreCallHeap#3, t#0, _module.Node.score);
-    assume t#0 != null
-         && t#0 != a#0
-         && t#0 != b#0
-         && t#0 != c#0
-         && t#0 != p#0
-         && t#0 != q#0
-         && t#0 != r#0
-       ==> read($Heap, t#0, _module.Node.rank)
-         == read($PreCallHeap#3, t#0, _module.Node.rank);
-    assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != p#0
-         && u#0 != q#0
-         && u#0 != r#0
-       ==> read($Heap, u#0, _module.Node.val)
-         == read($PreCallHeap#3, u#0, _module.Node.val);
-    assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != p#0
-         && u#0 != q#0
-         && u#0 != r#0
-       ==> read($Heap, u#0, _module.Node.tag)
-         == read($PreCallHeap#3, u#0, _module.Node.tag);
-    assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != p#0
-         && u#0 != q#0
-         && u#0 != r#0
-       ==> read($Heap, u#0, _module.Node.score)
-         == read($PreCallHeap#3, u#0, _module.Node.score);
-    assume u#0 != null
-         && u#0 != a#0
-         && u#0 != b#0
-         && u#0 != c#0
-         && u#0 != p#0
-         && u#0 != q#0
-         && u#0 != r#0
-       ==> read($Heap, u#0, _module.Node.rank)
-         == read($PreCallHeap#3, u#0, _module.Node.rank);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != p#0
-         && a##0 != q#0
-         && a##0 != r#0
-       ==> read($Heap, a##0, _module.Node.val)
-         == read($PreCallHeap#3, a##0, _module.Node.val);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != p#0
-         && a##0 != q#0
-         && a##0 != r#0
-       ==> read($Heap, a##0, _module.Node.tag)
-         == read($PreCallHeap#3, a##0, _module.Node.tag);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != p#0
-         && a##0 != q#0
-         && a##0 != r#0
-       ==> read($Heap, a##0, _module.Node.score)
-         == read($PreCallHeap#3, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != a#0
-         && a##0 != b#0
-         && a##0 != c#0
-         && a##0 != p#0
-         && a##0 != q#0
-         && a##0 != r#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#3, a##0, _module.Node.rank);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != p#0
-         && b##0 != q#0
-         && b##0 != r#0
-       ==> read($Heap, b##0, _module.Node.val)
-         == read($PreCallHeap#3, b##0, _module.Node.val);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != p#0
-         && b##0 != q#0
-         && b##0 != r#0
-       ==> read($Heap, b##0, _module.Node.tag)
-         == read($PreCallHeap#3, b##0, _module.Node.tag);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != p#0
-         && b##0 != q#0
-         && b##0 != r#0
-       ==> read($Heap, b##0, _module.Node.score)
-         == read($PreCallHeap#3, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != a#0
-         && b##0 != b#0
-         && b##0 != c#0
-         && b##0 != p#0
-         && b##0 != q#0
-         && b##0 != r#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#3, b##0, _module.Node.rank);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != p#0
-         && c##0 != q#0
-         && c##0 != r#0
-       ==> read($Heap, c##0, _module.Node.val)
-         == read($PreCallHeap#3, c##0, _module.Node.val);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != p#0
-         && c##0 != q#0
-         && c##0 != r#0
-       ==> read($Heap, c##0, _module.Node.tag)
-         == read($PreCallHeap#3, c##0, _module.Node.tag);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != p#0
-         && c##0 != q#0
-         && c##0 != r#0
-       ==> read($Heap, c##0, _module.Node.score)
-         == read($PreCallHeap#3, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != a#0
-         && c##0 != b#0
-         && c##0 != c#0
-         && c##0 != p#0
-         && c##0 != q#0
-         && c##0 != r#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#3, c##0, _module.Node.rank);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != p#0
-         && d##0 != q#0
-         && d##0 != r#0
-       ==> read($Heap, d##0, _module.Node.val)
-         == read($PreCallHeap#3, d##0, _module.Node.val);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != p#0
-         && d##0 != q#0
-         && d##0 != r#0
-       ==> read($Heap, d##0, _module.Node.tag)
-         == read($PreCallHeap#3, d##0, _module.Node.tag);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != p#0
-         && d##0 != q#0
-         && d##0 != r#0
-       ==> read($Heap, d##0, _module.Node.score)
-         == read($PreCallHeap#3, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != a#0
-         && d##0 != b#0
-         && d##0 != c#0
-         && d##0 != p#0
-         && d##0 != q#0
-         && d##0 != r#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#3, d##0, _module.Node.rank);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != p#0
-         && e##0 != q#0
-         && e##0 != r#0
-       ==> read($Heap, e##0, _module.Node.val)
-         == read($PreCallHeap#3, e##0, _module.Node.val);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != p#0
-         && e##0 != q#0
-         && e##0 != r#0
-       ==> read($Heap, e##0, _module.Node.tag)
-         == read($PreCallHeap#3, e##0, _module.Node.tag);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != p#0
-         && e##0 != q#0
-         && e##0 != r#0
-       ==> read($Heap, e##0, _module.Node.score)
-         == read($PreCallHeap#3, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != a#0
-         && e##0 != b#0
-         && e##0 != c#0
-         && e##0 != p#0
-         && e##0 != q#0
-         && e##0 != r#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#3, e##0, _module.Node.rank);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != p#0
-         && f##0 != q#0
-         && f##0 != r#0
-       ==> read($Heap, f##0, _module.Node.val)
-         == read($PreCallHeap#3, f##0, _module.Node.val);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != p#0
-         && f##0 != q#0
-         && f##0 != r#0
-       ==> read($Heap, f##0, _module.Node.tag)
-         == read($PreCallHeap#3, f##0, _module.Node.tag);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != p#0
-         && f##0 != q#0
-         && f##0 != r#0
-       ==> read($Heap, f##0, _module.Node.score)
-         == read($PreCallHeap#3, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != a#0
-         && f##0 != b#0
-         && f##0 != c#0
-         && f##0 != p#0
-         && f##0 != q#0
-         && f##0 != r#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#3, f##0, _module.Node.rank);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != p#0
-         && a##1 != q#0
-         && a##1 != r#0
-       ==> read($Heap, a##1, _module.Node.val)
-         == read($PreCallHeap#3, a##1, _module.Node.val);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != p#0
-         && a##1 != q#0
-         && a##1 != r#0
-       ==> read($Heap, a##1, _module.Node.tag)
-         == read($PreCallHeap#3, a##1, _module.Node.tag);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != p#0
-         && a##1 != q#0
-         && a##1 != r#0
-       ==> read($Heap, a##1, _module.Node.score)
-         == read($PreCallHeap#3, a##1, _module.Node.score);
-    assume a##1 != null
-         && a##1 != a#0
-         && a##1 != b#0
-         && a##1 != c#0
-         && a##1 != p#0
-         && a##1 != q#0
-         && a##1 != r#0
-       ==> read($Heap, a##1, _module.Node.rank)
-         == read($PreCallHeap#3, a##1, _module.Node.rank);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != p#0
-         && b##1 != q#0
-         && b##1 != r#0
-       ==> read($Heap, b##1, _module.Node.val)
-         == read($PreCallHeap#3, b##1, _module.Node.val);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != p#0
-         && b##1 != q#0
-         && b##1 != r#0
-       ==> read($Heap, b##1, _module.Node.tag)
-         == read($PreCallHeap#3, b##1, _module.Node.tag);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != p#0
-         && b##1 != q#0
-         && b##1 != r#0
-       ==> read($Heap, b##1, _module.Node.score)
-         == read($PreCallHeap#3, b##1, _module.Node.score);
-    assume b##1 != null
-         && b##1 != a#0
-         && b##1 != b#0
-         && b##1 != c#0
-         && b##1 != p#0
-         && b##1 != q#0
-         && b##1 != r#0
-       ==> read($Heap, b##1, _module.Node.rank)
-         == read($PreCallHeap#3, b##1, _module.Node.rank);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != p#0
-         && c##1 != q#0
-         && c##1 != r#0
-       ==> read($Heap, c##1, _module.Node.val)
-         == read($PreCallHeap#3, c##1, _module.Node.val);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != p#0
-         && c##1 != q#0
-         && c##1 != r#0
-       ==> read($Heap, c##1, _module.Node.tag)
-         == read($PreCallHeap#3, c##1, _module.Node.tag);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != p#0
-         && c##1 != q#0
-         && c##1 != r#0
-       ==> read($Heap, c##1, _module.Node.score)
-         == read($PreCallHeap#3, c##1, _module.Node.score);
-    assume c##1 != null
-         && c##1 != a#0
-         && c##1 != b#0
-         && c##1 != c#0
-         && c##1 != p#0
-         && c##1 != q#0
-         && c##1 != r#0
-       ==> read($Heap, c##1, _module.Node.rank)
-         == read($PreCallHeap#3, c##1, _module.Node.rank);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != p#0
-         && d##1 != q#0
-         && d##1 != r#0
-       ==> read($Heap, d##1, _module.Node.val)
-         == read($PreCallHeap#3, d##1, _module.Node.val);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != p#0
-         && d##1 != q#0
-         && d##1 != r#0
-       ==> read($Heap, d##1, _module.Node.tag)
-         == read($PreCallHeap#3, d##1, _module.Node.tag);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != p#0
-         && d##1 != q#0
-         && d##1 != r#0
-       ==> read($Heap, d##1, _module.Node.score)
-         == read($PreCallHeap#3, d##1, _module.Node.score);
-    assume d##1 != null
-         && d##1 != a#0
-         && d##1 != b#0
-         && d##1 != c#0
-         && d##1 != p#0
-         && d##1 != q#0
-         && d##1 != r#0
-       ==> read($Heap, d##1, _module.Node.rank)
-         == read($PreCallHeap#3, d##1, _module.Node.rank);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != p#0
-         && e##1 != q#0
-         && e##1 != r#0
-       ==> read($Heap, e##1, _module.Node.val)
-         == read($PreCallHeap#3, e##1, _module.Node.val);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != p#0
-         && e##1 != q#0
-         && e##1 != r#0
-       ==> read($Heap, e##1, _module.Node.tag)
-         == read($PreCallHeap#3, e##1, _module.Node.tag);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != p#0
-         && e##1 != q#0
-         && e##1 != r#0
-       ==> read($Heap, e##1, _module.Node.score)
-         == read($PreCallHeap#3, e##1, _module.Node.score);
-    assume e##1 != null
-         && e##1 != a#0
-         && e##1 != b#0
-         && e##1 != c#0
-         && e##1 != p#0
-         && e##1 != q#0
-         && e##1 != r#0
-       ==> read($Heap, e##1, _module.Node.rank)
-         == read($PreCallHeap#3, e##1, _module.Node.rank);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != p#0
-         && f##1 != q#0
-         && f##1 != r#0
-       ==> read($Heap, f##1, _module.Node.val)
-         == read($PreCallHeap#3, f##1, _module.Node.val);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != p#0
-         && f##1 != q#0
-         && f##1 != r#0
-       ==> read($Heap, f##1, _module.Node.tag)
-         == read($PreCallHeap#3, f##1, _module.Node.tag);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != p#0
-         && f##1 != q#0
-         && f##1 != r#0
-       ==> read($Heap, f##1, _module.Node.score)
-         == read($PreCallHeap#3, f##1, _module.Node.score);
-    assume f##1 != null
-         && f##1 != a#0
-         && f##1 != b#0
-         && f##1 != c#0
-         && f##1 != p#0
-         && f##1 != q#0
-         && f##1 != r#0
-       ==> read($Heap, f##1, _module.Node.rank)
-         == read($PreCallHeap#3, f##1, _module.Node.rank);
-    assume a##2 != null
-         && a##2 != a#0
-         && a##2 != b#0
-         && a##2 != c#0
-         && a##2 != p#0
-         && a##2 != q#0
-         && a##2 != r#0
-       ==> read($Heap, a##2, _module.Node.val)
-         == read($PreCallHeap#3, a##2, _module.Node.val);
-    assume a##2 != null
-         && a##2 != a#0
-         && a##2 != b#0
-         && a##2 != c#0
-         && a##2 != p#0
-         && a##2 != q#0
-         && a##2 != r#0
-       ==> read($Heap, a##2, _module.Node.tag)
-         == read($PreCallHeap#3, a##2, _module.Node.tag);
-    assume a##2 != null
-         && a##2 != a#0
-         && a##2 != b#0
-         && a##2 != c#0
-         && a##2 != p#0
-         && a##2 != q#0
-         && a##2 != r#0
-       ==> read($Heap, a##2, _module.Node.score)
-         == read($PreCallHeap#3, a##2, _module.Node.score);
-    assume a##2 != null
-         && a##2 != a#0
-         && a##2 != b#0
-         && a##2 != c#0
-         && a##2 != p#0
-         && a##2 != q#0
-         && a##2 != r#0
-       ==> read($Heap, a##2, _module.Node.rank)
-         == read($PreCallHeap#3, a##2, _module.Node.rank);
-    assume b##2 != null
-         && b##2 != a#0
-         && b##2 != b#0
-         && b##2 != c#0
-         && b##2 != p#0
-         && b##2 != q#0
-         && b##2 != r#0
-       ==> read($Heap, b##2, _module.Node.val)
-         == read($PreCallHeap#3, b##2, _module.Node.val);
-    assume b##2 != null
-         && b##2 != a#0
-         && b##2 != b#0
-         && b##2 != c#0
-         && b##2 != p#0
-         && b##2 != q#0
-         && b##2 != r#0
-       ==> read($Heap, b##2, _module.Node.tag)
-         == read($PreCallHeap#3, b##2, _module.Node.tag);
-    assume b##2 != null
-         && b##2 != a#0
-         && b##2 != b#0
-         && b##2 != c#0
-         && b##2 != p#0
-         && b##2 != q#0
-         && b##2 != r#0
-       ==> read($Heap, b##2, _module.Node.score)
-         == read($PreCallHeap#3, b##2, _module.Node.score);
-    assume b##2 != null
-         && b##2 != a#0
-         && b##2 != b#0
-         && b##2 != c#0
-         && b##2 != p#0
-         && b##2 != q#0
-         && b##2 != r#0
-       ==> read($Heap, b##2, _module.Node.rank)
-         == read($PreCallHeap#3, b##2, _module.Node.rank);
-    assume c##2 != null
-         && c##2 != a#0
-         && c##2 != b#0
-         && c##2 != c#0
-         && c##2 != p#0
-         && c##2 != q#0
-         && c##2 != r#0
-       ==> read($Heap, c##2, _module.Node.val)
-         == read($PreCallHeap#3, c##2, _module.Node.val);
-    assume c##2 != null
-         && c##2 != a#0
-         && c##2 != b#0
-         && c##2 != c#0
-         && c##2 != p#0
-         && c##2 != q#0
-         && c##2 != r#0
-       ==> read($Heap, c##2, _module.Node.tag)
-         == read($PreCallHeap#3, c##2, _module.Node.tag);
-    assume c##2 != null
-         && c##2 != a#0
-         && c##2 != b#0
-         && c##2 != c#0
-         && c##2 != p#0
-         && c##2 != q#0
-         && c##2 != r#0
-       ==> read($Heap, c##2, _module.Node.score)
-         == read($PreCallHeap#3, c##2, _module.Node.score);
-    assume c##2 != null
-         && c##2 != a#0
-         && c##2 != b#0
-         && c##2 != c#0
-         && c##2 != p#0
-         && c##2 != q#0
-         && c##2 != r#0
-       ==> read($Heap, c##2, _module.Node.rank)
-         == read($PreCallHeap#3, c##2, _module.Node.rank);
-    assume d##2 != null
-         && d##2 != a#0
-         && d##2 != b#0
-         && d##2 != c#0
-         && d##2 != p#0
-         && d##2 != q#0
-         && d##2 != r#0
-       ==> read($Heap, d##2, _module.Node.val)
-         == read($PreCallHeap#3, d##2, _module.Node.val);
-    assume d##2 != null
-         && d##2 != a#0
-         && d##2 != b#0
-         && d##2 != c#0
-         && d##2 != p#0
-         && d##2 != q#0
-         && d##2 != r#0
-       ==> read($Heap, d##2, _module.Node.tag)
-         == read($PreCallHeap#3, d##2, _module.Node.tag);
-    assume d##2 != null
-         && d##2 != a#0
-         && d##2 != b#0
-         && d##2 != c#0
-         && d##2 != p#0
-         && d##2 != q#0
-         && d##2 != r#0
-       ==> read($Heap, d##2, _module.Node.score)
-         == read($PreCallHeap#3, d##2, _module.Node.score);
-    assume d##2 != null
-         && d##2 != a#0
-         && d##2 != b#0
-         && d##2 != c#0
-         && d##2 != p#0
-         && d##2 != q#0
-         && d##2 != r#0
-       ==> read($Heap, d##2, _module.Node.rank)
-         == read($PreCallHeap#3, d##2, _module.Node.rank);
-    assume e##2 != null
-         && e##2 != a#0
-         && e##2 != b#0
-         && e##2 != c#0
-         && e##2 != p#0
-         && e##2 != q#0
-         && e##2 != r#0
-       ==> read($Heap, e##2, _module.Node.val)
-         == read($PreCallHeap#3, e##2, _module.Node.val);
-    assume e##2 != null
-         && e##2 != a#0
-         && e##2 != b#0
-         && e##2 != c#0
-         && e##2 != p#0
-         && e##2 != q#0
-         && e##2 != r#0
-       ==> read($Heap, e##2, _module.Node.tag)
-         == read($PreCallHeap#3, e##2, _module.Node.tag);
-    assume e##2 != null
-         && e##2 != a#0
-         && e##2 != b#0
-         && e##2 != c#0
-         && e##2 != p#0
-         && e##2 != q#0
-         && e##2 != r#0
-       ==> read($Heap, e##2, _module.Node.score)
-         == read($PreCallHeap#3, e##2, _module.Node.score);
-    assume e##2 != null
-         && e##2 != a#0
-         && e##2 != b#0
-         && e##2 != c#0
-         && e##2 != p#0
-         && e##2 != q#0
-         && e##2 != r#0
-       ==> read($Heap, e##2, _module.Node.rank)
-         == read($PreCallHeap#3, e##2, _module.Node.rank);
-    assume f##2 != null
-         && f##2 != a#0
-         && f##2 != b#0
-         && f##2 != c#0
-         && f##2 != p#0
-         && f##2 != q#0
-         && f##2 != r#0
-       ==> read($Heap, f##2, _module.Node.val)
-         == read($PreCallHeap#3, f##2, _module.Node.val);
-    assume f##2 != null
-         && f##2 != a#0
-         && f##2 != b#0
-         && f##2 != c#0
-         && f##2 != p#0
-         && f##2 != q#0
-         && f##2 != r#0
-       ==> read($Heap, f##2, _module.Node.tag)
-         == read($PreCallHeap#3, f##2, _module.Node.tag);
-    assume f##2 != null
-         && f##2 != a#0
-         && f##2 != b#0
-         && f##2 != c#0
-         && f##2 != p#0
-         && f##2 != q#0
-         && f##2 != r#0
-       ==> read($Heap, f##2, _module.Node.score)
-         == read($PreCallHeap#3, f##2, _module.Node.score);
-    assume f##2 != null
-         && f##2 != a#0
-         && f##2 != b#0
-         && f##2 != c#0
-         && f##2 != p#0
-         && f##2 != q#0
-         && f##2 != r#0
-       ==> read($Heap, f##2, _module.Node.rank)
-         == read($PreCallHeap#3, f##2, _module.Node.rank);
-    assume a##3 != null
-         && a##3 != a#0
-         && a##3 != b#0
-         && a##3 != c#0
-         && a##3 != p#0
-         && a##3 != q#0
-         && a##3 != r#0
-       ==> read($Heap, a##3, _module.Node.val)
-         == read($PreCallHeap#3, a##3, _module.Node.val);
-    assume a##3 != null
-         && a##3 != a#0
-         && a##3 != b#0
-         && a##3 != c#0
-         && a##3 != p#0
-         && a##3 != q#0
-         && a##3 != r#0
-       ==> read($Heap, a##3, _module.Node.tag)
-         == read($PreCallHeap#3, a##3, _module.Node.tag);
-    assume a##3 != null
-         && a##3 != a#0
-         && a##3 != b#0
-         && a##3 != c#0
-         && a##3 != p#0
-         && a##3 != q#0
-         && a##3 != r#0
-       ==> read($Heap, a##3, _module.Node.score)
-         == read($PreCallHeap#3, a##3, _module.Node.score);
-    assume a##3 != null
-         && a##3 != a#0
-         && a##3 != b#0
-         && a##3 != c#0
-         && a##3 != p#0
-         && a##3 != q#0
-         && a##3 != r#0
-       ==> read($Heap, a##3, _module.Node.rank)
-         == read($PreCallHeap#3, a##3, _module.Node.rank);
-    assume b##3 != null
-         && b##3 != a#0
-         && b##3 != b#0
-         && b##3 != c#0
-         && b##3 != p#0
-         && b##3 != q#0
-         && b##3 != r#0
-       ==> read($Heap, b##3, _module.Node.val)
-         == read($PreCallHeap#3, b##3, _module.Node.val);
-    assume b##3 != null
-         && b##3 != a#0
-         && b##3 != b#0
-         && b##3 != c#0
-         && b##3 != p#0
-         && b##3 != q#0
-         && b##3 != r#0
-       ==> read($Heap, b##3, _module.Node.tag)
-         == read($PreCallHeap#3, b##3, _module.Node.tag);
-    assume b##3 != null
-         && b##3 != a#0
-         && b##3 != b#0
-         && b##3 != c#0
-         && b##3 != p#0
-         && b##3 != q#0
-         && b##3 != r#0
-       ==> read($Heap, b##3, _module.Node.score)
-         == read($PreCallHeap#3, b##3, _module.Node.score);
-    assume b##3 != null
-         && b##3 != a#0
-         && b##3 != b#0
-         && b##3 != c#0
-         && b##3 != p#0
-         && b##3 != q#0
-         && b##3 != r#0
-       ==> read($Heap, b##3, _module.Node.rank)
-         == read($PreCallHeap#3, b##3, _module.Node.rank);
-    assume c##3 != null
-         && c##3 != a#0
-         && c##3 != b#0
-         && c##3 != c#0
-         && c##3 != p#0
-         && c##3 != q#0
-         && c##3 != r#0
-       ==> read($Heap, c##3, _module.Node.val)
-         == read($PreCallHeap#3, c##3, _module.Node.val);
-    assume c##3 != null
-         && c##3 != a#0
-         && c##3 != b#0
-         && c##3 != c#0
-         && c##3 != p#0
-         && c##3 != q#0
-         && c##3 != r#0
-       ==> read($Heap, c##3, _module.Node.tag)
-         == read($PreCallHeap#3, c##3, _module.Node.tag);
-    assume c##3 != null
-         && c##3 != a#0
-         && c##3 != b#0
-         && c##3 != c#0
-         && c##3 != p#0
-         && c##3 != q#0
-         && c##3 != r#0
-       ==> read($Heap, c##3, _module.Node.score)
-         == read($PreCallHeap#3, c##3, _module.Node.score);
-    assume c##3 != null
-         && c##3 != a#0
-         && c##3 != b#0
-         && c##3 != c#0
-         && c##3 != p#0
-         && c##3 != q#0
-         && c##3 != r#0
-       ==> read($Heap, c##3, _module.Node.rank)
-         == read($PreCallHeap#3, c##3, _module.Node.rank);
-    assume p##0 != null
-         && p##0 != a#0
-         && p##0 != b#0
-         && p##0 != c#0
-         && p##0 != p#0
-         && p##0 != q#0
-         && p##0 != r#0
-       ==> read($Heap, p##0, _module.Node.val)
-         == read($PreCallHeap#3, p##0, _module.Node.val);
-    assume p##0 != null
-         && p##0 != a#0
-         && p##0 != b#0
-         && p##0 != c#0
-         && p##0 != p#0
-         && p##0 != q#0
-         && p##0 != r#0
-       ==> read($Heap, p##0, _module.Node.tag)
-         == read($PreCallHeap#3, p##0, _module.Node.tag);
-    assume p##0 != null
-         && p##0 != a#0
-         && p##0 != b#0
-         && p##0 != c#0
-         && p##0 != p#0
-         && p##0 != q#0
-         && p##0 != r#0
-       ==> read($Heap, p##0, _module.Node.score)
-         == read($PreCallHeap#3, p##0, _module.Node.score);
-    assume p##0 != null
-         && p##0 != a#0
-         && p##0 != b#0
-         && p##0 != c#0
-         && p##0 != p#0
-         && p##0 != q#0
-         && p##0 != r#0
-       ==> read($Heap, p##0, _module.Node.rank)
-         == read($PreCallHeap#3, p##0, _module.Node.rank);
-    assume q##0 != null
-         && q##0 != a#0
-         && q##0 != b#0
-         && q##0 != c#0
-         && q##0 != p#0
-         && q##0 != q#0
-         && q##0 != r#0
-       ==> read($Heap, q##0, _module.Node.val)
-         == read($PreCallHeap#3, q##0, _module.Node.val);
-    assume q##0 != null
-         && q##0 != a#0
-         && q##0 != b#0
-         && q##0 != c#0
-         && q##0 != p#0
-         && q##0 != q#0
-         && q##0 != r#0
-       ==> read($Heap, q##0, _module.Node.tag)
-         == read($PreCallHeap#3, q##0, _module.Node.tag);
-    assume q##0 != null
-         && q##0 != a#0
-         && q##0 != b#0
-         && q##0 != c#0
-         && q##0 != p#0
-         && q##0 != q#0
-         && q##0 != r#0
-       ==> read($Heap, q##0, _module.Node.score)
-         == read($PreCallHeap#3, q##0, _module.Node.score);
-    assume q##0 != null
-         && q##0 != a#0
-         && q##0 != b#0
-         && q##0 != c#0
-         && q##0 != p#0
-         && q##0 != q#0
-         && q##0 != r#0
-       ==> read($Heap, q##0, _module.Node.rank)
-         == read($PreCallHeap#3, q##0, _module.Node.rank);
-    assume r##0 != null
-         && r##0 != a#0
-         && r##0 != b#0
-         && r##0 != c#0
-         && r##0 != p#0
-         && r##0 != q#0
-         && r##0 != r#0
-       ==> read($Heap, r##0, _module.Node.val)
-         == read($PreCallHeap#3, r##0, _module.Node.val);
-    assume r##0 != null
-         && r##0 != a#0
-         && r##0 != b#0
-         && r##0 != c#0
-         && r##0 != p#0
-         && r##0 != q#0
-         && r##0 != r#0
-       ==> read($Heap, r##0, _module.Node.tag)
-         == read($PreCallHeap#3, r##0, _module.Node.tag);
-    assume r##0 != null
-         && r##0 != a#0
-         && r##0 != b#0
-         && r##0 != c#0
-         && r##0 != p#0
-         && r##0 != q#0
-         && r##0 != r#0
-       ==> read($Heap, r##0, _module.Node.score)
-         == read($PreCallHeap#3, r##0, _module.Node.score);
-    assume r##0 != null
-         && r##0 != a#0
-         && r##0 != b#0
-         && r##0 != c#0
-         && r##0 != p#0
-         && r##0 != q#0
-         && r##0 != r#0
-       ==> read($Heap, r##0, _module.Node.rank)
-         == read($PreCallHeap#3, r##0, _module.Node.rank);
-    // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(233,29)"} true;
-    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(234,11)
-    // TrCallStmt: Before ProcessCallStmt
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    a##4 := p#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    b##4 := q#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    c##4 := r#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    d##3 := s#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    e##3 := t#0;
-    assume true;
-    // ProcessCallStmt: CheckSubrange
-    f##3 := u#0;
-    $PreCallHeap#4 := $Heap;
-    $PreCallAlloc#4 := $Alloc;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    assert {:id "id2171"} a##4 == a#0
-       || a##4 == b#0
-       || a##4 == c#0
-       || a##4 == d#0
-       || a##4 == e#0
-       || a##4 == f#0
-       || a##4 == p#0
-       || a##4 == q#0
-       || a##4 == r#0
-       || a##4 == s#0
-       || a##4 == t#0
-       || a##4 == u#0
-       || !old($Alloc)[a##4];
-    assert {:id "id2172"} b##4 == a#0
-       || b##4 == b#0
-       || b##4 == c#0
-       || b##4 == d#0
-       || b##4 == e#0
-       || b##4 == f#0
-       || b##4 == p#0
-       || b##4 == q#0
-       || b##4 == r#0
-       || b##4 == s#0
-       || b##4 == t#0
-       || b##4 == u#0
-       || !old($Alloc)[b##4];
-    assert {:id "id2173"} c##4 == a#0
-       || c##4 == b#0
-       || c##4 == c#0
-       || c##4 == d#0
-       || c##4 == e#0
-       || c##4 == f#0
-       || c##4 == p#0
-       || c##4 == q#0
-       || c##4 == r#0
-       || c##4 == s#0
-       || c##4 == t#0
-       || c##4 == u#0
-       || !old($Alloc)[c##4];
-    assert {:id "id2174"} d##3 == a#0
-       || d##3 == b#0
-       || d##3 == c#0
-       || d##3 == d#0
-       || d##3 == e#0
-       || d##3 == f#0
-       || d##3 == p#0
-       || d##3 == q#0
-       || d##3 == r#0
-       || d##3 == s#0
-       || d##3 == t#0
-       || d##3 == u#0
-       || !old($Alloc)[d##3];
-    assert {:id "id2175"} e##3 == a#0
-       || e##3 == b#0
-       || e##3 == c#0
-       || e##3 == d#0
-       || e##3 == e#0
-       || e##3 == f#0
-       || e##3 == p#0
-       || e##3 == q#0
-       || e##3 == r#0
-       || e##3 == s#0
-       || e##3 == t#0
-       || e##3 == u#0
-       || !old($Alloc)[e##3];
-    assert {:id "id2176"} f##3 == a#0
-       || f##3 == b#0
-       || f##3 == c#0
-       || f##3 == d#0
-       || f##3 == e#0
-       || f##3 == f#0
-       || f##3 == p#0
-       || f##3 == q#0
-       || f##3 == r#0
-       || f##3 == s#0
-       || f##3 == t#0
-       || f##3 == u#0
-       || !old($Alloc)[f##3];
-    call {:id "id2177"} Call$$_module.__default.QuadBump(a##4, b##4, c##4, d##3, e##3, f##3);
-    // qf-call-frame QuadBump: supports=42 reads=168 modified=6
-    assume p#0 != null
-         && p#0 != p#0
-         && p#0 != q#0
-         && p#0 != r#0
-         && p#0 != s#0
-         && p#0 != t#0
-         && p#0 != u#0
-       ==> read($Heap, p#0, _module.Node.val)
-         == read($PreCallHeap#4, p#0, _module.Node.val);
-    assume p#0 != null
-         && p#0 != p#0
-         && p#0 != q#0
-         && p#0 != r#0
-         && p#0 != s#0
-         && p#0 != t#0
-         && p#0 != u#0
-       ==> read($Heap, p#0, _module.Node.tag)
-         == read($PreCallHeap#4, p#0, _module.Node.tag);
-    assume p#0 != null
-         && p#0 != p#0
-         && p#0 != q#0
-         && p#0 != r#0
-         && p#0 != s#0
-         && p#0 != t#0
-         && p#0 != u#0
-       ==> read($Heap, p#0, _module.Node.score)
-         == read($PreCallHeap#4, p#0, _module.Node.score);
-    assume p#0 != null
-         && p#0 != p#0
-         && p#0 != q#0
-         && p#0 != r#0
-         && p#0 != s#0
-         && p#0 != t#0
-         && p#0 != u#0
-       ==> read($Heap, p#0, _module.Node.rank)
-         == read($PreCallHeap#4, p#0, _module.Node.rank);
-    assume q#0 != null
-         && q#0 != p#0
-         && q#0 != q#0
-         && q#0 != r#0
-         && q#0 != s#0
-         && q#0 != t#0
-         && q#0 != u#0
-       ==> read($Heap, q#0, _module.Node.val)
-         == read($PreCallHeap#4, q#0, _module.Node.val);
-    assume q#0 != null
-         && q#0 != p#0
-         && q#0 != q#0
-         && q#0 != r#0
-         && q#0 != s#0
-         && q#0 != t#0
-         && q#0 != u#0
-       ==> read($Heap, q#0, _module.Node.tag)
-         == read($PreCallHeap#4, q#0, _module.Node.tag);
-    assume q#0 != null
-         && q#0 != p#0
-         && q#0 != q#0
-         && q#0 != r#0
-         && q#0 != s#0
-         && q#0 != t#0
-         && q#0 != u#0
-       ==> read($Heap, q#0, _module.Node.score)
-         == read($PreCallHeap#4, q#0, _module.Node.score);
-    assume q#0 != null
-         && q#0 != p#0
-         && q#0 != q#0
-         && q#0 != r#0
-         && q#0 != s#0
-         && q#0 != t#0
-         && q#0 != u#0
-       ==> read($Heap, q#0, _module.Node.rank)
-         == read($PreCallHeap#4, q#0, _module.Node.rank);
-    assume r#0 != null
-         && r#0 != p#0
-         && r#0 != q#0
-         && r#0 != r#0
-         && r#0 != s#0
-         && r#0 != t#0
-         && r#0 != u#0
-       ==> read($Heap, r#0, _module.Node.val)
-         == read($PreCallHeap#4, r#0, _module.Node.val);
-    assume r#0 != null
-         && r#0 != p#0
-         && r#0 != q#0
-         && r#0 != r#0
-         && r#0 != s#0
-         && r#0 != t#0
-         && r#0 != u#0
-       ==> read($Heap, r#0, _module.Node.tag)
-         == read($PreCallHeap#4, r#0, _module.Node.tag);
-    assume r#0 != null
-         && r#0 != p#0
-         && r#0 != q#0
-         && r#0 != r#0
-         && r#0 != s#0
-         && r#0 != t#0
-         && r#0 != u#0
-       ==> read($Heap, r#0, _module.Node.score)
-         == read($PreCallHeap#4, r#0, _module.Node.score);
-    assume r#0 != null
-         && r#0 != p#0
-         && r#0 != q#0
-         && r#0 != r#0
-         && r#0 != s#0
-         && r#0 != t#0
-         && r#0 != u#0
-       ==> read($Heap, r#0, _module.Node.rank)
-         == read($PreCallHeap#4, r#0, _module.Node.rank);
-    assume s#0 != null
-         && s#0 != p#0
-         && s#0 != q#0
-         && s#0 != r#0
-         && s#0 != s#0
-         && s#0 != t#0
-         && s#0 != u#0
-       ==> read($Heap, s#0, _module.Node.val)
-         == read($PreCallHeap#4, s#0, _module.Node.val);
-    assume s#0 != null
-         && s#0 != p#0
-         && s#0 != q#0
-         && s#0 != r#0
-         && s#0 != s#0
-         && s#0 != t#0
-         && s#0 != u#0
-       ==> read($Heap, s#0, _module.Node.tag)
-         == read($PreCallHeap#4, s#0, _module.Node.tag);
-    assume s#0 != null
-         && s#0 != p#0
-         && s#0 != q#0
-         && s#0 != r#0
-         && s#0 != s#0
-         && s#0 != t#0
-         && s#0 != u#0
-       ==> read($Heap, s#0, _module.Node.score)
-         == read($PreCallHeap#4, s#0, _module.Node.score);
-    assume s#0 != null
-         && s#0 != p#0
-         && s#0 != q#0
-         && s#0 != r#0
-         && s#0 != s#0
-         && s#0 != t#0
-         && s#0 != u#0
-       ==> read($Heap, s#0, _module.Node.rank)
-         == read($PreCallHeap#4, s#0, _module.Node.rank);
-    assume t#0 != null
-         && t#0 != p#0
-         && t#0 != q#0
-         && t#0 != r#0
-         && t#0 != s#0
-         && t#0 != t#0
-         && t#0 != u#0
-       ==> read($Heap, t#0, _module.Node.val)
-         == read($PreCallHeap#4, t#0, _module.Node.val);
-    assume t#0 != null
-         && t#0 != p#0
-         && t#0 != q#0
-         && t#0 != r#0
-         && t#0 != s#0
-         && t#0 != t#0
-         && t#0 != u#0
-       ==> read($Heap, t#0, _module.Node.tag)
-         == read($PreCallHeap#4, t#0, _module.Node.tag);
-    assume t#0 != null
-         && t#0 != p#0
-         && t#0 != q#0
-         && t#0 != r#0
-         && t#0 != s#0
-         && t#0 != t#0
-         && t#0 != u#0
-       ==> read($Heap, t#0, _module.Node.score)
-         == read($PreCallHeap#4, t#0, _module.Node.score);
-    assume t#0 != null
-         && t#0 != p#0
-         && t#0 != q#0
-         && t#0 != r#0
-         && t#0 != s#0
-         && t#0 != t#0
-         && t#0 != u#0
-       ==> read($Heap, t#0, _module.Node.rank)
-         == read($PreCallHeap#4, t#0, _module.Node.rank);
-    assume u#0 != null
-         && u#0 != p#0
-         && u#0 != q#0
-         && u#0 != r#0
-         && u#0 != s#0
-         && u#0 != t#0
-         && u#0 != u#0
-       ==> read($Heap, u#0, _module.Node.val)
-         == read($PreCallHeap#4, u#0, _module.Node.val);
-    assume u#0 != null
-         && u#0 != p#0
-         && u#0 != q#0
-         && u#0 != r#0
-         && u#0 != s#0
-         && u#0 != t#0
-         && u#0 != u#0
-       ==> read($Heap, u#0, _module.Node.tag)
-         == read($PreCallHeap#4, u#0, _module.Node.tag);
-    assume u#0 != null
-         && u#0 != p#0
-         && u#0 != q#0
-         && u#0 != r#0
-         && u#0 != s#0
-         && u#0 != t#0
-         && u#0 != u#0
-       ==> read($Heap, u#0, _module.Node.score)
-         == read($PreCallHeap#4, u#0, _module.Node.score);
-    assume u#0 != null
-         && u#0 != p#0
-         && u#0 != q#0
-         && u#0 != r#0
-         && u#0 != s#0
-         && u#0 != t#0
-         && u#0 != u#0
-       ==> read($Heap, u#0, _module.Node.rank)
-         == read($PreCallHeap#4, u#0, _module.Node.rank);
-    assume a#0 != null
-         && a#0 != p#0
-         && a#0 != q#0
-         && a#0 != r#0
-         && a#0 != s#0
-         && a#0 != t#0
-         && a#0 != u#0
-       ==> read($Heap, a#0, _module.Node.val)
-         == read($PreCallHeap#4, a#0, _module.Node.val);
-    assume a#0 != null
-         && a#0 != p#0
-         && a#0 != q#0
-         && a#0 != r#0
-         && a#0 != s#0
-         && a#0 != t#0
-         && a#0 != u#0
-       ==> read($Heap, a#0, _module.Node.tag)
-         == read($PreCallHeap#4, a#0, _module.Node.tag);
-    assume a#0 != null
-         && a#0 != p#0
-         && a#0 != q#0
-         && a#0 != r#0
-         && a#0 != s#0
-         && a#0 != t#0
-         && a#0 != u#0
-       ==> read($Heap, a#0, _module.Node.score)
-         == read($PreCallHeap#4, a#0, _module.Node.score);
-    assume a#0 != null
-         && a#0 != p#0
-         && a#0 != q#0
-         && a#0 != r#0
-         && a#0 != s#0
-         && a#0 != t#0
-         && a#0 != u#0
-       ==> read($Heap, a#0, _module.Node.rank)
-         == read($PreCallHeap#4, a#0, _module.Node.rank);
-    assume b#0 != null
-         && b#0 != p#0
-         && b#0 != q#0
-         && b#0 != r#0
-         && b#0 != s#0
-         && b#0 != t#0
-         && b#0 != u#0
-       ==> read($Heap, b#0, _module.Node.val)
-         == read($PreCallHeap#4, b#0, _module.Node.val);
-    assume b#0 != null
-         && b#0 != p#0
-         && b#0 != q#0
-         && b#0 != r#0
-         && b#0 != s#0
-         && b#0 != t#0
-         && b#0 != u#0
-       ==> read($Heap, b#0, _module.Node.tag)
-         == read($PreCallHeap#4, b#0, _module.Node.tag);
-    assume b#0 != null
-         && b#0 != p#0
-         && b#0 != q#0
-         && b#0 != r#0
-         && b#0 != s#0
-         && b#0 != t#0
-         && b#0 != u#0
-       ==> read($Heap, b#0, _module.Node.score)
-         == read($PreCallHeap#4, b#0, _module.Node.score);
-    assume b#0 != null
-         && b#0 != p#0
-         && b#0 != q#0
-         && b#0 != r#0
-         && b#0 != s#0
-         && b#0 != t#0
-         && b#0 != u#0
-       ==> read($Heap, b#0, _module.Node.rank)
-         == read($PreCallHeap#4, b#0, _module.Node.rank);
-    assume c#0 != null
-         && c#0 != p#0
-         && c#0 != q#0
-         && c#0 != r#0
-         && c#0 != s#0
-         && c#0 != t#0
-         && c#0 != u#0
-       ==> read($Heap, c#0, _module.Node.val)
-         == read($PreCallHeap#4, c#0, _module.Node.val);
-    assume c#0 != null
-         && c#0 != p#0
-         && c#0 != q#0
-         && c#0 != r#0
-         && c#0 != s#0
-         && c#0 != t#0
-         && c#0 != u#0
-       ==> read($Heap, c#0, _module.Node.tag)
-         == read($PreCallHeap#4, c#0, _module.Node.tag);
-    assume c#0 != null
-         && c#0 != p#0
-         && c#0 != q#0
-         && c#0 != r#0
-         && c#0 != s#0
-         && c#0 != t#0
-         && c#0 != u#0
-       ==> read($Heap, c#0, _module.Node.score)
-         == read($PreCallHeap#4, c#0, _module.Node.score);
-    assume c#0 != null
-         && c#0 != p#0
-         && c#0 != q#0
-         && c#0 != r#0
-         && c#0 != s#0
-         && c#0 != t#0
-         && c#0 != u#0
-       ==> read($Heap, c#0, _module.Node.rank)
-         == read($PreCallHeap#4, c#0, _module.Node.rank);
-    assume d#0 != null
-         && d#0 != p#0
-         && d#0 != q#0
-         && d#0 != r#0
-         && d#0 != s#0
-         && d#0 != t#0
-         && d#0 != u#0
-       ==> read($Heap, d#0, _module.Node.val)
-         == read($PreCallHeap#4, d#0, _module.Node.val);
-    assume d#0 != null
-         && d#0 != p#0
-         && d#0 != q#0
-         && d#0 != r#0
-         && d#0 != s#0
-         && d#0 != t#0
-         && d#0 != u#0
-       ==> read($Heap, d#0, _module.Node.tag)
-         == read($PreCallHeap#4, d#0, _module.Node.tag);
-    assume d#0 != null
-         && d#0 != p#0
-         && d#0 != q#0
-         && d#0 != r#0
-         && d#0 != s#0
-         && d#0 != t#0
-         && d#0 != u#0
-       ==> read($Heap, d#0, _module.Node.score)
-         == read($PreCallHeap#4, d#0, _module.Node.score);
-    assume d#0 != null
-         && d#0 != p#0
-         && d#0 != q#0
-         && d#0 != r#0
-         && d#0 != s#0
-         && d#0 != t#0
-         && d#0 != u#0
-       ==> read($Heap, d#0, _module.Node.rank)
-         == read($PreCallHeap#4, d#0, _module.Node.rank);
-    assume e#0 != null
-         && e#0 != p#0
-         && e#0 != q#0
-         && e#0 != r#0
-         && e#0 != s#0
-         && e#0 != t#0
-         && e#0 != u#0
-       ==> read($Heap, e#0, _module.Node.val)
-         == read($PreCallHeap#4, e#0, _module.Node.val);
-    assume e#0 != null
-         && e#0 != p#0
-         && e#0 != q#0
-         && e#0 != r#0
-         && e#0 != s#0
-         && e#0 != t#0
-         && e#0 != u#0
-       ==> read($Heap, e#0, _module.Node.tag)
-         == read($PreCallHeap#4, e#0, _module.Node.tag);
-    assume e#0 != null
-         && e#0 != p#0
-         && e#0 != q#0
-         && e#0 != r#0
-         && e#0 != s#0
-         && e#0 != t#0
-         && e#0 != u#0
-       ==> read($Heap, e#0, _module.Node.score)
-         == read($PreCallHeap#4, e#0, _module.Node.score);
-    assume e#0 != null
-         && e#0 != p#0
-         && e#0 != q#0
-         && e#0 != r#0
-         && e#0 != s#0
-         && e#0 != t#0
-         && e#0 != u#0
-       ==> read($Heap, e#0, _module.Node.rank)
-         == read($PreCallHeap#4, e#0, _module.Node.rank);
-    assume f#0 != null
-         && f#0 != p#0
-         && f#0 != q#0
-         && f#0 != r#0
-         && f#0 != s#0
-         && f#0 != t#0
-         && f#0 != u#0
-       ==> read($Heap, f#0, _module.Node.val)
-         == read($PreCallHeap#4, f#0, _module.Node.val);
-    assume f#0 != null
-         && f#0 != p#0
-         && f#0 != q#0
-         && f#0 != r#0
-         && f#0 != s#0
-         && f#0 != t#0
-         && f#0 != u#0
-       ==> read($Heap, f#0, _module.Node.tag)
-         == read($PreCallHeap#4, f#0, _module.Node.tag);
-    assume f#0 != null
-         && f#0 != p#0
-         && f#0 != q#0
-         && f#0 != r#0
-         && f#0 != s#0
-         && f#0 != t#0
-         && f#0 != u#0
-       ==> read($Heap, f#0, _module.Node.score)
-         == read($PreCallHeap#4, f#0, _module.Node.score);
-    assume f#0 != null
-         && f#0 != p#0
-         && f#0 != q#0
-         && f#0 != r#0
-         && f#0 != s#0
-         && f#0 != t#0
-         && f#0 != u#0
-       ==> read($Heap, f#0, _module.Node.rank)
-         == read($PreCallHeap#4, f#0, _module.Node.rank);
-    assume a##0 != null
-         && a##0 != p#0
-         && a##0 != q#0
-         && a##0 != r#0
-         && a##0 != s#0
-         && a##0 != t#0
-         && a##0 != u#0
-       ==> read($Heap, a##0, _module.Node.val)
-         == read($PreCallHeap#4, a##0, _module.Node.val);
-    assume a##0 != null
-         && a##0 != p#0
-         && a##0 != q#0
-         && a##0 != r#0
-         && a##0 != s#0
-         && a##0 != t#0
-         && a##0 != u#0
-       ==> read($Heap, a##0, _module.Node.tag)
-         == read($PreCallHeap#4, a##0, _module.Node.tag);
-    assume a##0 != null
-         && a##0 != p#0
-         && a##0 != q#0
-         && a##0 != r#0
-         && a##0 != s#0
-         && a##0 != t#0
-         && a##0 != u#0
-       ==> read($Heap, a##0, _module.Node.score)
-         == read($PreCallHeap#4, a##0, _module.Node.score);
-    assume a##0 != null
-         && a##0 != p#0
-         && a##0 != q#0
-         && a##0 != r#0
-         && a##0 != s#0
-         && a##0 != t#0
-         && a##0 != u#0
-       ==> read($Heap, a##0, _module.Node.rank)
-         == read($PreCallHeap#4, a##0, _module.Node.rank);
-    assume b##0 != null
-         && b##0 != p#0
-         && b##0 != q#0
-         && b##0 != r#0
-         && b##0 != s#0
-         && b##0 != t#0
-         && b##0 != u#0
-       ==> read($Heap, b##0, _module.Node.val)
-         == read($PreCallHeap#4, b##0, _module.Node.val);
-    assume b##0 != null
-         && b##0 != p#0
-         && b##0 != q#0
-         && b##0 != r#0
-         && b##0 != s#0
-         && b##0 != t#0
-         && b##0 != u#0
-       ==> read($Heap, b##0, _module.Node.tag)
-         == read($PreCallHeap#4, b##0, _module.Node.tag);
-    assume b##0 != null
-         && b##0 != p#0
-         && b##0 != q#0
-         && b##0 != r#0
-         && b##0 != s#0
-         && b##0 != t#0
-         && b##0 != u#0
-       ==> read($Heap, b##0, _module.Node.score)
-         == read($PreCallHeap#4, b##0, _module.Node.score);
-    assume b##0 != null
-         && b##0 != p#0
-         && b##0 != q#0
-         && b##0 != r#0
-         && b##0 != s#0
-         && b##0 != t#0
-         && b##0 != u#0
-       ==> read($Heap, b##0, _module.Node.rank)
-         == read($PreCallHeap#4, b##0, _module.Node.rank);
-    assume c##0 != null
-         && c##0 != p#0
-         && c##0 != q#0
-         && c##0 != r#0
-         && c##0 != s#0
-         && c##0 != t#0
-         && c##0 != u#0
-       ==> read($Heap, c##0, _module.Node.val)
-         == read($PreCallHeap#4, c##0, _module.Node.val);
-    assume c##0 != null
-         && c##0 != p#0
-         && c##0 != q#0
-         && c##0 != r#0
-         && c##0 != s#0
-         && c##0 != t#0
-         && c##0 != u#0
-       ==> read($Heap, c##0, _module.Node.tag)
-         == read($PreCallHeap#4, c##0, _module.Node.tag);
-    assume c##0 != null
-         && c##0 != p#0
-         && c##0 != q#0
-         && c##0 != r#0
-         && c##0 != s#0
-         && c##0 != t#0
-         && c##0 != u#0
-       ==> read($Heap, c##0, _module.Node.score)
-         == read($PreCallHeap#4, c##0, _module.Node.score);
-    assume c##0 != null
-         && c##0 != p#0
-         && c##0 != q#0
-         && c##0 != r#0
-         && c##0 != s#0
-         && c##0 != t#0
-         && c##0 != u#0
-       ==> read($Heap, c##0, _module.Node.rank)
-         == read($PreCallHeap#4, c##0, _module.Node.rank);
-    assume d##0 != null
-         && d##0 != p#0
-         && d##0 != q#0
-         && d##0 != r#0
-         && d##0 != s#0
-         && d##0 != t#0
-         && d##0 != u#0
-       ==> read($Heap, d##0, _module.Node.val)
-         == read($PreCallHeap#4, d##0, _module.Node.val);
-    assume d##0 != null
-         && d##0 != p#0
-         && d##0 != q#0
-         && d##0 != r#0
-         && d##0 != s#0
-         && d##0 != t#0
-         && d##0 != u#0
-       ==> read($Heap, d##0, _module.Node.tag)
-         == read($PreCallHeap#4, d##0, _module.Node.tag);
-    assume d##0 != null
-         && d##0 != p#0
-         && d##0 != q#0
-         && d##0 != r#0
-         && d##0 != s#0
-         && d##0 != t#0
-         && d##0 != u#0
-       ==> read($Heap, d##0, _module.Node.score)
-         == read($PreCallHeap#4, d##0, _module.Node.score);
-    assume d##0 != null
-         && d##0 != p#0
-         && d##0 != q#0
-         && d##0 != r#0
-         && d##0 != s#0
-         && d##0 != t#0
-         && d##0 != u#0
-       ==> read($Heap, d##0, _module.Node.rank)
-         == read($PreCallHeap#4, d##0, _module.Node.rank);
-    assume e##0 != null
-         && e##0 != p#0
-         && e##0 != q#0
-         && e##0 != r#0
-         && e##0 != s#0
-         && e##0 != t#0
-         && e##0 != u#0
-       ==> read($Heap, e##0, _module.Node.val)
-         == read($PreCallHeap#4, e##0, _module.Node.val);
-    assume e##0 != null
-         && e##0 != p#0
-         && e##0 != q#0
-         && e##0 != r#0
-         && e##0 != s#0
-         && e##0 != t#0
-         && e##0 != u#0
-       ==> read($Heap, e##0, _module.Node.tag)
-         == read($PreCallHeap#4, e##0, _module.Node.tag);
-    assume e##0 != null
-         && e##0 != p#0
-         && e##0 != q#0
-         && e##0 != r#0
-         && e##0 != s#0
-         && e##0 != t#0
-         && e##0 != u#0
-       ==> read($Heap, e##0, _module.Node.score)
-         == read($PreCallHeap#4, e##0, _module.Node.score);
-    assume e##0 != null
-         && e##0 != p#0
-         && e##0 != q#0
-         && e##0 != r#0
-         && e##0 != s#0
-         && e##0 != t#0
-         && e##0 != u#0
-       ==> read($Heap, e##0, _module.Node.rank)
-         == read($PreCallHeap#4, e##0, _module.Node.rank);
-    assume f##0 != null
-         && f##0 != p#0
-         && f##0 != q#0
-         && f##0 != r#0
-         && f##0 != s#0
-         && f##0 != t#0
-         && f##0 != u#0
-       ==> read($Heap, f##0, _module.Node.val)
-         == read($PreCallHeap#4, f##0, _module.Node.val);
-    assume f##0 != null
-         && f##0 != p#0
-         && f##0 != q#0
-         && f##0 != r#0
-         && f##0 != s#0
-         && f##0 != t#0
-         && f##0 != u#0
-       ==> read($Heap, f##0, _module.Node.tag)
-         == read($PreCallHeap#4, f##0, _module.Node.tag);
-    assume f##0 != null
-         && f##0 != p#0
-         && f##0 != q#0
-         && f##0 != r#0
-         && f##0 != s#0
-         && f##0 != t#0
-         && f##0 != u#0
-       ==> read($Heap, f##0, _module.Node.score)
-         == read($PreCallHeap#4, f##0, _module.Node.score);
-    assume f##0 != null
-         && f##0 != p#0
-         && f##0 != q#0
-         && f##0 != r#0
-         && f##0 != s#0
-         && f##0 != t#0
-         && f##0 != u#0
-       ==> read($Heap, f##0, _module.Node.rank)
-         == read($PreCallHeap#4, f##0, _module.Node.rank);
-    assume a##1 != null
-         && a##1 != p#0
-         && a##1 != q#0
-         && a##1 != r#0
-         && a##1 != s#0
-         && a##1 != t#0
-         && a##1 != u#0
-       ==> read($Heap, a##1, _module.Node.val)
-         == read($PreCallHeap#4, a##1, _module.Node.val);
-    assume a##1 != null
-         && a##1 != p#0
-         && a##1 != q#0
-         && a##1 != r#0
-         && a##1 != s#0
-         && a##1 != t#0
-         && a##1 != u#0
-       ==> read($Heap, a##1, _module.Node.tag)
-         == read($PreCallHeap#4, a##1, _module.Node.tag);
-    assume a##1 != null
-         && a##1 != p#0
-         && a##1 != q#0
-         && a##1 != r#0
-         && a##1 != s#0
-         && a##1 != t#0
-         && a##1 != u#0
-       ==> read($Heap, a##1, _module.Node.score)
-         == read($PreCallHeap#4, a##1, _module.Node.score);
-    assume a##1 != null
-         && a##1 != p#0
-         && a##1 != q#0
-         && a##1 != r#0
-         && a##1 != s#0
-         && a##1 != t#0
-         && a##1 != u#0
-       ==> read($Heap, a##1, _module.Node.rank)
-         == read($PreCallHeap#4, a##1, _module.Node.rank);
-    assume b##1 != null
-         && b##1 != p#0
-         && b##1 != q#0
-         && b##1 != r#0
-         && b##1 != s#0
-         && b##1 != t#0
-         && b##1 != u#0
-       ==> read($Heap, b##1, _module.Node.val)
-         == read($PreCallHeap#4, b##1, _module.Node.val);
-    assume b##1 != null
-         && b##1 != p#0
-         && b##1 != q#0
-         && b##1 != r#0
-         && b##1 != s#0
-         && b##1 != t#0
-         && b##1 != u#0
-       ==> read($Heap, b##1, _module.Node.tag)
-         == read($PreCallHeap#4, b##1, _module.Node.tag);
-    assume b##1 != null
-         && b##1 != p#0
-         && b##1 != q#0
-         && b##1 != r#0
-         && b##1 != s#0
-         && b##1 != t#0
-         && b##1 != u#0
-       ==> read($Heap, b##1, _module.Node.score)
-         == read($PreCallHeap#4, b##1, _module.Node.score);
-    assume b##1 != null
-         && b##1 != p#0
-         && b##1 != q#0
-         && b##1 != r#0
-         && b##1 != s#0
-         && b##1 != t#0
-         && b##1 != u#0
-       ==> read($Heap, b##1, _module.Node.rank)
-         == read($PreCallHeap#4, b##1, _module.Node.rank);
-    assume c##1 != null
-         && c##1 != p#0
-         && c##1 != q#0
-         && c##1 != r#0
-         && c##1 != s#0
-         && c##1 != t#0
-         && c##1 != u#0
-       ==> read($Heap, c##1, _module.Node.val)
-         == read($PreCallHeap#4, c##1, _module.Node.val);
-    assume c##1 != null
-         && c##1 != p#0
-         && c##1 != q#0
-         && c##1 != r#0
-         && c##1 != s#0
-         && c##1 != t#0
-         && c##1 != u#0
-       ==> read($Heap, c##1, _module.Node.tag)
-         == read($PreCallHeap#4, c##1, _module.Node.tag);
-    assume c##1 != null
-         && c##1 != p#0
-         && c##1 != q#0
-         && c##1 != r#0
-         && c##1 != s#0
-         && c##1 != t#0
-         && c##1 != u#0
-       ==> read($Heap, c##1, _module.Node.score)
-         == read($PreCallHeap#4, c##1, _module.Node.score);
-    assume c##1 != null
-         && c##1 != p#0
-         && c##1 != q#0
-         && c##1 != r#0
-         && c##1 != s#0
-         && c##1 != t#0
-         && c##1 != u#0
-       ==> read($Heap, c##1, _module.Node.rank)
-         == read($PreCallHeap#4, c##1, _module.Node.rank);
-    assume d##1 != null
-         && d##1 != p#0
-         && d##1 != q#0
-         && d##1 != r#0
-         && d##1 != s#0
-         && d##1 != t#0
-         && d##1 != u#0
-       ==> read($Heap, d##1, _module.Node.val)
-         == read($PreCallHeap#4, d##1, _module.Node.val);
-    assume d##1 != null
-         && d##1 != p#0
-         && d##1 != q#0
-         && d##1 != r#0
-         && d##1 != s#0
-         && d##1 != t#0
-         && d##1 != u#0
-       ==> read($Heap, d##1, _module.Node.tag)
-         == read($PreCallHeap#4, d##1, _module.Node.tag);
-    assume d##1 != null
-         && d##1 != p#0
-         && d##1 != q#0
-         && d##1 != r#0
-         && d##1 != s#0
-         && d##1 != t#0
-         && d##1 != u#0
-       ==> read($Heap, d##1, _module.Node.score)
-         == read($PreCallHeap#4, d##1, _module.Node.score);
-    assume d##1 != null
-         && d##1 != p#0
-         && d##1 != q#0
-         && d##1 != r#0
-         && d##1 != s#0
-         && d##1 != t#0
-         && d##1 != u#0
-       ==> read($Heap, d##1, _module.Node.rank)
-         == read($PreCallHeap#4, d##1, _module.Node.rank);
-    assume e##1 != null
-         && e##1 != p#0
-         && e##1 != q#0
-         && e##1 != r#0
-         && e##1 != s#0
-         && e##1 != t#0
-         && e##1 != u#0
-       ==> read($Heap, e##1, _module.Node.val)
-         == read($PreCallHeap#4, e##1, _module.Node.val);
-    assume e##1 != null
-         && e##1 != p#0
-         && e##1 != q#0
-         && e##1 != r#0
-         && e##1 != s#0
-         && e##1 != t#0
-         && e##1 != u#0
-       ==> read($Heap, e##1, _module.Node.tag)
-         == read($PreCallHeap#4, e##1, _module.Node.tag);
-    assume e##1 != null
-         && e##1 != p#0
-         && e##1 != q#0
-         && e##1 != r#0
-         && e##1 != s#0
-         && e##1 != t#0
-         && e##1 != u#0
-       ==> read($Heap, e##1, _module.Node.score)
-         == read($PreCallHeap#4, e##1, _module.Node.score);
-    assume e##1 != null
-         && e##1 != p#0
-         && e##1 != q#0
-         && e##1 != r#0
-         && e##1 != s#0
-         && e##1 != t#0
-         && e##1 != u#0
-       ==> read($Heap, e##1, _module.Node.rank)
-         == read($PreCallHeap#4, e##1, _module.Node.rank);
-    assume f##1 != null
-         && f##1 != p#0
-         && f##1 != q#0
-         && f##1 != r#0
-         && f##1 != s#0
-         && f##1 != t#0
-         && f##1 != u#0
-       ==> read($Heap, f##1, _module.Node.val)
-         == read($PreCallHeap#4, f##1, _module.Node.val);
-    assume f##1 != null
-         && f##1 != p#0
-         && f##1 != q#0
-         && f##1 != r#0
-         && f##1 != s#0
-         && f##1 != t#0
-         && f##1 != u#0
-       ==> read($Heap, f##1, _module.Node.tag)
-         == read($PreCallHeap#4, f##1, _module.Node.tag);
-    assume f##1 != null
-         && f##1 != p#0
-         && f##1 != q#0
-         && f##1 != r#0
-         && f##1 != s#0
-         && f##1 != t#0
-         && f##1 != u#0
-       ==> read($Heap, f##1, _module.Node.score)
-         == read($PreCallHeap#4, f##1, _module.Node.score);
-    assume f##1 != null
-         && f##1 != p#0
-         && f##1 != q#0
-         && f##1 != r#0
-         && f##1 != s#0
-         && f##1 != t#0
-         && f##1 != u#0
-       ==> read($Heap, f##1, _module.Node.rank)
-         == read($PreCallHeap#4, f##1, _module.Node.rank);
-    assume a##2 != null
-         && a##2 != p#0
-         && a##2 != q#0
-         && a##2 != r#0
-         && a##2 != s#0
-         && a##2 != t#0
-         && a##2 != u#0
-       ==> read($Heap, a##2, _module.Node.val)
-         == read($PreCallHeap#4, a##2, _module.Node.val);
-    assume a##2 != null
-         && a##2 != p#0
-         && a##2 != q#0
-         && a##2 != r#0
-         && a##2 != s#0
-         && a##2 != t#0
-         && a##2 != u#0
-       ==> read($Heap, a##2, _module.Node.tag)
-         == read($PreCallHeap#4, a##2, _module.Node.tag);
-    assume a##2 != null
-         && a##2 != p#0
-         && a##2 != q#0
-         && a##2 != r#0
-         && a##2 != s#0
-         && a##2 != t#0
-         && a##2 != u#0
-       ==> read($Heap, a##2, _module.Node.score)
-         == read($PreCallHeap#4, a##2, _module.Node.score);
-    assume a##2 != null
-         && a##2 != p#0
-         && a##2 != q#0
-         && a##2 != r#0
-         && a##2 != s#0
-         && a##2 != t#0
-         && a##2 != u#0
-       ==> read($Heap, a##2, _module.Node.rank)
-         == read($PreCallHeap#4, a##2, _module.Node.rank);
-    assume b##2 != null
-         && b##2 != p#0
-         && b##2 != q#0
-         && b##2 != r#0
-         && b##2 != s#0
-         && b##2 != t#0
-         && b##2 != u#0
-       ==> read($Heap, b##2, _module.Node.val)
-         == read($PreCallHeap#4, b##2, _module.Node.val);
-    assume b##2 != null
-         && b##2 != p#0
-         && b##2 != q#0
-         && b##2 != r#0
-         && b##2 != s#0
-         && b##2 != t#0
-         && b##2 != u#0
-       ==> read($Heap, b##2, _module.Node.tag)
-         == read($PreCallHeap#4, b##2, _module.Node.tag);
-    assume b##2 != null
-         && b##2 != p#0
-         && b##2 != q#0
-         && b##2 != r#0
-         && b##2 != s#0
-         && b##2 != t#0
-         && b##2 != u#0
-       ==> read($Heap, b##2, _module.Node.score)
-         == read($PreCallHeap#4, b##2, _module.Node.score);
-    assume b##2 != null
-         && b##2 != p#0
-         && b##2 != q#0
-         && b##2 != r#0
-         && b##2 != s#0
-         && b##2 != t#0
-         && b##2 != u#0
-       ==> read($Heap, b##2, _module.Node.rank)
-         == read($PreCallHeap#4, b##2, _module.Node.rank);
-    assume c##2 != null
-         && c##2 != p#0
-         && c##2 != q#0
-         && c##2 != r#0
-         && c##2 != s#0
-         && c##2 != t#0
-         && c##2 != u#0
-       ==> read($Heap, c##2, _module.Node.val)
-         == read($PreCallHeap#4, c##2, _module.Node.val);
-    assume c##2 != null
-         && c##2 != p#0
-         && c##2 != q#0
-         && c##2 != r#0
-         && c##2 != s#0
-         && c##2 != t#0
-         && c##2 != u#0
-       ==> read($Heap, c##2, _module.Node.tag)
-         == read($PreCallHeap#4, c##2, _module.Node.tag);
-    assume c##2 != null
-         && c##2 != p#0
-         && c##2 != q#0
-         && c##2 != r#0
-         && c##2 != s#0
-         && c##2 != t#0
-         && c##2 != u#0
-       ==> read($Heap, c##2, _module.Node.score)
-         == read($PreCallHeap#4, c##2, _module.Node.score);
-    assume c##2 != null
-         && c##2 != p#0
-         && c##2 != q#0
-         && c##2 != r#0
-         && c##2 != s#0
-         && c##2 != t#0
-         && c##2 != u#0
-       ==> read($Heap, c##2, _module.Node.rank)
-         == read($PreCallHeap#4, c##2, _module.Node.rank);
-    assume d##2 != null
-         && d##2 != p#0
-         && d##2 != q#0
-         && d##2 != r#0
-         && d##2 != s#0
-         && d##2 != t#0
-         && d##2 != u#0
-       ==> read($Heap, d##2, _module.Node.val)
-         == read($PreCallHeap#4, d##2, _module.Node.val);
-    assume d##2 != null
-         && d##2 != p#0
-         && d##2 != q#0
-         && d##2 != r#0
-         && d##2 != s#0
-         && d##2 != t#0
-         && d##2 != u#0
-       ==> read($Heap, d##2, _module.Node.tag)
-         == read($PreCallHeap#4, d##2, _module.Node.tag);
-    assume d##2 != null
-         && d##2 != p#0
-         && d##2 != q#0
-         && d##2 != r#0
-         && d##2 != s#0
-         && d##2 != t#0
-         && d##2 != u#0
-       ==> read($Heap, d##2, _module.Node.score)
-         == read($PreCallHeap#4, d##2, _module.Node.score);
-    assume d##2 != null
-         && d##2 != p#0
-         && d##2 != q#0
-         && d##2 != r#0
-         && d##2 != s#0
-         && d##2 != t#0
-         && d##2 != u#0
-       ==> read($Heap, d##2, _module.Node.rank)
-         == read($PreCallHeap#4, d##2, _module.Node.rank);
-    assume e##2 != null
-         && e##2 != p#0
-         && e##2 != q#0
-         && e##2 != r#0
-         && e##2 != s#0
-         && e##2 != t#0
-         && e##2 != u#0
-       ==> read($Heap, e##2, _module.Node.val)
-         == read($PreCallHeap#4, e##2, _module.Node.val);
-    assume e##2 != null
-         && e##2 != p#0
-         && e##2 != q#0
-         && e##2 != r#0
-         && e##2 != s#0
-         && e##2 != t#0
-         && e##2 != u#0
-       ==> read($Heap, e##2, _module.Node.tag)
-         == read($PreCallHeap#4, e##2, _module.Node.tag);
-    assume e##2 != null
-         && e##2 != p#0
-         && e##2 != q#0
-         && e##2 != r#0
-         && e##2 != s#0
-         && e##2 != t#0
-         && e##2 != u#0
-       ==> read($Heap, e##2, _module.Node.score)
-         == read($PreCallHeap#4, e##2, _module.Node.score);
-    assume e##2 != null
-         && e##2 != p#0
-         && e##2 != q#0
-         && e##2 != r#0
-         && e##2 != s#0
-         && e##2 != t#0
-         && e##2 != u#0
-       ==> read($Heap, e##2, _module.Node.rank)
-         == read($PreCallHeap#4, e##2, _module.Node.rank);
-    assume f##2 != null
-         && f##2 != p#0
-         && f##2 != q#0
-         && f##2 != r#0
-         && f##2 != s#0
-         && f##2 != t#0
-         && f##2 != u#0
-       ==> read($Heap, f##2, _module.Node.val)
-         == read($PreCallHeap#4, f##2, _module.Node.val);
-    assume f##2 != null
-         && f##2 != p#0
-         && f##2 != q#0
-         && f##2 != r#0
-         && f##2 != s#0
-         && f##2 != t#0
-         && f##2 != u#0
-       ==> read($Heap, f##2, _module.Node.tag)
-         == read($PreCallHeap#4, f##2, _module.Node.tag);
-    assume f##2 != null
-         && f##2 != p#0
-         && f##2 != q#0
-         && f##2 != r#0
-         && f##2 != s#0
-         && f##2 != t#0
-         && f##2 != u#0
-       ==> read($Heap, f##2, _module.Node.score)
-         == read($PreCallHeap#4, f##2, _module.Node.score);
-    assume f##2 != null
-         && f##2 != p#0
-         && f##2 != q#0
-         && f##2 != r#0
-         && f##2 != s#0
-         && f##2 != t#0
-         && f##2 != u#0
-       ==> read($Heap, f##2, _module.Node.rank)
-         == read($PreCallHeap#4, f##2, _module.Node.rank);
-    assume a##3 != null
-         && a##3 != p#0
-         && a##3 != q#0
-         && a##3 != r#0
-         && a##3 != s#0
-         && a##3 != t#0
-         && a##3 != u#0
-       ==> read($Heap, a##3, _module.Node.val)
-         == read($PreCallHeap#4, a##3, _module.Node.val);
-    assume a##3 != null
-         && a##3 != p#0
-         && a##3 != q#0
-         && a##3 != r#0
-         && a##3 != s#0
-         && a##3 != t#0
-         && a##3 != u#0
-       ==> read($Heap, a##3, _module.Node.tag)
-         == read($PreCallHeap#4, a##3, _module.Node.tag);
-    assume a##3 != null
-         && a##3 != p#0
-         && a##3 != q#0
-         && a##3 != r#0
-         && a##3 != s#0
-         && a##3 != t#0
-         && a##3 != u#0
-       ==> read($Heap, a##3, _module.Node.score)
-         == read($PreCallHeap#4, a##3, _module.Node.score);
-    assume a##3 != null
-         && a##3 != p#0
-         && a##3 != q#0
-         && a##3 != r#0
-         && a##3 != s#0
-         && a##3 != t#0
-         && a##3 != u#0
-       ==> read($Heap, a##3, _module.Node.rank)
-         == read($PreCallHeap#4, a##3, _module.Node.rank);
-    assume b##3 != null
-         && b##3 != p#0
-         && b##3 != q#0
-         && b##3 != r#0
-         && b##3 != s#0
-         && b##3 != t#0
-         && b##3 != u#0
-       ==> read($Heap, b##3, _module.Node.val)
-         == read($PreCallHeap#4, b##3, _module.Node.val);
-    assume b##3 != null
-         && b##3 != p#0
-         && b##3 != q#0
-         && b##3 != r#0
-         && b##3 != s#0
-         && b##3 != t#0
-         && b##3 != u#0
-       ==> read($Heap, b##3, _module.Node.tag)
-         == read($PreCallHeap#4, b##3, _module.Node.tag);
-    assume b##3 != null
-         && b##3 != p#0
-         && b##3 != q#0
-         && b##3 != r#0
-         && b##3 != s#0
-         && b##3 != t#0
-         && b##3 != u#0
-       ==> read($Heap, b##3, _module.Node.score)
-         == read($PreCallHeap#4, b##3, _module.Node.score);
-    assume b##3 != null
-         && b##3 != p#0
-         && b##3 != q#0
-         && b##3 != r#0
-         && b##3 != s#0
-         && b##3 != t#0
-         && b##3 != u#0
-       ==> read($Heap, b##3, _module.Node.rank)
-         == read($PreCallHeap#4, b##3, _module.Node.rank);
-    assume c##3 != null
-         && c##3 != p#0
-         && c##3 != q#0
-         && c##3 != r#0
-         && c##3 != s#0
-         && c##3 != t#0
-         && c##3 != u#0
-       ==> read($Heap, c##3, _module.Node.val)
-         == read($PreCallHeap#4, c##3, _module.Node.val);
-    assume c##3 != null
-         && c##3 != p#0
-         && c##3 != q#0
-         && c##3 != r#0
-         && c##3 != s#0
-         && c##3 != t#0
-         && c##3 != u#0
-       ==> read($Heap, c##3, _module.Node.tag)
-         == read($PreCallHeap#4, c##3, _module.Node.tag);
-    assume c##3 != null
-         && c##3 != p#0
-         && c##3 != q#0
-         && c##3 != r#0
-         && c##3 != s#0
-         && c##3 != t#0
-         && c##3 != u#0
-       ==> read($Heap, c##3, _module.Node.score)
-         == read($PreCallHeap#4, c##3, _module.Node.score);
-    assume c##3 != null
-         && c##3 != p#0
-         && c##3 != q#0
-         && c##3 != r#0
-         && c##3 != s#0
-         && c##3 != t#0
-         && c##3 != u#0
-       ==> read($Heap, c##3, _module.Node.rank)
-         == read($PreCallHeap#4, c##3, _module.Node.rank);
-    assume p##0 != null
-         && p##0 != p#0
-         && p##0 != q#0
-         && p##0 != r#0
-         && p##0 != s#0
-         && p##0 != t#0
-         && p##0 != u#0
-       ==> read($Heap, p##0, _module.Node.val)
-         == read($PreCallHeap#4, p##0, _module.Node.val);
-    assume p##0 != null
-         && p##0 != p#0
-         && p##0 != q#0
-         && p##0 != r#0
-         && p##0 != s#0
-         && p##0 != t#0
-         && p##0 != u#0
-       ==> read($Heap, p##0, _module.Node.tag)
-         == read($PreCallHeap#4, p##0, _module.Node.tag);
-    assume p##0 != null
-         && p##0 != p#0
-         && p##0 != q#0
-         && p##0 != r#0
-         && p##0 != s#0
-         && p##0 != t#0
-         && p##0 != u#0
-       ==> read($Heap, p##0, _module.Node.score)
-         == read($PreCallHeap#4, p##0, _module.Node.score);
-    assume p##0 != null
-         && p##0 != p#0
-         && p##0 != q#0
-         && p##0 != r#0
-         && p##0 != s#0
-         && p##0 != t#0
-         && p##0 != u#0
-       ==> read($Heap, p##0, _module.Node.rank)
-         == read($PreCallHeap#4, p##0, _module.Node.rank);
-    assume q##0 != null
-         && q##0 != p#0
-         && q##0 != q#0
-         && q##0 != r#0
-         && q##0 != s#0
-         && q##0 != t#0
-         && q##0 != u#0
-       ==> read($Heap, q##0, _module.Node.val)
-         == read($PreCallHeap#4, q##0, _module.Node.val);
-    assume q##0 != null
-         && q##0 != p#0
-         && q##0 != q#0
-         && q##0 != r#0
-         && q##0 != s#0
-         && q##0 != t#0
-         && q##0 != u#0
-       ==> read($Heap, q##0, _module.Node.tag)
-         == read($PreCallHeap#4, q##0, _module.Node.tag);
-    assume q##0 != null
-         && q##0 != p#0
-         && q##0 != q#0
-         && q##0 != r#0
-         && q##0 != s#0
-         && q##0 != t#0
-         && q##0 != u#0
-       ==> read($Heap, q##0, _module.Node.score)
-         == read($PreCallHeap#4, q##0, _module.Node.score);
-    assume q##0 != null
-         && q##0 != p#0
-         && q##0 != q#0
-         && q##0 != r#0
-         && q##0 != s#0
-         && q##0 != t#0
-         && q##0 != u#0
-       ==> read($Heap, q##0, _module.Node.rank)
-         == read($PreCallHeap#4, q##0, _module.Node.rank);
-    assume r##0 != null
-         && r##0 != p#0
-         && r##0 != q#0
-         && r##0 != r#0
-         && r##0 != s#0
-         && r##0 != t#0
-         && r##0 != u#0
-       ==> read($Heap, r##0, _module.Node.val)
-         == read($PreCallHeap#4, r##0, _module.Node.val);
-    assume r##0 != null
-         && r##0 != p#0
-         && r##0 != q#0
-         && r##0 != r#0
-         && r##0 != s#0
-         && r##0 != t#0
-         && r##0 != u#0
-       ==> read($Heap, r##0, _module.Node.tag)
-         == read($PreCallHeap#4, r##0, _module.Node.tag);
-    assume r##0 != null
-         && r##0 != p#0
-         && r##0 != q#0
-         && r##0 != r#0
-         && r##0 != s#0
-         && r##0 != t#0
-         && r##0 != u#0
-       ==> read($Heap, r##0, _module.Node.score)
-         == read($PreCallHeap#4, r##0, _module.Node.score);
-    assume r##0 != null
-         && r##0 != p#0
-         && r##0 != q#0
-         && r##0 != r#0
-         && r##0 != s#0
-         && r##0 != t#0
-         && r##0 != u#0
-       ==> read($Heap, r##0, _module.Node.rank)
-         == read($PreCallHeap#4, r##0, _module.Node.rank);
-    assume a##4 != null
-         && a##4 != p#0
-         && a##4 != q#0
-         && a##4 != r#0
-         && a##4 != s#0
-         && a##4 != t#0
-         && a##4 != u#0
-       ==> read($Heap, a##4, _module.Node.val)
-         == read($PreCallHeap#4, a##4, _module.Node.val);
-    assume a##4 != null
-         && a##4 != p#0
-         && a##4 != q#0
-         && a##4 != r#0
-         && a##4 != s#0
-         && a##4 != t#0
-         && a##4 != u#0
-       ==> read($Heap, a##4, _module.Node.tag)
-         == read($PreCallHeap#4, a##4, _module.Node.tag);
-    assume a##4 != null
-         && a##4 != p#0
-         && a##4 != q#0
-         && a##4 != r#0
-         && a##4 != s#0
-         && a##4 != t#0
-         && a##4 != u#0
-       ==> read($Heap, a##4, _module.Node.score)
-         == read($PreCallHeap#4, a##4, _module.Node.score);
-    assume a##4 != null
-         && a##4 != p#0
-         && a##4 != q#0
-         && a##4 != r#0
-         && a##4 != s#0
-         && a##4 != t#0
-         && a##4 != u#0
-       ==> read($Heap, a##4, _module.Node.rank)
-         == read($PreCallHeap#4, a##4, _module.Node.rank);
-    assume b##4 != null
-         && b##4 != p#0
-         && b##4 != q#0
-         && b##4 != r#0
-         && b##4 != s#0
-         && b##4 != t#0
-         && b##4 != u#0
-       ==> read($Heap, b##4, _module.Node.val)
-         == read($PreCallHeap#4, b##4, _module.Node.val);
-    assume b##4 != null
-         && b##4 != p#0
-         && b##4 != q#0
-         && b##4 != r#0
-         && b##4 != s#0
-         && b##4 != t#0
-         && b##4 != u#0
-       ==> read($Heap, b##4, _module.Node.tag)
-         == read($PreCallHeap#4, b##4, _module.Node.tag);
-    assume b##4 != null
-         && b##4 != p#0
-         && b##4 != q#0
-         && b##4 != r#0
-         && b##4 != s#0
-         && b##4 != t#0
-         && b##4 != u#0
-       ==> read($Heap, b##4, _module.Node.score)
-         == read($PreCallHeap#4, b##4, _module.Node.score);
-    assume b##4 != null
-         && b##4 != p#0
-         && b##4 != q#0
-         && b##4 != r#0
-         && b##4 != s#0
-         && b##4 != t#0
-         && b##4 != u#0
-       ==> read($Heap, b##4, _module.Node.rank)
-         == read($PreCallHeap#4, b##4, _module.Node.rank);
-    assume c##4 != null
-         && c##4 != p#0
-         && c##4 != q#0
-         && c##4 != r#0
-         && c##4 != s#0
-         && c##4 != t#0
-         && c##4 != u#0
-       ==> read($Heap, c##4, _module.Node.val)
-         == read($PreCallHeap#4, c##4, _module.Node.val);
-    assume c##4 != null
-         && c##4 != p#0
-         && c##4 != q#0
-         && c##4 != r#0
-         && c##4 != s#0
-         && c##4 != t#0
-         && c##4 != u#0
-       ==> read($Heap, c##4, _module.Node.tag)
-         == read($PreCallHeap#4, c##4, _module.Node.tag);
-    assume c##4 != null
-         && c##4 != p#0
-         && c##4 != q#0
-         && c##4 != r#0
-         && c##4 != s#0
-         && c##4 != t#0
-         && c##4 != u#0
-       ==> read($Heap, c##4, _module.Node.score)
-         == read($PreCallHeap#4, c##4, _module.Node.score);
-    assume c##4 != null
-         && c##4 != p#0
-         && c##4 != q#0
-         && c##4 != r#0
-         && c##4 != s#0
-         && c##4 != t#0
-         && c##4 != u#0
-       ==> read($Heap, c##4, _module.Node.rank)
-         == read($PreCallHeap#4, c##4, _module.Node.rank);
-    assume d##3 != null
-         && d##3 != p#0
-         && d##3 != q#0
-         && d##3 != r#0
-         && d##3 != s#0
-         && d##3 != t#0
-         && d##3 != u#0
-       ==> read($Heap, d##3, _module.Node.val)
-         == read($PreCallHeap#4, d##3, _module.Node.val);
-    assume d##3 != null
-         && d##3 != p#0
-         && d##3 != q#0
-         && d##3 != r#0
-         && d##3 != s#0
-         && d##3 != t#0
-         && d##3 != u#0
-       ==> read($Heap, d##3, _module.Node.tag)
-         == read($PreCallHeap#4, d##3, _module.Node.tag);
-    assume d##3 != null
-         && d##3 != p#0
-         && d##3 != q#0
-         && d##3 != r#0
-         && d##3 != s#0
-         && d##3 != t#0
-         && d##3 != u#0
-       ==> read($Heap, d##3, _module.Node.score)
-         == read($PreCallHeap#4, d##3, _module.Node.score);
-    assume d##3 != null
-         && d##3 != p#0
-         && d##3 != q#0
-         && d##3 != r#0
-         && d##3 != s#0
-         && d##3 != t#0
-         && d##3 != u#0
-       ==> read($Heap, d##3, _module.Node.rank)
-         == read($PreCallHeap#4, d##3, _module.Node.rank);
-    assume e##3 != null
-         && e##3 != p#0
-         && e##3 != q#0
-         && e##3 != r#0
-         && e##3 != s#0
-         && e##3 != t#0
-         && e##3 != u#0
-       ==> read($Heap, e##3, _module.Node.val)
-         == read($PreCallHeap#4, e##3, _module.Node.val);
-    assume e##3 != null
-         && e##3 != p#0
-         && e##3 != q#0
-         && e##3 != r#0
-         && e##3 != s#0
-         && e##3 != t#0
-         && e##3 != u#0
-       ==> read($Heap, e##3, _module.Node.tag)
-         == read($PreCallHeap#4, e##3, _module.Node.tag);
-    assume e##3 != null
-         && e##3 != p#0
-         && e##3 != q#0
-         && e##3 != r#0
-         && e##3 != s#0
-         && e##3 != t#0
-         && e##3 != u#0
-       ==> read($Heap, e##3, _module.Node.score)
-         == read($PreCallHeap#4, e##3, _module.Node.score);
-    assume e##3 != null
-         && e##3 != p#0
-         && e##3 != q#0
-         && e##3 != r#0
-         && e##3 != s#0
-         && e##3 != t#0
-         && e##3 != u#0
-       ==> read($Heap, e##3, _module.Node.rank)
-         == read($PreCallHeap#4, e##3, _module.Node.rank);
-    assume f##3 != null
-         && f##3 != p#0
-         && f##3 != q#0
-         && f##3 != r#0
-         && f##3 != s#0
-         && f##3 != t#0
-         && f##3 != u#0
-       ==> read($Heap, f##3, _module.Node.val)
-         == read($PreCallHeap#4, f##3, _module.Node.val);
-    assume f##3 != null
-         && f##3 != p#0
-         && f##3 != q#0
-         && f##3 != r#0
-         && f##3 != s#0
-         && f##3 != t#0
-         && f##3 != u#0
-       ==> read($Heap, f##3, _module.Node.tag)
-         == read($PreCallHeap#4, f##3, _module.Node.tag);
-    assume f##3 != null
-         && f##3 != p#0
-         && f##3 != q#0
-         && f##3 != r#0
-         && f##3 != s#0
-         && f##3 != t#0
-         && f##3 != u#0
-       ==> read($Heap, f##3, _module.Node.score)
-         == read($PreCallHeap#4, f##3, _module.Node.score);
-    assume f##3 != null
-         && f##3 != p#0
-         && f##3 != q#0
-         && f##3 != r#0
-         && f##3 != s#0
-         && f##3 != t#0
-         && f##3 != u#0
-       ==> read($Heap, f##3, _module.Node.rank)
-         == read($PreCallHeap#4, f##3, _module.Node.rank);
-    // TrCallStmt: After ProcessCallStmt
-    assume {:captureState "Test/arith.dfy(234,28)"} true;
+    assume {:captureState "Test/arith.dfy(133,30)"} true;
 }
 
 
@@ -17966,19 +9145,12 @@ axiom FDim(_module.Node.score) == 0
    && !$IsGhostField(_module.Node.score);
 }
 
-const _module.Node.rank: Field
-uses {
-axiom FDim(_module.Node.rank) == 0
-   && FieldOfDecl(class._module.Node?, field$rank) == _module.Node.rank
-   && !$IsGhostField(_module.Node.rank);
-}
-
-procedure {:verboseName "Node._ctor (well-formedness)"} CheckWellFormed$$_module.Node.__ctor(v#0: int, t#0: int, s#0: int, r#0: int) returns (this: ref);
+procedure {:verboseName "Node._ctor (well-formedness)"} CheckWellFormed$$_module.Node.__ctor(v#0: int, t#0: int, s#0: int) returns (this: ref);
   modifies $Heap, $Alloc;
 
 
 
-procedure {:verboseName "Node._ctor (call)"} Call$$_module.Node.__ctor(v#0: int, t#0: int, s#0: int, r#0: int)
+procedure {:verboseName "Node._ctor (call)"} Call$$_module.Node.__ctor(v#0: int, t#0: int, s#0: int)
    returns (this: ref
        where this != null
          && 
@@ -17987,30 +9159,25 @@ procedure {:verboseName "Node._ctor (call)"} Call$$_module.Node.__ctor(v#0: int,
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id2182"} $Unbox(read($Heap, this, _module.Node.val)): int == v#0;
+  ensures {:id "id1200"} $Unbox(read($Heap, this, _module.Node.val)): int == v#0;
   free ensures {:always_assume} true;
-  ensures {:id "id2183"} $Unbox(read($Heap, this, _module.Node.tag)): int == t#0;
+  ensures {:id "id1201"} $Unbox(read($Heap, this, _module.Node.tag)): int == t#0;
   free ensures {:always_assume} true;
-  ensures {:id "id2184"} $Unbox(read($Heap, this, _module.Node.score)): int == s#0;
-  free ensures {:always_assume} true;
-  ensures {:id "id2185"} $Unbox(read($Heap, this, _module.Node.rank)): int == r#0;
+  ensures {:id "id1202"} $Unbox(read($Heap, this, _module.Node.score)): int == s#0;
   // constructor allocates the object
   ensures !old($Alloc)[this];
 
 
 
-procedure {:verboseName "Node._ctor (correctness)"} Impl$$_module.Node.__ctor(v#0: int, t#0: int, s#0: int, r#0: int)
-   returns (this: ref, $_reverifyPost: bool);
+procedure {:verboseName "Node._ctor (correctness)"} Impl$$_module.Node.__ctor(v#0: int, t#0: int, s#0: int) returns (this: ref, $_reverifyPost: bool);
   modifies $Heap, $Alloc;
   // user-defined postconditions
   free ensures {:always_assume} true;
-  ensures {:id "id2186"} $Unbox(read($Heap, this, _module.Node.val)): int == v#0;
+  ensures {:id "id1203"} $Unbox(read($Heap, this, _module.Node.val)): int == v#0;
   free ensures {:always_assume} true;
-  ensures {:id "id2187"} $Unbox(read($Heap, this, _module.Node.tag)): int == t#0;
+  ensures {:id "id1204"} $Unbox(read($Heap, this, _module.Node.tag)): int == t#0;
   free ensures {:always_assume} true;
-  ensures {:id "id2188"} $Unbox(read($Heap, this, _module.Node.score)): int == s#0;
-  free ensures {:always_assume} true;
-  ensures {:id "id2189"} $Unbox(read($Heap, this, _module.Node.rank)): int == r#0;
+  ensures {:id "id1205"} $Unbox(read($Heap, this, _module.Node.score)): int == s#0;
 
 
 
@@ -18028,52 +9195,43 @@ axiom (forall bx: Box ::
   { $IsBox(bx, Tclass._module.Node?()) } 
   $IsBox(bx, Tclass._module.Node?()) ==> $Box($Unbox(bx): ref) == bx);
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Node._ctor (correctness)"} Impl$$_module.Node.__ctor(v#0: int, t#0: int, s#0: int, r#0: int)
-   returns (this: ref, $_reverifyPost: bool)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Node._ctor (correctness)"} Impl$$_module.Node.__ctor(v#0: int, t#0: int, s#0: int) returns (this: ref, $_reverifyPost: bool)
 {
   var this.val: int;
   var this.tag: int;
   var this.score: int;
-  var this.rank: int;
 
     // AddMethodImpl: _ctor, Impl$$_module.Node.__ctor
-    assume {:captureState "Test/arith.dfy(10,2): initial state"} true;
+    assume {:captureState "Test/arith.dfy(8,2): initial state"} true;
     $_reverifyPost := false;
-    // ----- divided block before new; ----- /Users/saline/development/projects/dafny/Test/arith.dfy(10,3)
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(10,9)
+    // ----- divided block before new; ----- /Users/saline/development/projects/dafny/Test/arith.dfy(8,3)
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(8,9)
     assume true;
     assume true;
     assume true;
     this.val := v#0;
-    assume {:captureState "Test/arith.dfy(10,12)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(10,19)
+    assume {:captureState "Test/arith.dfy(8,12)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(8,19)
     assume true;
     assume true;
     assume true;
     this.tag := t#0;
-    assume {:captureState "Test/arith.dfy(10,22)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(10,31)
+    assume {:captureState "Test/arith.dfy(8,22)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(8,31)
     assume true;
     assume true;
     assume true;
     this.score := s#0;
-    assume {:captureState "Test/arith.dfy(10,34)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/arith.dfy(10,42)
-    assume true;
-    assume true;
-    assume true;
-    this.rank := r#0;
-    assume {:captureState "Test/arith.dfy(10,45)"} true;
-    // ----- new; ----- /Users/saline/development/projects/dafny/Test/arith.dfy(10,3)
+    assume {:captureState "Test/arith.dfy(8,34)"} true;
+    // ----- new; ----- /Users/saline/development/projects/dafny/Test/arith.dfy(8,3)
     assume this != null && $Is(this, Tclass._module.Node?());
     assume !$Alloc[this];
     assume $Unbox(read($Heap, this, _module.Node.val)): int == this.val;
     assume $Unbox(read($Heap, this, _module.Node.tag)): int == this.tag;
     assume $Unbox(read($Heap, this, _module.Node.score)): int == this.score;
-    assume $Unbox(read($Heap, this, _module.Node.rank)): int == this.rank;
     $Alloc := $Alloc[this := true];
     assume true;
-    // ----- divided block after new; ----- /Users/saline/development/projects/dafny/Test/arith.dfy(10,3)
+    // ----- divided block after new; ----- /Users/saline/development/projects/dafny/Test/arith.dfy(8,3)
 }
 
 
@@ -18119,5 +9277,3 @@ const unique field$val: NameFamily;
 const unique field$tag: NameFamily;
 
 const unique field$score: NameFamily;
-
-const unique field$rank: NameFamily;

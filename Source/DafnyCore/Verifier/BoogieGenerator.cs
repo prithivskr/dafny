@@ -1,4 +1,4 @@
-﻿//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 //
 // Copyright (C) Microsoft Corporation.  All Rights Reserved.
 // Copyright by the contributors to the Dafny Project
@@ -360,7 +360,7 @@ namespace Microsoft.Dafny {
       }
 
       public PredefinedDecls(Bpl.TypeCtorDecl charType, Bpl.TypeCtorDecl refType, Bpl.TypeCtorDecl boxType,
-                             Bpl.TypeCtorDecl setTypeCtor, Bpl.TypeSynonymDecl isetTypeCtor, Bpl.TypeCtorDecl multiSetTypeCtor,
+                             Bpl.Type setType, Bpl.TypeSynonymDecl isetTypeCtor, Bpl.TypeCtorDecl multiSetTypeCtor,
                              Bpl.TypeCtorDecl mapTypeCtor, Bpl.TypeCtorDecl imapTypeCtor,
                              Bpl.Function arrayLength, Bpl.Function realFloor,
                              Bpl.Expr fp32NaN, Bpl.Expr fp32PositiveInfinity, Bpl.Expr fp32NegativeInfinity,
@@ -379,7 +379,7 @@ namespace Microsoft.Dafny {
         Contract.Requires(charType != null);
         Contract.Requires(refType != null);
         Contract.Requires(boxType != null);
-        Contract.Requires(setTypeCtor != null);
+        Contract.Requires(setType != null);
         Contract.Requires(isetTypeCtor != null);
         Contract.Requires(multiSetTypeCtor != null);
         Contract.Requires(mapTypeCtor != null);
@@ -419,7 +419,7 @@ namespace Microsoft.Dafny {
         Bpl.CtorType refT = new Bpl.CtorType(Token.NoToken, refType, []);
         this.RefType = refT;
         this.BoxType = new Bpl.CtorType(Token.NoToken, boxType, []);
-        this.SetType = new Bpl.CtorType(Token.NoToken, setTypeCtor, []);
+        this.SetType = setType;
         this.ISetType = new Bpl.TypeSynonymAnnotation(Token.NoToken, isetTypeCtor, []);
         this.MultiSetType = new Bpl.CtorType(Token.NoToken, multiSetTypeCtor, []);
         this.SeqType = new Bpl.CtorType(Token.NoToken, seqTypeCtor, []);
@@ -479,6 +479,7 @@ namespace Microsoft.Dafny {
       Bpl.TypeCtorDecl charType = null;
       Bpl.TypeCtorDecl refType = null;
       Bpl.TypeCtorDecl setTypeCtor = null;
+      Bpl.TypeSynonymDecl setTypeSynonym = null;
       Bpl.TypeSynonymDecl isetTypeCtor = null;
       Bpl.TypeCtorDecl multiSetTypeCtor = null;
       Bpl.Function arrayLength = null;
@@ -560,7 +561,9 @@ namespace Microsoft.Dafny {
           }
         } else if (d is Bpl.TypeSynonymDecl) {
           Bpl.TypeSynonymDecl dt = (Bpl.TypeSynonymDecl)d;
-          if (dt.Name == "ISet") {
+          if (dt.Name == "Set") {
+            setTypeSynonym = dt;
+          } else if (dt.Name == "ISet") {
             isetTypeCtor = dt;
           } else if (dt.Name == "Bv0") {
             bv0TypeDecl = dt;
@@ -616,7 +619,7 @@ namespace Microsoft.Dafny {
       }
       if (seqTypeCtor == null) {
         options.OutputWriter.Exception("Dafny prelude is missing declaration of type Seq");
-      } else if (setTypeCtor == null) {
+      } else if (setTypeCtor == null && setTypeSynonym == null) {
         options.OutputWriter.Exception("Dafny prelude is missing declaration of type Set");
       } else if (isetTypeCtor == null) {
         options.OutputWriter.Exception("Dafny prelude is missing declaration of type ISet");
@@ -702,8 +705,11 @@ namespace Microsoft.Dafny {
         var fp64PositiveInfinity = new Bpl.LiteralExpr(Token.NoToken, BaseTypes.BigFloat.FromString("0+oo53e11"));
         var fp64NegativeInfinity = new Bpl.LiteralExpr(Token.NoToken, BaseTypes.BigFloat.FromString("0-oo53e11"));
 
+        Bpl.Type setType = setTypeCtor != null
+          ? (Bpl.Type)new Bpl.CtorType(Token.NoToken, setTypeCtor, [])
+          : new Bpl.TypeSynonymAnnotation(Token.NoToken, setTypeSynonym, []);
         return new PredefinedDecls(charType, refType, boxType,
-                                   setTypeCtor, isetTypeCtor, multiSetTypeCtor,
+                                   setType, isetTypeCtor, multiSetTypeCtor,
                                    mapTypeCtor, imapTypeCtor,
                                    arrayLength, realFloor,
                                    fp32NaN, fp32PositiveInfinity, fp32NegativeInfinity,

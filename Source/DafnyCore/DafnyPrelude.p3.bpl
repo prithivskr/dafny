@@ -31,6 +31,8 @@ const unique TORDINAL  : Ty uses {
 function TBitvector(int) : Ty;
 
 function TSet(Ty) : Ty;
+axiom (forall t: Ty :: { TSet(t) } Inv0_TSet(TSet(t)) == t);
+axiom (forall t: Ty :: { TSet(t) } Tag(TSet(t)) == TagSet);
 
 function TISet(Ty) : Ty;
 
@@ -178,6 +180,10 @@ axiom (forall bx : Box ::
     { $IsBox(bx, TBitvector(0)) }
     ( $IsBox(bx, TBitvector(0)) ==> $Box($Unbox(bx) : Bv0) == bx));
 
+axiom (forall bx : Box, t : Ty ::
+    { $IsBox(bx, TSet(t)) }
+    ( $IsBox(bx, TSet(t)) ==> $Box($Unbox(bx) : Set) == bx && $Is($Unbox(bx) : Set, TSet(t))));
+
 axiom (forall<T> v : T, t : Ty ::
     { $IsBox($Box(v), t) }
     ( $IsBox($Box(v), t) <==> $Is(v,t) ));
@@ -194,6 +200,16 @@ function $IsAlloc<T>(T,Ty,Heap): bool;
 function $AlwaysAllocated(Ty): bool;
 
 function $OlderTag(Heap): bool;
+
+axiom (forall v: Set, t0: Ty :: { $Is(v, TSet(t0)) }
+  $Is(v, TSet(t0)) <==>
+  (forall bx: Box :: { Set#IsMember(v, bx) }
+    Set#IsMember(v, bx) ==> $IsBox(bx, t0)));
+
+axiom (forall v: Set, t0: Ty, h: Heap :: { $IsAlloc(v, TSet(t0), h) }
+  $IsAlloc(v, TSet(t0), h) <==>
+  (forall bx: Box :: { Set#IsMember(v, bx) }
+    Set#IsMember(v, bx) ==> $IsAllocBox(bx, t0, h)));
 
 // ---------------------------------------------------------------
 // -- Encoding of type names -------------------------------------
@@ -395,22 +411,106 @@ procedure $IterCollectNewObjects(prevHeap: Heap, newHeap: Heap, this: ref, NW: F
 // ---------------------------------------------------------------
 
 // ---------------------------------------------------------------
-// -- Axiomatization of sets omitted in p3 -----------------------
+// -- Axiomatization of sets using maps --------------------------
 // ---------------------------------------------------------------
 
-type Set;
+type Set = [Box]bool;
+
+function {:inline} Set#IsMember(s: Set, o: Box) : bool
+{
+  s[o]
+}
+
+function {:inline} Set#Empty() : Set
+{
+  (lambda o: Box :: false)
+}
+
+function {:inline} Set#UnionOne(s: Set, x: Box) : Set
+{
+  s[x := true]
+}
+
+function {:inline} Set#Union(a: Set, b: Set) : Set
+{
+  (lambda o: Box :: a[o] || b[o])
+}
+
+function {:inline} Set#Intersection(a: Set, b: Set) : Set
+{
+  (lambda o: Box :: a[o] && b[o])
+}
+
+function {:inline} Set#Difference(a: Set, b: Set) : Set
+{
+  (lambda o: Box :: a[o] && !b[o])
+}
+
+function {:inline} Set#Equal(a: Set, b: Set) : bool
+{
+  a == b
+}
+
+// Normalize the two-element update shape emitted for a set display.  The map
+// representation makes this identity immediate, but nested inline map lambdas
+// are not unfolded reliably when checking a method postcondition.
+axiom (forall s: Set, x: Box, y: Box ::
+  { Set#Union(Set#Union(s, Set#UnionOne(Set#Empty(), x)), Set#UnionOne(Set#Empty(), y)) }
+  Set#Equal(
+    Set#Union(Set#Union(s, Set#UnionOne(Set#Empty(), x)), Set#UnionOne(Set#Empty(), y)),
+    Set#Union(s, Set#UnionOne(Set#UnionOne(Set#Empty(), y), x))));
+
+axiom (forall s: Set, x: Box, y: Box ::
+  { Set#Union(Set#Union(s, Set#UnionOne(Set#Empty(), x)), Set#UnionOne(Set#Empty(), y)) }
+  Set#Equal(
+    Set#Union(Set#Union(s, Set#UnionOne(Set#Empty(), x)), Set#UnionOne(Set#Empty(), y)),
+    Set#Union(s, Set#UnionOne(Set#UnionOne(Set#Empty(), x), y))));
+
+function Set#Subset(a: Set, b: Set) : bool;
+axiom (forall a: Set, b: Set ::
+  { Set#Subset(a, b) }
+  Set#Subset(a, b) <==> (forall o: Box :: { a[o] } { b[o] } a[o] ==> b[o]));
+
+function Set#Disjoint(a: Set, b: Set) : bool;
+axiom (forall a: Set, b: Set ::
+  { Set#Disjoint(a, b) }
+  Set#Disjoint(a, b) <==> (forall o: Box :: !a[o] || !b[o]));
+
+axiom (forall s: Set ::
+  { Set#Equal(s, Set#Empty()) }
+  !Set#Equal(s, Set#Empty()) ==> (exists x: Box :: { Set#IsMember(s, x) } Set#IsMember(s, x)));
+
+function {:inline} Set#FromBoogieMap(m: [Box]bool) : Set
+{
+  m
+}
 
 function Set#Card(s: Set) : int;
-function Set#Empty() : Set;
-function Set#IsMember(s: Set, o: Box) : bool;
-function Set#UnionOne(s: Set, o: Box) : Set;
-function Set#Union(a: Set, b: Set) : Set;
-function Set#Intersection(a: Set, b: Set) : Set;
-function Set#Difference(a: Set, b: Set) : Set;
-function Set#Subset(a: Set, b: Set) : bool;
-function Set#Equal(a: Set, b: Set) : bool;
-function Set#Disjoint(a: Set, b: Set) : bool;
-function Set#FromBoogieMap([Box]bool): Set;
+// axiom (forall s: Set :: { Set#Card(s) } 0 <= Set#Card(s));
+// axiom (forall s: Set :: 
+//   { Set#Card(s) }
+//   (Set#Card(s) == 0 <==> s == Set#Empty())
+//      && (Set#Card(s) != 0 ==> (exists x: Box :: s[x])));
+// axiom (forall a: Set, x: Box :: 
+//   { Set#Card(a[x := true]) }
+//   a[x] ==> Set#Card(a[x := true]) == Set#Card(a));
+// axiom (forall a: Set, x: Box :: 
+//   { Set#Card(a[x := true]) }
+//   !a[x] ==> Set#Card(a[x := true]) == Set#Card(a) + 1);
+// axiom (forall a: Set, b: Set :: 
+//   { Set#Card(Set#Union(a, b)) } { Set#Card(Set#Intersection(a, b)) }
+//   Set#Card(Set#Union(a, b)) + Set#Card(Set#Intersection(a, b))
+//      == Set#Card(a) + Set#Card(b));
+// axiom (forall a: Set, b: Set :: 
+//   { Set#Card(Set#Difference(a, b)) }
+//   Set#Card(Set#Difference(a, b))
+//          + Set#Card(Set#Difference(b, a))
+//          + Set#Card(Set#Intersection(a, b))
+//        == Set#Card(Set#Union(a, b))
+//      && Set#Card(Set#Difference(a, b)) == Set#Card(a) - Set#Card(Set#Intersection(a, b)));
+// axiom (forall a: Set, b: Set ::
+//   { Set#Subset(a, b), Set#Card(a), Set#Card(b) }
+//   Set#Subset(a, b) && !Set#Subset(b, a) ==> Set#Card(a) < Set#Card(b));
 
 // ---------------------------------------------------------------
 // -- Axiomatization of isets omitted in p3 ----------------------

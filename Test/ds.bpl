@@ -1432,824 +1432,341 @@ axiom (forall #$T0: Ty, #$T1: Ty, #$R: Ty, f#0: HandleType ::
 
 const unique class._module.__default: ClassName;
 
-const unique class._module.Stack?: ClassName;
-
-const _module.Stack.data: Field
-uses {
-axiom FDim(_module.Stack.data) == 0
-   && FieldOfDecl(class._module.Stack?, field$data) == _module.Stack.data
-   && !$IsGhostField(_module.Stack.data);
-}
-
-const _module.Stack.top: Field
-uses {
-axiom FDim(_module.Stack.top) == 0
-   && FieldOfDecl(class._module.Stack?, field$top) == _module.Stack.top
-   && !$IsGhostField(_module.Stack.top);
-}
-
-// function declaration for _module.Stack.Valid
-function _module.Stack.Valid($heap: Heap, this: ref) : bool;
-
-function _module.Stack.Valid#canCall($heap: Heap, this: ref) : bool;
-
-function Tclass._module.Stack() : Ty
-uses {
-// Tclass._module.Stack Tag
-axiom Tag(Tclass._module.Stack()) == Tagclass._module.Stack
-   && TagFamily(Tclass._module.Stack()) == tytagFamily$Stack;
-}
-
-const unique Tagclass._module.Stack: TyTag;
-
-// Box/unbox axiom for Tclass._module.Stack
-axiom (forall bx: Box :: 
-  { $IsBox(bx, Tclass._module.Stack()) } 
-  $IsBox(bx, Tclass._module.Stack()) ==> $Box($Unbox(bx): ref) == bx);
-
-// frame axiom for _module.Stack.Valid
-axiom (forall $h0: Heap, $h1: Heap, this: ref :: 
-  { $IsHeapAnchor($h0), $HeapSucc($h0, $h1), _module.Stack.Valid($h1, this) } 
-  $IsGoodHeap($h0)
-       && $IsGoodHeap($h1)
-       && 
-      this != null
-       && $Is(this, Tclass._module.Stack())
-       && 
-      $IsHeapAnchor($h0)
-       && $HeapSucc($h0, $h1)
-     ==> 
-    (forall $o: ref, $f: Field :: 
-      $o != null
-           && ($o == this || $o == $Unbox(read($h0, this, _module.Stack.data)): ref)
-         ==> read($h0, $o, $f) == read($h1, $o, $f))
-     ==> _module.Stack.Valid($h0, this) == _module.Stack.Valid($h1, this)
-       && _module.Stack.Valid#canCall($h0, this) == _module.Stack.Valid#canCall($h1, this));
-
-function _module.Stack.Valid#requires(Heap, ref) : bool;
-
-// #requires axiom for _module.Stack.Valid
-axiom (forall $Heap: Heap, this: ref :: 
-  { _module.Stack.Valid#requires($Heap, this) } 
-  $IsGoodHeap($Heap) && this != null && $Is(this, Tclass._module.Stack())
-     ==> _module.Stack.Valid#requires($Heap, this) == true);
-
-// #requires ==> #canCall for _module.Stack.Valid
-axiom (forall $Heap: Heap, this: ref :: 
-  { _module.Stack.Valid#requires($Heap, this) } 
-  _module.Stack.Valid#requires($Heap, this)
-     ==> _module.Stack.Valid#canCall($Heap, this));
-
-// definition axiom for _module.Stack.Valid (revealed)
-axiom {:id "id0"} (forall $Heap: Heap, this: ref :: 
-  { _module.Stack.Valid($Heap, this) } 
-  _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       == ($Unbox(read($Heap, this, _module.Stack.data)): ref != null
-         && 
-        LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-         && $Unbox(read($Heap, this, _module.Stack.top)): int
-           <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref)));
-
-procedure {:verboseName "Stack.Valid (well-formedness)"} CheckWellformed$$_module.Stack.Valid(this: ref where this != null && $Is(this, Tclass._module.Stack()));
+procedure {:verboseName "Add (well-formedness)"} CheckWellFormed$$_module.__default.Add(x#0: int, 
+    s#0: Set where $Is(s#0, TSet(TInt)) && $IsAlloc(s#0, TSet(TInt), $Heap))
+   returns (r#0: Set where $Is(r#0, TSet(TInt)) && $IsAlloc(r#0, TSet(TInt), $Heap));
   modifies $Heap, $Alloc;
 
 
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.Valid (well-formedness)"} CheckWellformed$$_module.Stack.Valid(this: ref)
+procedure {:verboseName "Add (call)"} Call$$_module.__default.Add(x#0: int, 
+    s#0: Set where $Is(s#0, TSet(TInt)) && $IsAlloc(s#0, TSet(TInt), $Heap))
+   returns (r#0: Set where $Is(r#0, TSet(TInt)) && $IsAlloc(r#0, TSet(TInt), $Heap));
+  modifies $Heap, $Alloc;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id2"} Set#Equal(r#0, Set#Union(s#0, Set#UnionOne(Set#Empty(): Set, $Box(x#0))));
+  free ensures {:always_assume} true;
+  ensures {:id "id3"} Set#IsMember(r#0, $Box(x#0));
+
+
+
+procedure {:verboseName "Add (correctness)"} Impl$$_module.__default.Add(x#0: int, 
+    s#0: Set where $Is(s#0, TSet(TInt)) && $IsAlloc(s#0, TSet(TInt), $Heap))
+   returns (defass#r#0: bool, 
+    r#0: Set
+       where defass#r#0 ==> $Is(r#0, TSet(TInt)) && $IsAlloc(r#0, TSet(TInt), $Heap), 
+    $_reverifyPost: bool);
+  modifies $Heap, $Alloc;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id4"} Set#Equal(r#0, Set#Union(s#0, Set#UnionOne(Set#Empty(): Set, $Box(x#0))));
+  free ensures {:always_assume} true;
+  ensures {:id "id5"} Set#IsMember(r#0, $Box(x#0));
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Add (correctness)"} Impl$$_module.__default.Add(x#0: int, s#0: Set) returns (defass#r#0: bool, r#0: Set, $_reverifyPost: bool)
 {
-  var $_ReadsFrame: [ref,Field]bool;
-  var b$reqreads#0: bool;
-  var newtype$check#0: ref;
-  var b$reqreads#1: bool;
-  var b$reqreads#2: bool;
-  var b$reqreads#3: bool;
-  var b$reqreads#4: bool;
-
-    b$reqreads#0 := true;
-    b$reqreads#1 := true;
-    b$reqreads#2 := true;
-    b$reqreads#3 := true;
-    b$reqreads#4 := true;
-
-    assume {:captureState "Test/stack.dfy(5,12): initial state"} true;
-    $_ReadsFrame := (lambda $o: ref, $f: Field :: 
-      $o != null && $Alloc[$o]
-         ==> $o == this || $o == $Unbox(read($Heap, this, _module.Stack.data)): ref);
-    // Check well-formedness of preconditions, and then assume them
-    // Check well-formedness of the reads clause
-    b$reqreads#0 := $_ReadsFrame[this, _module.Stack.data];
+    // AddMethodImpl: Add, Impl$$_module.__default.Add
+    assume {:captureState "Test/ds.dfy(4,0): initial state"} true;
+    $_reverifyPost := false;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(5,5)
     assume true;
-    assert {:id "id1"} b$reqreads#0;
-    // Check well-formedness of the decreases clause
     assume true;
-    // Check body and ensures clauses
-    if (*)
+    r#0 := Set#Union(s#0, Set#UnionOne(Set#Empty(): Set, $Box(x#0)));
+    defass#r#0 := true;
+    assume {:captureState "Test/ds.dfy(5,14)"} true;
+    assert {:id "id7"} defass#r#0;
+}
+
+
+
+procedure {:verboseName "Count (well-formedness)"} CheckWellFormed$$_module.__default.Count(s#0: Set where $Is(s#0, TSet(TInt)) && $IsAlloc(s#0, TSet(TInt), $Heap))
+   returns (n#0: int where LitInt(0) <= n#0);
+  modifies $Heap, $Alloc;
+
+
+
+procedure {:verboseName "Count (call)"} Call$$_module.__default.Count(s#0: Set where $Is(s#0, TSet(TInt)) && $IsAlloc(s#0, TSet(TInt), $Heap))
+   returns (n#0: int where LitInt(0) <= n#0);
+  modifies $Heap, $Alloc;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id9"} n#0 == Set#Card(s#0);
+
+
+
+procedure {:verboseName "Count (correctness)"} Impl$$_module.__default.Count(s#0: Set where $Is(s#0, TSet(TInt)) && $IsAlloc(s#0, TSet(TInt), $Heap))
+   returns (defass#n#0: bool, 
+    n#0: int where defass#n#0 ==> LitInt(0) <= n#0, 
+    $_reverifyPost: bool);
+  modifies $Heap, $Alloc;
+  // user-defined postconditions
+  free ensures {:always_assume} true;
+  ensures {:id "id10"} n#0 == Set#Card(s#0);
+
+
+
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Count (correctness)"} Impl$$_module.__default.Count(s#0: Set) returns (defass#n#0: bool, n#0: int, $_reverifyPost: bool)
+{
+  var defass#x#0: bool;
+  var x#0: int;
+  var x#1: int;
+  var subCount#0: int where LitInt(0) <= subCount#0;
+  var $rhs##0: int;
+  var s##0: Set;
+  var $PreCallHeap#0: Heap;
+  var $PreCallAlloc#0: [ref]bool;
+
+    // AddMethodImpl: Count, Impl$$_module.__default.Count
+    assume {:captureState "Test/ds.dfy(27,0): initial state"} true;
+    $_reverifyPost := false;
+    // ----- if statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(28,3)
+    assume true;
+    if (Set#Equal(s#0, Set#Empty(): Set))
     {
-        // Check well-formedness of postcondition and assume false
-        assume false;
+        push;
+        // ----- return statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(29,5)
+        // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(29,5)
+        assume true;
+        assert {:id "id11"} $Is(LitInt(0), Tclass._System.nat());
+        assume true;
+        n#0 := LitInt(0);
+        defass#n#0 := true;
+        assume {:captureState "Test/ds.dfy(29,12)"} true;
+        assert {:id "id13"} defass#n#0;
+        pop;
+        return;
+
+        pop;
     }
     else
     {
-        // Check well-formedness of body and result subset type constraint
-        b$reqreads#1 := $_ReadsFrame[this, _module.Stack.data];
-        assume true;
-        newtype$check#0 := null;
-        if ($Unbox(read($Heap, this, _module.Stack.data)): ref != null)
-        {
-            b$reqreads#2 := $_ReadsFrame[this, _module.Stack.top];
-            assume true;
-            if (LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int)
-            {
-                b$reqreads#3 := $_ReadsFrame[this, _module.Stack.top];
-                assume true;
-                b$reqreads#4 := $_ReadsFrame[this, _module.Stack.data];
-                assume true;
-                assert {:id "id2"} $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-                assume true;
-            }
-        }
-
-        assume true;
-        assume {:id "id3"} _module.Stack.Valid($Heap, this)
-           == ($Unbox(read($Heap, this, _module.Stack.data)): ref != null
-             && 
-            LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-             && $Unbox(read($Heap, this, _module.Stack.top)): int
-               <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref));
-        // CheckWellformedWithResult: any expression
-        assume $Is(_module.Stack.Valid($Heap, this), TBool);
-        assert {:id "id4"} b$reqreads#1;
-        assert {:id "id5"} b$reqreads#2;
-        assert {:id "id6"} b$reqreads#3;
-        assert {:id "id7"} b$reqreads#4;
-        return;
-
-        assume false;
     }
+
+    // ----- assign-such-that statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(32,9)
+    havoc x#1;
+    if (true)
+    {
+        assume true;
+    }
+
+    assert {:id "id14"} ($Is(LitInt(0), TInt) && Set#IsMember(s#0, $Box(LitInt(0))))
+       || (exists $as#x0#0: int :: 
+        { Set#IsMember(s#0, $Box($as#x0#0)) } 
+        Set#IsMember(s#0, $Box($as#x0#0)));
+    defass#x#0 := true;
+    havoc x#0;
+    assume {:id "id15"} Set#IsMember(s#0, $Box(x#0));
+    assume {:captureState "Test/ds.dfy(32,17)"} true;
+    // ----- call statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(33,24)
+    assume true;
+    // TrCallStmt: Adding lhs with type nat
+    // TrCallStmt: Before ProcessCallStmt
+    assert {:id "id16"} defass#x#0;
+    assume true;
+    // ProcessCallStmt: CheckSubrange
+    s##0 := Set#Difference(s#0, Set#UnionOne(Set#Empty(): Set, $Box(x#0)));
+    $PreCallHeap#0 := $Heap;
+    $PreCallAlloc#0 := $Alloc;
+    assume true;
+    assert {:id "id17"} Set#Subset(s##0, s#0) && !Set#Subset(s#0, s##0);
+    call {:id "id18"} $rhs##0 := Call$$_module.__default.Count(s##0);
+    // qf-call-frame Count: supports=0 reads=0 modified=0
+    // TrCallStmt: After ProcessCallStmt
+    subCount#0 := $rhs##0;
+    assume {:captureState "Test/ds.dfy(33,32)"} true;
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(35,5)
+    assume true;
+    assert {:id "id20"} $Is(1 + subCount#0, Tclass._System.nat());
+    assume true;
+    n#0 := 1 + subCount#0;
+    defass#n#0 := true;
+    assume {:captureState "Test/ds.dfy(35,19)"} true;
+    assert {:id "id22"} defass#n#0;
 }
 
 
 
-procedure {:verboseName "Stack.Init (well-formedness)"} CheckWellFormed$$_module.Stack.Init(capacity#0: int) returns (this: ref);
+const unique class._module.Bag?: ClassName;
+
+const _module.Bag.contents: Field
+uses {
+axiom FDim(_module.Bag.contents) == 0
+   && FieldOfDecl(class._module.Bag?, field$contents) == _module.Bag.contents
+   && $IsGhostField(_module.Bag.contents);
+}
+
+procedure {:verboseName "Bag._ctor (well-formedness)"} CheckWellFormed$$_module.Bag.__ctor() returns (this: ref);
   modifies $Heap, $Alloc;
 
 
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.Init (well-formedness)"} CheckWellFormed$$_module.Stack.Init(capacity#0: int) returns (this: ref)
-{
-
-    // AddMethodImpl: Init, CheckWellFormed$$_module.Stack.Init
-    assume {:captureState "Test/stack.dfy(12,14): initial state"} true;
-    assume {:id "id8"} capacity#0 > 0;
-    havoc $Heap;
-    havoc this;
-    assume this != null
-       && 
-      $Is(this, Tclass._module.Stack())
-       && (this == null || $Alloc[this]);
-    assume {:captureState "Test/stack.dfy(14,17): post-state"} true;
-    // assume allocatedness for receiver argument to function
-    assume $Unbox($Box(this)): ref == null || $Alloc[$Unbox($Box(this)): ref];
-    assume _module.Stack.Valid#canCall($Heap, this);
-    assume {:id "id9"} _module.Stack.Valid($Heap, this);
-    assume true;
-    assume {:id "id10"} $Unbox(read($Heap, this, _module.Stack.top)): int == LitInt(0);
-    assume true;
-    assert {:id "id11"} $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-    assume true;
-    assume {:id "id12"} _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref)
-       == capacity#0;
+function Tclass._module.Bag() : Ty
+uses {
+// Tclass._module.Bag Tag
+axiom Tag(Tclass._module.Bag()) == Tagclass._module.Bag
+   && TagFamily(Tclass._module.Bag()) == tytagFamily$Bag;
 }
 
+const unique Tagclass._module.Bag: TyTag;
 
+// Box/unbox axiom for Tclass._module.Bag
+axiom (forall bx: Box :: 
+  { $IsBox(bx, Tclass._module.Bag()) } 
+  $IsBox(bx, Tclass._module.Bag()) ==> $Box($Unbox(bx): ref) == bx);
 
-procedure {:verboseName "Stack.Init (call)"} Call$$_module.Stack.Init(capacity#0: int)
+procedure {:verboseName "Bag._ctor (call)"} Call$$_module.Bag.__ctor()
    returns (this: ref
        where this != null
          && 
-        $Is(this, Tclass._module.Stack())
+        $Is(this, Tclass._module.Bag())
          && (this == null || $Alloc[this]));
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id13"} capacity#0 > 0;
   modifies $Heap, $Alloc;
   // user-defined postconditions
-  free ensures {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  free ensures {:id "id14"} _module.Stack.Valid#canCall($Heap, this)
-     && 
-    _module.Stack.Valid($Heap, this)
-     && 
-    $Unbox(read($Heap, this, _module.Stack.data)): ref != null
-     && 
-    LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-     && $Unbox(read($Heap, this, _module.Stack.top)): int
-       <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
   free ensures {:always_assume} true;
-  ensures {:id "id15"} $Unbox(read($Heap, this, _module.Stack.top)): int == LitInt(0);
-  free ensures {:always_assume} true;
-  ensures {:id "id16"} _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref)
-     == capacity#0;
+  ensures {:id "id24"} Set#Equal($Unbox(read($Heap, this, _module.Bag.contents)): Set, Set#Empty(): Set);
   // constructor allocates the object
   ensures !old($Alloc)[this];
 
 
 
-procedure {:verboseName "Stack.Init (correctness)"} Impl$$_module.Stack.Init(capacity#0: int) returns (this: ref, $_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} true;
-  requires {:id "id17"} capacity#0 > 0;
+procedure {:verboseName "Bag._ctor (correctness)"} Impl$$_module.Bag.__ctor() returns (this: ref, $_reverifyPost: bool);
   modifies $Heap, $Alloc;
   // user-defined postconditions
-  free ensures {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  ensures {:id "id18"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-  ensures {:id "id19"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int;
-  ensures {:id "id20"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.top)): int
-         <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
   free ensures {:always_assume} true;
-  ensures {:id "id21"} $Unbox(read($Heap, this, _module.Stack.top)): int == LitInt(0);
-  free ensures {:always_assume} true;
-  ensures {:id "id22"} _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref)
-     == capacity#0;
+  ensures {:id "id25"} Set#Equal($Unbox(read($Heap, this, _module.Bag.contents)): Set, Set#Empty(): Set);
 
 
 
-function Tclass._module.Stack?() : Ty
+function Tclass._module.Bag?() : Ty
 uses {
-// Tclass._module.Stack? Tag
-axiom Tag(Tclass._module.Stack?()) == Tagclass._module.Stack?
-   && TagFamily(Tclass._module.Stack?()) == tytagFamily$Stack;
+// Tclass._module.Bag? Tag
+axiom Tag(Tclass._module.Bag?()) == Tagclass._module.Bag?
+   && TagFamily(Tclass._module.Bag?()) == tytagFamily$Bag;
 }
 
-const unique Tagclass._module.Stack?: TyTag;
+const unique Tagclass._module.Bag?: TyTag;
 
-// Box/unbox axiom for Tclass._module.Stack?
+// Box/unbox axiom for Tclass._module.Bag?
 axiom (forall bx: Box :: 
-  { $IsBox(bx, Tclass._module.Stack?()) } 
-  $IsBox(bx, Tclass._module.Stack?()) ==> $Box($Unbox(bx): ref) == bx);
+  { $IsBox(bx, Tclass._module.Bag?()) } 
+  $IsBox(bx, Tclass._module.Bag?()) ==> $Box($Unbox(bx): ref) == bx);
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.Init (correctness)"} Impl$$_module.Stack.Init(capacity#0: int) returns (this: ref, $_reverifyPost: bool)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Bag._ctor (correctness)"} Impl$$_module.Bag.__ctor() returns (this: ref, $_reverifyPost: bool)
 {
-  var this.data: ref;
-  var this.top: int;
-  var $nw: ref;
+  var this.contents: Set;
 
-    // AddMethodImpl: Init, Impl$$_module.Stack.Init
-    assume {:captureState "Test/stack.dfy(17,2): initial state"} true;
+    // AddMethodImpl: _ctor, Impl$$_module.Bag.__ctor
+    assume {:captureState "Test/ds.dfy(13,2): initial state"} true;
     $_reverifyPost := false;
-    // ----- divided block before new; ----- /Users/saline/development/projects/dafny/Test/stack.dfy(17,3)
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/stack.dfy(18,10)
-    assume true;
-    assume true;
-    assert {:id "id23"} 0 <= capacity#0;
-    havoc $nw;
-    assume $nw != null && $Is($nw, Tclass._System.array?(TInt));
-    assume !$Alloc[$nw];
-    assume _System.array.Length($nw) == capacity#0;
-    $Alloc := $Alloc[$nw := true];
-    assume true;
-    this.data := $nw;
-    assume {:captureState "Test/stack.dfy(18,29)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/stack.dfy(19,9)
+    // ----- divided block before new; ----- /Users/saline/development/projects/dafny/Test/ds.dfy(13,3)
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(14,14)
     assume true;
     assume true;
     assume true;
-    this.top := LitInt(0);
-    assume {:captureState "Test/stack.dfy(19,12)"} true;
-    // ----- new; ----- /Users/saline/development/projects/dafny/Test/stack.dfy(17,3)
-    assume this != null && $Is(this, Tclass._module.Stack?());
+    this.contents := Lit(Set#Empty(): Set);
+    assume {:captureState "Test/ds.dfy(14,18)"} true;
+    // ----- new; ----- /Users/saline/development/projects/dafny/Test/ds.dfy(13,3)
+    assume this != null && $Is(this, Tclass._module.Bag?());
     assume !$Alloc[this];
-    assume $Unbox(read($Heap, this, _module.Stack.data)): ref == this.data;
-    assume $Unbox(read($Heap, this, _module.Stack.top)): int == this.top;
+    assume $Unbox(read($Heap, this, _module.Bag.contents)): Set == this.contents;
     $Alloc := $Alloc[this := true];
     assume true;
-    // ----- divided block after new; ----- /Users/saline/development/projects/dafny/Test/stack.dfy(17,3)
+    // ----- divided block after new; ----- /Users/saline/development/projects/dafny/Test/ds.dfy(13,3)
 }
 
 
 
-procedure {:verboseName "Stack.Push (well-formedness)"} CheckWellFormed$$_module.Stack.Push(this: ref
+procedure {:verboseName "Bag.Add (well-formedness)"} CheckWellFormed$$_module.Bag.Add(this: ref
        where this != null
          && 
-        $Is(this, Tclass._module.Stack())
+        $Is(this, Tclass._module.Bag())
          && (this == null || $Alloc[this]), 
     x#0: int);
   modifies $Heap, $Alloc;
 
 
 
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.Push (well-formedness)"} CheckWellFormed$$_module.Stack.Push(this: ref, x#0: int)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Bag.Add (well-formedness)"} CheckWellFormed$$_module.Bag.Add(this: ref, x#0: int)
 {
 
-    // AddMethodImpl: Push, CheckWellFormed$$_module.Stack.Push
-    assume {:captureState "Test/stack.dfy(22,9): initial state"} true;
-    // assume allocatedness for receiver argument to function
-    assume $Unbox($Box(this)): ref == null || $Alloc[$Unbox($Box(this)): ref];
-    assume _module.Stack.Valid#canCall($Heap, this);
-    assume {:id "id26"} _module.Stack.Valid($Heap, this);
-    assume true;
-    assume true;
-    assert {:id "id27"} $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-    assume true;
-    assume {:id "id28"} $Unbox(read($Heap, this, _module.Stack.top)): int
-       < _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-    assume true;
+    // AddMethodImpl: Add, CheckWellFormed$$_module.Bag.Add
+    assume {:captureState "Test/ds.dfy(17,9): initial state"} true;
     havoc $Heap;
-    assume {:captureState "Test/stack.dfy(26,17): post-state"} true;
-    // assume allocatedness for receiver argument to function
-    assume $Unbox($Box(this)): ref == null || $Alloc[$Unbox($Box(this)): ref];
-    assume _module.Stack.Valid#canCall($Heap, this);
-    assume {:id "id29"} _module.Stack.Valid($Heap, this);
+    assume {:captureState "Test/ds.dfy(19,21): post-state"} true;
     assume true;
-    assert {:id "id30"} this == null || old($Alloc)[this];
+    assert {:id "id27"} this == null || old($Alloc)[this];
     assume true;
-    assume {:id "id31"} $Unbox(read($Heap, this, _module.Stack.top)): int
-       == $Unbox(read(old($Heap), this, _module.Stack.top)): int + 1;
-    assume true;
-    assert {:id "id32"} $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-    assume true;
-    assert {:id "id33"} 0 <= $Unbox(read($Heap, this, _module.Stack.top)): int - 1
-       && $Unbox(read($Heap, this, _module.Stack.top)): int - 1
-         < _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-    assume {:id "id34"} $Unbox(read($Heap, 
-          $Unbox(read($Heap, this, _module.Stack.data)): ref, 
-          IndexField($Unbox(read($Heap, this, _module.Stack.top)): int - 1))): int
-       == x#0;
+    assume {:id "id28"} Set#Equal($Unbox(read($Heap, this, _module.Bag.contents)): Set, 
+      Set#Union($Unbox(read(old($Heap), this, _module.Bag.contents)): Set, 
+        Set#UnionOne(Set#Empty(): Set, $Box(x#0))));
 }
 
 
 
-procedure {:verboseName "Stack.Push (call)"} Call$$_module.Stack.Push(this: ref
+procedure {:verboseName "Bag.Add (call)"} Call$$_module.Bag.Add(this: ref
        where this != null
          && 
-        $Is(this, Tclass._module.Stack())
+        $Is(this, Tclass._module.Bag())
          && (this == null || $Alloc[this]), 
     x#0: int);
-  // user-defined preconditions
-  free requires {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  requires {:id "id35"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-  requires {:id "id36"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int;
-  requires {:id "id37"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.top)): int
-         <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  free requires {:always_assume} true;
-  requires {:id "id38"} $Unbox(read($Heap, this, _module.Stack.top)): int
-     < _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
   // user-defined frame expressions
-  free requires {:always_assume} true;
   free requires {:always_assume} true;
   modifies $Heap, $Alloc;
   // user-defined postconditions
-  free ensures {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  free ensures {:id "id39"} _module.Stack.Valid#canCall($Heap, this)
-     && 
-    _module.Stack.Valid($Heap, this)
-     && 
-    $Unbox(read($Heap, this, _module.Stack.data)): ref != null
-     && 
-    LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-     && $Unbox(read($Heap, this, _module.Stack.top)): int
-       <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
   free ensures {:always_assume} true;
-  ensures {:id "id40"} $Unbox(read($Heap, this, _module.Stack.top)): int
-     == $Unbox(read(old($Heap), this, _module.Stack.top)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id41"} $Unbox(read($Heap, 
-        $Unbox(read($Heap, this, _module.Stack.data)): ref, 
-        IndexField($Unbox(read($Heap, this, _module.Stack.top)): int - 1))): int
-     == x#0;
+  ensures {:id "id29"} Set#Equal($Unbox(read($Heap, this, _module.Bag.contents)): Set, 
+    Set#Union($Unbox(read(old($Heap), this, _module.Bag.contents)): Set, 
+      Set#UnionOne(Set#Empty(): Set, $Box(x#0))));
 
 
 
-procedure {:verboseName "Stack.Push (correctness)"} Impl$$_module.Stack.Push(this: ref
+procedure {:verboseName "Bag.Add (correctness)"} Impl$$_module.Bag.Add(this: ref
        where this != null
          && 
-        $Is(this, Tclass._module.Stack())
+        $Is(this, Tclass._module.Bag())
          && (this == null || $Alloc[this]), 
     x#0: int)
    returns ($_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  free requires {:id "id42"} _module.Stack.Valid#canCall($Heap, this)
-     && 
-    _module.Stack.Valid($Heap, this)
-     && 
-    $Unbox(read($Heap, this, _module.Stack.data)): ref != null
-     && 
-    LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-     && $Unbox(read($Heap, this, _module.Stack.top)): int
-       <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  free requires {:always_assume} true;
-  requires {:id "id43"} $Unbox(read($Heap, this, _module.Stack.top)): int
-     < _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  free requires {:always_assume} true;
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  ensures {:id "id44"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-  ensures {:id "id45"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int;
-  ensures {:id "id46"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.top)): int
-         <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  free ensures {:always_assume} true;
-  ensures {:id "id47"} $Unbox(read($Heap, this, _module.Stack.top)): int
-     == $Unbox(read(old($Heap), this, _module.Stack.top)): int + 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id48"} $Unbox(read($Heap, 
-        $Unbox(read($Heap, this, _module.Stack.data)): ref, 
-        IndexField($Unbox(read($Heap, this, _module.Stack.top)): int - 1))): int
-     == x#0;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.Push (correctness)"} Impl$$_module.Stack.Push(this: ref, x#0: int) returns ($_reverifyPost: bool)
-{
-  var $rhs#0: int;
-  var $rhs#1: int;
-
-    // AddMethodImpl: Push, Impl$$_module.Stack.Push
-    assume {:captureState "Test/stack.dfy(29,2): initial state"} true;
-    $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/stack.dfy(30,15)
-    assume true;
-    assert {:id "id49"} $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-    assume true;
-    assert {:id "id50"} 0 <= $Unbox(read($Heap, this, _module.Stack.top)): int
-       && $Unbox(read($Heap, this, _module.Stack.top)): int
-         < _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-    assume true;
-    assume true;
-    $rhs#0 := x#0;
-    $Heap := update($Heap, 
-      $Unbox(read($Heap, this, _module.Stack.data)): ref, 
-      IndexField($Unbox(read($Heap, this, _module.Stack.top)): int), 
-      $Box($rhs#0));
-    assume true;
-    assume {:captureState "Test/stack.dfy(30,18)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/stack.dfy(31,9)
-    assume true;
-    assume true;
-    assume true;
-    assume true;
-    $rhs#1 := $Unbox(read($Heap, this, _module.Stack.top)): int + 1;
-    $Heap := update($Heap, this, _module.Stack.top, $Box($rhs#1));
-    assume true;
-    assume {:captureState "Test/stack.dfy(31,18)"} true;
-}
-
-
-
-procedure {:verboseName "Stack.Pop (well-formedness)"} CheckWellFormed$$_module.Stack.Pop(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (x#0: int);
-  modifies $Heap, $Alloc;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.Pop (well-formedness)"} CheckWellFormed$$_module.Stack.Pop(this: ref) returns (x#0: int)
-{
-
-    // AddMethodImpl: Pop, CheckWellFormed$$_module.Stack.Pop
-    assume {:captureState "Test/stack.dfy(34,9): initial state"} true;
-    // assume allocatedness for receiver argument to function
-    assume $Unbox($Box(this)): ref == null || $Alloc[$Unbox($Box(this)): ref];
-    assume _module.Stack.Valid#canCall($Heap, this);
-    assume {:id "id55"} _module.Stack.Valid($Heap, this);
-    assume true;
-    assume {:id "id56"} $Unbox(read($Heap, this, _module.Stack.top)): int > 0;
-    havoc $Heap;
-    havoc x#0;
-    assume {:captureState "Test/stack.dfy(38,17): post-state"} true;
-    // assume allocatedness for receiver argument to function
-    assume $Unbox($Box(this)): ref == null || $Alloc[$Unbox($Box(this)): ref];
-    assume _module.Stack.Valid#canCall($Heap, this);
-    assume {:id "id57"} _module.Stack.Valid($Heap, this);
-    assume true;
-    assert {:id "id58"} this == null || old($Alloc)[this];
-    assume true;
-    assume {:id "id59"} $Unbox(read($Heap, this, _module.Stack.top)): int
-       == $Unbox(read(old($Heap), this, _module.Stack.top)): int - 1;
-    assert {:id "id60"} this == null || old($Alloc)[this];
-    assume true;
-    assert {:id "id61"} $Unbox(read(old($Heap), this, _module.Stack.data)): ref != null;
-    assert {:id "id62"} $Unbox(read(old($Heap), this, _module.Stack.data)): ref == null
-       || old($Alloc)[$Unbox(read(old($Heap), this, _module.Stack.data)): ref];
-    assert {:id "id63"} this == null || old($Alloc)[this];
-    assume true;
-    assert {:id "id64"} 0 <= $Unbox(read(old($Heap), this, _module.Stack.top)): int - 1
-       && $Unbox(read(old($Heap), this, _module.Stack.top)): int - 1
-         < _System.array.Length($Unbox(read(old($Heap), this, _module.Stack.data)): ref);
-    assume {:id "id65"} x#0
-       == $Unbox(read(old($Heap), 
-          $Unbox(read(old($Heap), this, _module.Stack.data)): ref, 
-          IndexField($Unbox(read(old($Heap), this, _module.Stack.top)): int - 1))): int;
-}
-
-
-
-procedure {:verboseName "Stack.Pop (call)"} Call$$_module.Stack.Pop(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (x#0: int);
-  // user-defined preconditions
-  free requires {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  requires {:id "id66"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-  requires {:id "id67"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int;
-  requires {:id "id68"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.top)): int
-         <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  free requires {:always_assume} true;
-  requires {:id "id69"} $Unbox(read($Heap, this, _module.Stack.top)): int > 0;
   // user-defined frame expressions
   free requires {:always_assume} true;
   modifies $Heap, $Alloc;
   // user-defined postconditions
-  free ensures {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  free ensures {:id "id70"} _module.Stack.Valid#canCall($Heap, this)
-     && 
-    _module.Stack.Valid($Heap, this)
-     && 
-    $Unbox(read($Heap, this, _module.Stack.data)): ref != null
-     && 
-    LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-     && $Unbox(read($Heap, this, _module.Stack.top)): int
-       <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
   free ensures {:always_assume} true;
-  ensures {:id "id71"} $Unbox(read($Heap, this, _module.Stack.top)): int
-     == $Unbox(read(old($Heap), this, _module.Stack.top)): int - 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id72"} x#0
-     == $Unbox(read(old($Heap), 
-        $Unbox(read(old($Heap), this, _module.Stack.data)): ref, 
-        IndexField($Unbox(read(old($Heap), this, _module.Stack.top)): int - 1))): int;
+  ensures {:id "id30"} Set#Equal($Unbox(read($Heap, this, _module.Bag.contents)): Set, 
+    Set#Union($Unbox(read(old($Heap), this, _module.Bag.contents)): Set, 
+      Set#UnionOne(Set#Empty(): Set, $Box(x#0))));
 
 
 
-procedure {:verboseName "Stack.Pop (correctness)"} Impl$$_module.Stack.Pop(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (defass#x#0: bool, x#0: int, $_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  free requires {:id "id73"} _module.Stack.Valid#canCall($Heap, this)
-     && 
-    _module.Stack.Valid($Heap, this)
-     && 
-    $Unbox(read($Heap, this, _module.Stack.data)): ref != null
-     && 
-    LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-     && $Unbox(read($Heap, this, _module.Stack.top)): int
-       <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  free requires {:always_assume} true;
-  requires {:id "id74"} $Unbox(read($Heap, this, _module.Stack.top)): int > 0;
-  // user-defined frame expressions
-  free requires {:always_assume} true;
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  ensures {:id "id75"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-  ensures {:id "id76"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int;
-  ensures {:id "id77"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.top)): int
-         <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  free ensures {:always_assume} true;
-  ensures {:id "id78"} $Unbox(read($Heap, this, _module.Stack.top)): int
-     == $Unbox(read(old($Heap), this, _module.Stack.top)): int - 1;
-  free ensures {:always_assume} true;
-  ensures {:id "id79"} x#0
-     == $Unbox(read(old($Heap), 
-        $Unbox(read(old($Heap), this, _module.Stack.data)): ref, 
-        IndexField($Unbox(read(old($Heap), this, _module.Stack.top)): int - 1))): int;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.Pop (correctness)"} Impl$$_module.Stack.Pop(this: ref) returns (defass#x#0: bool, x#0: int, $_reverifyPost: bool)
+implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Bag.Add (correctness)"} Impl$$_module.Bag.Add(this: ref, x#0: int) returns ($_reverifyPost: bool)
 {
-  var $rhs#0: int;
+  var $rhs#0: Set;
 
-    // AddMethodImpl: Pop, Impl$$_module.Stack.Pop
-    assume {:captureState "Test/stack.dfy(41,2): initial state"} true;
+    // AddMethodImpl: Add, Impl$$_module.Bag.Add
+    assume {:captureState "Test/ds.dfy(20,2): initial state"} true;
     $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/stack.dfy(42,9)
+    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/ds.dfy(21,14)
     assume true;
     assume true;
     assume true;
     assume true;
-    $rhs#0 := $Unbox(read($Heap, this, _module.Stack.top)): int - 1;
-    $Heap := update($Heap, this, _module.Stack.top, $Box($rhs#0));
+    $rhs#0 := Set#Union($Unbox(read($Heap, this, _module.Bag.contents)): Set, 
+      Set#UnionOne(Set#Empty(): Set, $Box(x#0)));
+    $Heap := update($Heap, this, _module.Bag.contents, $Box($rhs#0));
     assume true;
-    assume {:captureState "Test/stack.dfy(42,18)"} true;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/stack.dfy(43,7)
-    assume true;
-    assume true;
-    assert {:id "id82"} $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-    assume true;
-    assert {:id "id83"} 0 <= $Unbox(read($Heap, this, _module.Stack.top)): int
-       && $Unbox(read($Heap, this, _module.Stack.top)): int
-         < _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-    assume true;
-    x#0 := $Unbox(read($Heap, 
-        $Unbox(read($Heap, this, _module.Stack.data)): ref, 
-        IndexField($Unbox(read($Heap, this, _module.Stack.top)): int))): int;
-    defass#x#0 := true;
-    assume {:captureState "Test/stack.dfy(43,18)"} true;
-    assert {:id "id85"} defass#x#0;
+    assume {:captureState "Test/ds.dfy(21,30)"} true;
 }
 
 
 
-procedure {:verboseName "Stack.Size (well-formedness)"} CheckWellFormed$$_module.Stack.Size(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (n#0: int);
-  modifies $Heap, $Alloc;
-
-
-
-procedure {:verboseName "Stack.Size (call)"} Call$$_module.Stack.Size(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (n#0: int);
-  // user-defined preconditions
-  free requires {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  requires {:id "id88"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-  requires {:id "id89"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int;
-  requires {:id "id90"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.top)): int
-         <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id91"} n#0 == $Unbox(read($Heap, this, _module.Stack.top)): int;
-
-
-
-procedure {:verboseName "Stack.Size (correctness)"} Impl$$_module.Stack.Size(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (defass#n#0: bool, n#0: int, $_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  free requires {:id "id92"} _module.Stack.Valid#canCall($Heap, this)
-     && 
-    _module.Stack.Valid($Heap, this)
-     && 
-    $Unbox(read($Heap, this, _module.Stack.data)): ref != null
-     && 
-    LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-     && $Unbox(read($Heap, this, _module.Stack.top)): int
-       <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id93"} n#0 == $Unbox(read($Heap, this, _module.Stack.top)): int;
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.Size (correctness)"} Impl$$_module.Stack.Size(this: ref) returns (defass#n#0: bool, n#0: int, $_reverifyPost: bool)
-{
-    // AddMethodImpl: Size, Impl$$_module.Stack.Size
-    assume {:captureState "Test/stack.dfy(49,2): initial state"} true;
-    $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/stack.dfy(50,7)
-    assume true;
-    assume true;
-    assume true;
-    n#0 := $Unbox(read($Heap, this, _module.Stack.top)): int;
-    defass#n#0 := true;
-    assume {:captureState "Test/stack.dfy(50,12)"} true;
-    assert {:id "id95"} defass#n#0;
-}
-
-
-
-procedure {:verboseName "Stack.IsEmpty (well-formedness)"} CheckWellFormed$$_module.Stack.IsEmpty(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (b#0: bool);
-  modifies $Heap, $Alloc;
-
-
-
-procedure {:verboseName "Stack.IsEmpty (call)"} Call$$_module.Stack.IsEmpty(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (b#0: bool);
-  // user-defined preconditions
-  free requires {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  requires {:id "id98"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.data)): ref != null;
-  requires {:id "id99"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int;
-  requires {:id "id100"} _module.Stack.Valid#canCall($Heap, this)
-     ==> _module.Stack.Valid($Heap, this)
-       || $Unbox(read($Heap, this, _module.Stack.top)): int
-         <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id101"} b#0 <==> $Unbox(read($Heap, this, _module.Stack.top)): int == LitInt(0);
-
-
-
-procedure {:verboseName "Stack.IsEmpty (correctness)"} Impl$$_module.Stack.IsEmpty(this: ref
-       where this != null
-         && 
-        $Is(this, Tclass._module.Stack())
-         && (this == null || $Alloc[this]))
-   returns (defass#b#0: bool, b#0: bool, $_reverifyPost: bool);
-  // user-defined preconditions
-  free requires {:always_assume} _module.Stack.Valid#canCall($Heap, this);
-  free requires {:id "id102"} _module.Stack.Valid#canCall($Heap, this)
-     && 
-    _module.Stack.Valid($Heap, this)
-     && 
-    $Unbox(read($Heap, this, _module.Stack.data)): ref != null
-     && 
-    LitInt(0) <= $Unbox(read($Heap, this, _module.Stack.top)): int
-     && $Unbox(read($Heap, this, _module.Stack.top)): int
-       <= _System.array.Length($Unbox(read($Heap, this, _module.Stack.data)): ref);
-  modifies $Heap, $Alloc;
-  // user-defined postconditions
-  free ensures {:always_assume} true;
-  ensures {:id "id103"} b#0 <==> $Unbox(read($Heap, this, _module.Stack.top)): int == LitInt(0);
-
-
-
-implementation {:smt_option "smt.arith.solver", "2"} {:verboseName "Stack.IsEmpty (correctness)"} Impl$$_module.Stack.IsEmpty(this: ref) returns (defass#b#0: bool, b#0: bool, $_reverifyPost: bool)
-{
-    // AddMethodImpl: IsEmpty, Impl$$_module.Stack.IsEmpty
-    assume {:captureState "Test/stack.dfy(56,2): initial state"} true;
-    $_reverifyPost := false;
-    // ----- assignment statement ----- /Users/saline/development/projects/dafny/Test/stack.dfy(57,7)
-    assume true;
-    assume true;
-    assume true;
-    b#0 := $Unbox(read($Heap, this, _module.Stack.top)): int == LitInt(0);
-    defass#b#0 := true;
-    assume {:captureState "Test/stack.dfy(57,17)"} true;
-    assert {:id "id105"} defass#b#0;
-}
-
-
-
-// $Is axiom for non-null type _module.Stack
+// $Is axiom for non-null type _module.Bag
 axiom (forall c#0: ref :: 
-  { $Is(c#0, Tclass._module.Stack()) } { $Is(c#0, Tclass._module.Stack?()) } 
-  $Is(c#0, Tclass._module.Stack())
-     <==> $Is(c#0, Tclass._module.Stack?()) && c#0 != null);
+  { $Is(c#0, Tclass._module.Bag()) } { $Is(c#0, Tclass._module.Bag?()) } 
+  $Is(c#0, Tclass._module.Bag())
+     <==> $Is(c#0, Tclass._module.Bag?()) && c#0 != null);
 
 const unique tytagFamily$nat: TyTagFamily;
 
@@ -2279,8 +1796,6 @@ const unique tytagFamily$_#PartialFunc2: TyTagFamily;
 
 const unique tytagFamily$_#TotalFunc2: TyTagFamily;
 
-const unique tytagFamily$Stack: TyTagFamily;
+const unique tytagFamily$Bag: TyTagFamily;
 
-const unique field$data: NameFamily;
-
-const unique field$top: NameFamily;
+const unique field$contents: NameFamily;

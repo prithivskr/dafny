@@ -88,6 +88,11 @@ public partial class BoogieGenerator {
         // $Heap := current$Heap;
         var heap = ordinaryEtran.HeapCastToIdentifierExpr;
         builder.Add(Cmd.SimpleAssign(f.Origin, heap, etran.HeapExpr));
+        if (generator.UseQuantifierFreeFrames) {
+          builder.Add(Cmd.SimpleAssign(f.Origin,
+            generator.AllocStateIdentifierExpr(f.Origin),
+            generator.AllocStateExprForHeapExpr(f.Origin, etran.HeapExpr)));
+        }
         etran = ordinaryEtran; // we no longer need the special heap names
       }
 
@@ -352,13 +357,26 @@ public partial class BoogieGenerator {
         inParams_Heap.Add(currHeapVar);
         Expr prevHeap = new Bpl.IdentifierExpr(f.Origin, prevHeapVar);
         Expr currHeap = new Bpl.IdentifierExpr(f.Origin, currHeapVar);
+        if (generator.UseQuantifierFreeFrames) {
+          var prevAllocVar = new Bpl.Formal(f.Origin,
+            new TypedIdent(f.Origin, "previous$Alloc", generator.AllocMapType(f.Origin)), true);
+          var currAllocVar = new Bpl.Formal(f.Origin,
+            new TypedIdent(f.Origin, "current$Alloc", generator.AllocMapType(f.Origin)), true);
+          inParams_Heap.Add(prevAllocVar);
+          inParams_Heap.Add(currAllocVar);
+        }
         etran = new ExpressionTranslator(generator, generator.Predef, currHeap, prevHeap, f);
 
         // free requires prevHeap == Heap && HeapSucc(prevHeap, currHeap) && IsHeap(currHeap)
         var a0 = Expr.Eq(prevHeap, ordinaryEtran.HeapExpr);
         var a1 = generator.HeapSucc(prevHeap, currHeap);
         var a2 = generator.FunctionCall(f.Origin, BuiltinFunction.IsGoodHeap, null, currHeap);
-        additionalRequires.Add(generator.Requires(f.Origin, true, null, BplAnd(a0, BplAnd(a1, a2)), null, null, null));
+        Expr heapRequires = BplAnd(a0, BplAnd(a1, a2));
+        if (generator.UseQuantifierFreeFrames) {
+          heapRequires = BplAnd(heapRequires,
+            Expr.Eq(generator.AllocStateExprForHeapExpr(f.Origin, prevHeap), generator.AllocStateIdentifierExpr(f.Origin)));
+        }
+        additionalRequires.Add(generator.Requires(f.Origin, true, null, heapRequires, null, null, null));
       } else {
         etran = ordinaryEtran;
       }
@@ -391,7 +409,7 @@ public partial class BoogieGenerator {
       var inParams = new List<Variable>();
       if (!f.IsStatic) {
         var th = new Bpl.IdentifierExpr(f.Origin, "this", generator.TrReceiverType(f));
-        var useAlloc = generator.UseQuantifierFreeFrames ? NOALLOC : ISALLOC;
+        var useAlloc = f is TwoStateFunction ? ISALLOC : generator.UseQuantifierFreeFrames ? NOALLOC : ISALLOC;
         Expr wh = BplAnd(
           generator.ReceiverNotNull(th),
           (f is TwoStateFunction ? etran.Old : etran).GoodRef(f.Origin, th, ModuleResolver.GetReceiverType(f.Origin, f), useAlloc));
@@ -401,7 +419,7 @@ public partial class BoogieGenerator {
 
       foreach (Formal parameter in f.Ins) {
         Bpl.Type varType = generator.TrType(parameter.Type);
-        var useAlloc = generator.UseQuantifierFreeFrames ? NOALLOC : (f is TwoStateFunction ? ISALLOC : NOALLOC);
+        var useAlloc = f is TwoStateFunction && parameter.IsOld ? ISALLOC : generator.UseQuantifierFreeFrames ? NOALLOC : (f is TwoStateFunction ? ISALLOC : NOALLOC);
         Expr wh = generator.GetWhereClause(parameter.Origin,
           new Bpl.IdentifierExpr(parameter.Origin, parameter.AssignUniqueName(f.IdGenerator), varType), parameter.Type,
           parameter.IsOld ? etran.Old : etran, useAlloc);

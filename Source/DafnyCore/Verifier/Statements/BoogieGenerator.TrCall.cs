@@ -398,8 +398,22 @@ public partial class BoogieGenerator {
         qfRelevantExprs.Add(etran.TrExpr(receiver));
       }
       qfRelevantExprs.AddRange(Args.Select(etran.TrExpr));
+
+      // The call-frame facts below inspect postconditions to discover their
+      // heap reads.  Unlike input formals, output formals are not part of
+      // directSubstMap.  Substitute them with the Boogie temporaries used as
+      // call outputs; otherwise the translated postcondition can contain an
+      // undeclared callee-local name (for example, `node#0_0` from Create).
+      var qfPostconditionSubstMap = new Dictionary<IVariable, Expression>(directSubstMap);
+      if (method is not Constructor) {
+        Contract.Assert(callee.Outs.Count == outs.Count);
+        for (var i = 0; i < callee.Outs.Count; i++) {
+          qfPostconditionSubstMap.Add(callee.Outs[i],
+            new BoogieWrapper(outs[i], callee.Outs[i].Type.Subst(tySubst)));
+        }
+      }
       foreach (var ensures in callee.Ens) {
-        qfRelevantExprs.Add(etran.TrExpr(Substitute(ensures.E, receiver, directSubstMap, tySubst)));
+        qfRelevantExprs.Add(etran.TrExpr(Substitute(ensures.E, receiver, qfPostconditionSubstMap, tySubst)));
       }
       var extraModifiedRefs = method is Constructor && outs.Count != 0 && outs[0] != null
         ? new[] { (Bpl.Expr)outs[0] }
