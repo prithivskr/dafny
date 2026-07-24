@@ -15,7 +15,7 @@ PARAM="$1"
 PARAM_CLEAN=$(echo "$PARAM" | sed 's/::/\//g')
 
 # Find all *.dfy files in predictableverif/dafny
-ALL_FILES=$(find predictableverif/dafny -name "*.dfy")
+ALL_FILES=$(find ids-artifact/dafny -name "*.dfy")
 
 # Filter files that match the clean parameter
 MATCHES=()
@@ -28,7 +28,7 @@ done < <(echo "$ALL_FILES" | grep -i "$PARAM_CLEAN" || true)
 NUM_MATCHES=${#MATCHES[@]}
 
 if [ "$NUM_MATCHES" -eq 0 ]; then
-    echo "Error: No matching .dfy file found for pattern '$PARAM' in predictableverif/dafny"
+    echo "Error: No matching .dfy file found for pattern '$PARAM' in ids-artifact/dafny"
     exit 1
 elif [ "$NUM_MATCHES" -eq 1 ]; then
     DFY_FILE="${MATCHES[0]}"

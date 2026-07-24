@@ -11,16 +11,19 @@ public partial class BoogieGenerator {
 
   private bool UseQuantifierFreeFrames => options.Get(CommonOptionBag.QuantifierFreeFrames);
 
+  // Depth cap for recursive unfolding in ComputeBoundedSupport
+  private const int QfSupportUnfoldDepth = 3;
+
   private Bpl.Type AllocMapType(Bpl.IToken tok) {
     return new Bpl.MapType(tok, [], [Predef.RefType], Bpl.Type.Bool);
   }
 
   internal string AllocVariableNameFromHeapName(string heapVariableName) {
-    if (heapVariableName.Contains("Heap", StringComparison.Ordinal)) {
-      return heapVariableName.Replace("Heap", "Alloc", StringComparison.Ordinal);
+    if (heapVariableName.Contains("$Heap", StringComparison.Ordinal)) {
+      return heapVariableName.Replace("$Heap", "$Alloc", StringComparison.Ordinal);
     }
-    if (heapVariableName.Contains("heap", StringComparison.Ordinal)) {
-      return heapVariableName.Replace("heap", "alloc", StringComparison.Ordinal);
+    if (heapVariableName.Contains("$heap", StringComparison.Ordinal)) {
+      return heapVariableName.Replace("$heap", "$alloc", StringComparison.Ordinal);
     }
     return "$Alloc";
   }
@@ -182,29 +185,138 @@ public partial class BoogieGenerator {
     return result.Values.ToList();
   }
 
-  private List<HeapRead> ComputeDereferenceClosure(IEnumerable<Bpl.Expr> liveRefs, IEnumerable<HeapRead> relevantReads) {
-    var reads = relevantReads.ToList();
-    var result = new Dictionary<string, HeapRead>();
+  private void ComputeBoundedSupport(Expression expr, ExpressionTranslator etran, int depthBudget,
+    Dictionary<string, HeapRead> accumulator, Dictionary<string, bool> callMemo) {
+    if (expr == null) {
+      return;
+    }
 
+    switch (expr) {
+      case MemberSelectExpr memberSelect when memberSelect.Member is Field { IsMutable: true } field: {
+          // Sp(e.f) = {(tr(e), tr(f))} ∪ Sp(e)
+          var receiverBpl = etran.TrExpr(memberSelect.Obj);
+          var fieldBpl = new Bpl.IdentifierExpr(field.Origin, GetField(field));
+          var heapRead = new HeapRead(receiverBpl, fieldBpl, ExprKey(receiverBpl), ExprKey(fieldBpl));
+          accumulator.TryAdd($"{heapRead.ReceiverKey}::{heapRead.FieldKey}", heapRead);
+
+          // Recurse into the receiver to capture its own support (e.g. x.next.val records x.next too)
+          ComputeBoundedSupport(memberSelect.Obj, etran, depthBudget, accumulator, callMemo);
+          break;
+        }
+
+      case SeqSelectExpr seqSelect when seqSelect.SelectOne: {
+          // Array/sequence element read: treat the sequence as the "receiver" and the index
+          // expression translated as the "field" key.
+
+          if (seqSelect.E0 != null) {
+            var seqBpl = etran.TrExpr(seqSelect.Seq);
+            var idxBpl = etran.TrExpr(seqSelect.E0);
+            var heapRead = new HeapRead(seqBpl, idxBpl, ExprKey(seqBpl), ExprKey(idxBpl));
+            accumulator.TryAdd($"{heapRead.ReceiverKey}::{heapRead.FieldKey}", heapRead);
+          }
+          ComputeBoundedSupport(seqSelect.Seq, etran, depthBudget, accumulator, callMemo);
+          if (seqSelect.E0 != null) {
+            ComputeBoundedSupport(seqSelect.E0, etran, depthBudget, accumulator, callMemo);
+          }
+          if (seqSelect.E1 != null) {
+            ComputeBoundedSupport(seqSelect.E1, etran, depthBudget, accumulator, callMemo);
+          }
+          break;
+        }
+
+      case FunctionCallExpr funcCall when funcCall.Function?.Body != null: {
+          var func = funcCall.Function;
+
+          var argKey = string.Join(",", funcCall.Args.Select(a => etran.TrExpr(a).ToString()));
+          var memoKey = $"{func.FullSanitizedName}|{argKey}|{depthBudget}";
+          if (!callMemo.TryAdd(memoKey, true)) {
+            break;
+          }
+
+          bool isRecursive = func.IsRecursive;
+          if (isRecursive && depthBudget <= 0) {
+            break;
+          }
+
+          // Substitute actual arguments into the function body
+          var substMap = new Dictionary<IVariable, Expression>();
+          Contract.Assert(funcCall.Args.Count == func.Ins.Count);
+
+          for (int i = 0; i < func.Ins.Count; i++) {
+            var formal = func.Ins[i];
+            var formalType = formal.Type.Subst(funcCall.GetTypeArgumentSubstitutions());
+            Expression arg = funcCall.Args[i];
+            arg = new BoxingCastExpr(arg, arg.Type, formalType);
+            arg.Type = formalType;
+            substMap.Add(formal, arg);
+          }
+
+          var substitutedBody = Substitute(func.Body, funcCall.Receiver, substMap,
+            funcCall.GetTypeArgumentSubstitutions(), funcCall.AtLabel);
+
+          int nextBudget = isRecursive ? depthBudget - 1 : depthBudget;
+          ComputeBoundedSupport(substitutedBody, etran, nextBudget, accumulator, callMemo);
+          break;
+        }
+
+      default: {
+          // Recurse structurally into sub-expressions without consuming depth budget.
+          foreach (var sub in expr.SubExpressions) {
+            ComputeBoundedSupport(sub, etran, depthBudget, accumulator, callMemo);
+          }
+          break;
+        }
+    }
+  }
+
+  /// <summary>
+  /// Convenience wrapper: computes bounded support for a collection of Dafny expressions and
+  /// returns the deduplicated set of heap reads discovered.
+  /// </summary>
+  private List<HeapRead> ComputeBoundedSupportForExprs(IEnumerable<Expression> dafnyExprs, ExpressionTranslator etran) {
+    var accumulator = new Dictionary<string, HeapRead>();
+    var callMemo = new Dictionary<string, bool>();
+    foreach (var expr in dafnyExprs.Where(e => e != null)) {
+      ComputeBoundedSupport(expr, etran, QfSupportUnfoldDepth, accumulator, callMemo);
+    }
+    return accumulator.Values.ToList();
+  }
+
+  /// <summary>
+  /// Cross-product <paramref name="liveRefs"/> with every distinct mutable field and every
+  /// array-like (non-named-field) entry found in <paramref name="supportReads"/>, adding the
+  /// resulting pairs into <paramref name="result"/>
+  /// </summary>
+  private void ExpandSupportWithLiveRefs(IEnumerable<Bpl.Expr> liveRefs,
+    IEnumerable<HeapRead> supportReads, Dictionary<string, HeapRead> result) {
+    var reads = supportReads.ToList();
+
+    // Seed result with the directly-discovered reads.
     foreach (var read in reads) {
       result.TryAdd($"{read.ReceiverKey}::{read.FieldKey}", read);
     }
 
-    var fields = RelevantFieldsForQfFrame(reads).Where(field => field.IsMutable).ToList();
-    var arrayLikeFields = reads.Where(read => FieldExprToField(read.Field) == null).Select(read => read.Field).ToList();
-    foreach (var liveRef in liveRefs.Where(liveRef => liveRef.Type != null && liveRef.Type.Equals(Predef.RefType))) {
-      foreach (var field in fields) {
+    // Determine the distinct fields (named and array-like) seen in the support.
+    var namedFields = RelevantFieldsForQfFrame(reads).Where(f => f.IsMutable).ToList();
+    var arrayLikeFields = reads
+      .Where(r => FieldExprToField(r.Field) == null)
+      .Select(r => r.Field)
+      .GroupBy(ExprKey)
+      .Select(g => g.First())
+      .ToList();
+
+    // Emit one fact per (liveRef, field) pair so the verifier can reason about any live ref
+    foreach (var liveRef in liveRefs.Where(r => r.Type != null && r.Type.Equals(Predef.RefType))) {
+      foreach (var field in namedFields) {
         var fieldExpr = new Bpl.IdentifierExpr(field.Origin, GetField(field));
-        var heapRead = new HeapRead(liveRef, fieldExpr, ExprKey(liveRef), ExprKey(fieldExpr));
-        result.TryAdd($"{heapRead.ReceiverKey}::{heapRead.FieldKey}", heapRead);
+        var hr = new HeapRead(liveRef, fieldExpr, ExprKey(liveRef), ExprKey(fieldExpr));
+        result.TryAdd($"{hr.ReceiverKey}::{hr.FieldKey}", hr);
       }
       foreach (var fieldExpr in arrayLikeFields) {
-        var heapRead = new HeapRead(liveRef, fieldExpr, ExprKey(liveRef), ExprKey(fieldExpr));
-        result.TryAdd($"{heapRead.ReceiverKey}::{heapRead.FieldKey}", heapRead);
+        var hr = new HeapRead(liveRef, fieldExpr, ExprKey(liveRef), ExprKey(fieldExpr));
+        result.TryAdd($"{hr.ReceiverKey}::{hr.FieldKey}", hr);
       }
     }
-
-    return result.Values.ToList();
   }
 
   private bool TryCollectConcreteModifiedRefs(IEnumerable<FrameExpression> frameExpressions, ExpressionTranslator etran, out List<Bpl.Expr> modifiedRefs) {
@@ -372,23 +484,34 @@ public partial class BoogieGenerator {
       return false;
     }
 
-    var relevantExprs = new List<Bpl.Expr>();
-    relevantExprs.AddRange(loop.Invariants.Select(inv => etran.TrExpr(inv.E)));
+    // Collect Dafny-level expressions from loop invariants and the guard.
+    var dafnyRelevantExprs = new List<Expression>();
+    dafnyRelevantExprs.AddRange(loop.Invariants.Select(inv => inv.E));
     if (guard != null) {
-      relevantExprs.Add(etran.TrExpr(guard));
+      dafnyRelevantExprs.Add(guard);
     }
 
-    var relevantReads = CollectHeapReads(relevantExprs.ToArray());
-    var liveRefs = CollectLiveRefs(locals, etran, relevantExprs);
-    var closure = ComputeDereferenceClosure(liveRefs, relevantReads);
+    // Translate to Boogie for liveRefs seeding (still needed for alloc-freshness checks).
+    var relevantBoogieExprs = dafnyRelevantExprs
+      .Where(e => e != null)
+      .Select(e => etran.TrExpr(e))
+      .ToList();
 
-    commands = BuildQfFrameFactCommands(tok, preLoopHeap, etran, liveRefs, closure, modifiedRefs);
+    // Compute the bounded support from Dafny-level expressions to discover which fields are
+    // relevant, then expand with liveRefs to cover every live reference-typed variable.
+    var boundedSupport = ComputeBoundedSupportForExprs(dafnyRelevantExprs, etran);
+    var liveRefs = CollectLiveRefs(locals, etran, relevantBoogieExprs);
+    var closure = new Dictionary<string, HeapRead>();
+    ExpandSupportWithLiveRefs(liveRefs, boundedSupport, closure);
+
+    commands = BuildQfFrameFactCommands(tok, preLoopHeap, etran, liveRefs, closure.Values, modifiedRefs);
     return true;
   }
 
   private void EmitCallQfFrameFacts(IOrigin tok, CallStmt callStmt, BoogieStmtListBuilder builder, Variables locals,
     Bpl.Expr preCallHeap, ExpressionTranslator etran, IEnumerable<FrameExpression> frameExpressions,
-    IEnumerable<Bpl.Expr> relevantExprs, IEnumerable<Bpl.Expr> extraModifiedRefs = null) {
+    IEnumerable<Bpl.Expr> relevantExprs, IEnumerable<Bpl.Expr> extraModifiedRefs = null,
+    IEnumerable<Expression> dafnyRelevantExprs = null) {
     if (!TryCollectConcreteModifiedRefs(frameExpressions, etran, out var modifiedRefs)) {
       return;
     }
@@ -399,12 +522,29 @@ public partial class BoogieGenerator {
     }
 
     var relevantExprList = relevantExprs.Where(expr => expr != null).ToList();
-    var relevantReads = CollectHeapReads(relevantExprList.ToArray());
     var liveRefs = CollectLiveRefs(locals, etran, relevantExprList);
-    var closure = ComputeDereferenceClosure(liveRefs, relevantReads);
+
+    IEnumerable<HeapRead> baseReads;
+    if (dafnyRelevantExprs != null) {
+      var boundedSupport = ComputeBoundedSupportForExprs(dafnyRelevantExprs, etran);
+      // Merge in any heap reads visible only in the already-translated Boogie expressions
+
+      var boogieReads = CollectHeapReads(relevantExprList.ToArray());
+      var merged = new Dictionary<string, HeapRead>(
+        boundedSupport.ToDictionary(r => $"{r.ReceiverKey}::{r.FieldKey}"));
+      foreach (var r in boogieReads) {
+        merged.TryAdd($"{r.ReceiverKey}::{r.FieldKey}", r);
+      }
+      baseReads = merged.Values;
+    } else {
+      baseReads = CollectHeapReads(relevantExprList.ToArray());
+    }
+
+    var closure = new Dictionary<string, HeapRead>();
+    ExpandSupportWithLiveRefs(liveRefs, baseReads, closure);
 
     builder.Add(new Bpl.CommentCmd($"qf-call-frame {callStmt.Method.Name}: supports={liveRefs.Count} reads={closure.Count} modified={modifiedRefs.Count}"));
-    foreach (var command in BuildQfFrameFactCommands(tok, preCallHeap, etran, liveRefs, closure, modifiedRefs)) {
+    foreach (var command in BuildQfFrameFactCommands(tok, preCallHeap, etran, liveRefs, closure.Values, modifiedRefs)) {
       builder.Add(command);
     }
   }

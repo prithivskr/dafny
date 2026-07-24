@@ -415,10 +415,19 @@ public partial class BoogieGenerator {
       foreach (var ensures in callee.Ens) {
         qfRelevantExprs.Add(etran.TrExpr(Substitute(ensures.E, receiver, qfPostconditionSubstMap, tySubst)));
       }
+
+      // Avoid panic node#0_0 error
+      var qfDafnyRelevantExprs = new List<Expression>();
+      if (!method.IsStatic && method is not Constructor && receiver != null) {
+        qfDafnyRelevantExprs.Add(receiver);
+      }
+      qfDafnyRelevantExprs.AddRange(Args);
+
       var extraModifiedRefs = method is Constructor && outs.Count != 0 && outs[0] != null
         ? new[] { (Bpl.Expr)outs[0] }
         : null;
-      EmitCallQfFrameFacts(tok, cs, builder, locals, preCallHeap, etran, frameExpressions, qfRelevantExprs, extraModifiedRefs);
+      EmitCallQfFrameFacts(tok, cs, builder, locals, preCallHeap, etran, frameExpressions, qfRelevantExprs, extraModifiedRefs,
+        dafnyRelevantExprs: qfDafnyRelevantExprs);
     }
 
     // Unbox results as needed
