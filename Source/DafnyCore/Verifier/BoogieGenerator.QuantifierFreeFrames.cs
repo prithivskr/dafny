@@ -19,11 +19,11 @@ public partial class BoogieGenerator {
   }
 
   internal string AllocVariableNameFromHeapName(string heapVariableName) {
-    if (heapVariableName.Contains("$Heap", StringComparison.Ordinal)) {
-      return heapVariableName.Replace("$Heap", "$Alloc", StringComparison.Ordinal);
+    if (heapVariableName.Contains("Heap", StringComparison.Ordinal)) {
+      return heapVariableName.Replace("Heap", "Alloc", StringComparison.Ordinal);
     }
-    if (heapVariableName.Contains("$heap", StringComparison.Ordinal)) {
-      return heapVariableName.Replace("$heap", "$alloc", StringComparison.Ordinal);
+    if (heapVariableName.Contains("heap", StringComparison.Ordinal)) {
+      return heapVariableName.Replace("heap", "alloc", StringComparison.Ordinal);
     }
     return "$Alloc";
   }
@@ -48,8 +48,8 @@ public partial class BoogieGenerator {
       Bpl.IdentifierExpr identifierExpr when identifierExpr.Name.Contains("Alloc", StringComparison.Ordinal) ||
                                              identifierExpr.Name.Contains("alloc", StringComparison.Ordinal)
         => identifierExpr,
-      Bpl.IdentifierExpr identifierExpr when identifierExpr.Name.Contains("$Heap", StringComparison.Ordinal) ||
-                                             identifierExpr.Name.Contains("$heap", StringComparison.Ordinal)
+      Bpl.IdentifierExpr identifierExpr when identifierExpr.Name.Contains("Heap", StringComparison.Ordinal) ||
+                                             identifierExpr.Name.Contains("heap", StringComparison.Ordinal)
         => AllocStateIdentifierExpr(tok, AllocVariableNameFromHeapName(identifierExpr.Name)),
       _ => AllocStateIdentifierExpr(tok)
     };

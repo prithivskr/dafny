@@ -786,7 +786,11 @@ public partial class BoogieGenerator {
     Contract.Requires(f != null);
     Contract.Requires(sink != null && Predef != null);
 
-    if (f.ReadsDoubleStar) {
+    // QF functions do not carry an allocation-map argument.  Their ordinary
+    // frame axiom would therefore have to capture the mutable global $Alloc,
+    // which Boogie rejects in the quantified axiom context.  QF call and
+    // loop frame facts provide the corresponding local obligations instead.
+    if (UseQuantifierFreeFrames || f.ReadsDoubleStar) {
       // A `reads **` says "don't emit a frame axiom".
       return;
     }

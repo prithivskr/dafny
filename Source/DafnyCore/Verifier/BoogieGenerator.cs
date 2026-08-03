@@ -2456,7 +2456,7 @@ namespace Microsoft.Dafny {
       Bpl.BoundVariable fVar = new Bpl.BoundVariable(tok, new Bpl.TypedIdent(tok, "$f", Predef.FieldName(tok)));
       Bpl.IdentifierExpr f = new Bpl.IdentifierExpr(tok, fVar);
       Bpl.Expr oNotNull = Bpl.Expr.Neq(o, Predef.Null);
-      Bpl.Expr ante = BplAnd(oNotNull, etran.IsAlloced(tok, o));
+      Bpl.Expr ante = UseQuantifierFreeFrames ? oNotNull : BplAnd(oNotNull, etran.IsAlloced(tok, o));
       Bpl.Expr consequent = InRWClause(tok, o, f, frameClause, etran, null, null);
       Bpl.Expr lambda = new Bpl.LambdaExpr(tok, [], [oVar, fVar], null,
                                            BplImp(ante, consequent));
