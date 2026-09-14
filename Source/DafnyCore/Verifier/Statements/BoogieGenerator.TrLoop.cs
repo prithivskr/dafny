@@ -287,7 +287,7 @@ public partial class BoogieGenerator {
       }
       // include boilerplate invariants
       foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(loop.Origin, modifiesClause, loop.IsGhost, codeContext.AllowsAllocation, etranPreLoop, etran, etran.Old)) {
-        if (emittedQfLoopFrame && IsFrameConditionBoilerplate(tri)) {
+        if (emittedQfLoopFrame && IsQuantifiedFrameConditionBoilerplate(tri)) {
           continue;
         }
         if (tri.IsFree) {

@@ -726,7 +726,7 @@ namespace Microsoft.Dafny {
       // assume the usual two-state boilerplate information
       foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(node.Origin, modifies.Expressions, isGhostContext,
                  allowsAllocation, beforeBlockExpressionTranslator, etran, beforeBlockExpressionTranslator)) {
-        if (UseQuantifierFreeFrames && IsFrameConditionBoilerplate(tri) && !NeedsLegacyModifiesFrame(modifies.Expressions, etran)) {
+        if (UseQuantifierFreeFrames && IsQuantifiedFrameConditionBoilerplate(tri) && !NeedsLegacyModifiesFrame(modifies.Expressions, etran)) {
           continue;
         }
         if (tri.IsFree) {
@@ -955,7 +955,7 @@ namespace Microsoft.Dafny {
       builder.Add(new Bpl.HavocCmd(m.Origin, [etran.HeapCastToIdentifierExpr]));
       // assume the usual two-state boilerplate information
       foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(m.Origin, m.Mod.Expressions, m.IsGhost, m.AllowsAllocation, etran.Old, etran, etran.Old)) {
-        if (UseQuantifierFreeFrames && IsFrameConditionBoilerplate(tri) && !NeedsLegacyModifiesFrame(m.Mod.Expressions, etran)) {
+        if (UseQuantifierFreeFrames && IsQuantifiedFrameConditionBoilerplate(tri) && !NeedsLegacyModifiesFrame(m.Mod.Expressions, etran)) {
           continue;
         }
         if (tri.IsFree) {
@@ -1918,7 +1918,7 @@ namespace Microsoft.Dafny {
           AddEnsures(ens, Ensures(m.Origin, false || this.assertionOnlyFilter != null, dafnyFresh, fresh, null, null, "constructor allocates the object"));
         }
         foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(m.Origin, m.Mod.Expressions, m.IsGhost, m.AllowsAllocation, ordinaryEtran.Old, ordinaryEtran, ordinaryEtran.Old)) {
-          if (UseQuantifierFreeFrames && IsFrameConditionBoilerplate(tri) && !NeedsLegacyModifiesFrame(m.Mod.Expressions, ordinaryEtran)) {
+          if (UseQuantifierFreeFrames && IsQuantifiedFrameConditionBoilerplate(tri) && !NeedsLegacyModifiesFrame(m.Mod.Expressions, ordinaryEtran)) {
             continue;
           }
           AddEnsures(ens, Ensures(tri.tok, tri.IsFree || this.assertionOnlyFilter != null, null, tri.Expr, tri.ErrorMessage, tri.SuccessMessage, tri.Comment));

@@ -68,8 +68,13 @@ public partial class BoogieGenerator {
     return !UseQuantifierFreeFrames || !TryCollectConcreteModifiedRefs(frameExpressions, etran, out _);
   }
 
-  private bool IsFrameConditionBoilerplate(BoilerplateTriple triple) {
-    return triple.Comment != null && triple.Comment.StartsWith("frame condition", StringComparison.Ordinal);
+  private bool IsQuantifiedFrameConditionBoilerplate(BoilerplateTriple triple) {
+    // GetTwoStateBoilerplate also emits a whole-heap equality when the context
+    // cannot allocate and has an empty modifies clause (in particular, lemmas).
+    // That equality is already quantifier-free and must survive filtering: a
+    // finite set of read equalities cannot preserve every previously known fact.
+    return triple.Expr is Bpl.ForallExpr && triple.Comment != null &&
+      triple.Comment.StartsWith("frame condition", StringComparison.Ordinal);
   }
 
   private string ExprKey(Bpl.Expr expr) {
@@ -227,8 +232,20 @@ public partial class BoogieGenerator {
       case FunctionCallExpr funcCall when funcCall.Function?.Body != null: {
           var func = funcCall.Function;
 
+          // Arguments and the receiver are evaluated even when body unfolding
+          // reaches its depth limit or a previous call has already been visited.
+          if (!func.IsStatic) {
+            ComputeBoundedSupport(funcCall.Receiver, etran, depthBudget, accumulator, callMemo);
+          }
+          foreach (var arg in funcCall.Args) {
+            ComputeBoundedSupport(arg, etran, depthBudget, accumulator, callMemo);
+          }
+
+          // Instance calls with identical arguments can read different locations.
+          // In particular, x.LC() and x.l.LC() must not share a memo entry.
+          var receiverKey = func.IsStatic ? "" : ExprKey(etran.TrExpr(funcCall.Receiver));
           var argKey = string.Join(",", funcCall.Args.Select(a => etran.TrExpr(a).ToString()));
-          var memoKey = $"{func.FullSanitizedName}|{argKey}|{depthBudget}";
+          var memoKey = $"{func.FullSanitizedName}|{receiverKey}|{argKey}|{depthBudget}";
           if (!callMemo.TryAdd(memoKey, true)) {
             break;
           }
@@ -403,7 +420,10 @@ public partial class BoogieGenerator {
     if (IsSyntacticConcreteFootprintMember(obj, footprint)) {
       return true;
     }
-    builder.Add(Assert(tok, ConcreteFootprintMembership(tok, obj, footprint), desc, builder.Context));
+    // A frame constrains only objects allocated when its enclosing context
+    // began. A local QF check must retain the same permission for objects
+    // allocated since then.
+    builder.Add(Assert(tok, ConcreteFootprintOrFreshPermission(tok, obj, footprint, etran), desc, builder.Context));
     return true;
   }
 

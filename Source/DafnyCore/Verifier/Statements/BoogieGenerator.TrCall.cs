@@ -394,10 +394,13 @@ public partial class BoogieGenerator {
 
     if (UseQuantifierFreeFrames && preCallHeap != null) {
       var qfRelevantExprs = new List<Bpl.Expr>();
+      var qfDafnyRelevantExprs = new List<Expression>();
       if (!method.IsStatic && method is not Constructor && receiver != null) {
         qfRelevantExprs.Add(etran.TrExpr(receiver));
+        qfDafnyRelevantExprs.Add(receiver);
       }
       qfRelevantExprs.AddRange(Args.Select(etran.TrExpr));
+      qfDafnyRelevantExprs.AddRange(Args);
 
       // The call-frame facts below inspect postconditions to discover their
       // heap reads.  Unlike input formals, output formals are not part of
@@ -413,15 +416,21 @@ public partial class BoogieGenerator {
         }
       }
       foreach (var ensures in callee.Ens) {
-        qfRelevantExprs.Add(etran.TrExpr(Substitute(ensures.E, receiver, qfPostconditionSubstMap, tySubst)));
+        var substitutedEnsures = Substitute(ensures.E, receiver, qfPostconditionSubstMap, tySubst);
+        qfRelevantExprs.Add(etran.TrExpr(substitutedEnsures));
+        qfDafnyRelevantExprs.Add(substitutedEnsures);
       }
 
-      // Avoid panic node#0_0 error
-      var qfDafnyRelevantExprs = new List<Expression>();
-      if (!method.IsStatic && method is not Constructor && receiver != null) {
-        qfDafnyRelevantExprs.Add(receiver);
+      // Preserve the support of the caller's contract across intermediate calls,
+      // even when those calls do not mention the predicates the caller needs.
+      // Keep these as Dafny expressions so support discovery can unfold functions.
+      if (codeContext is MethodOrFunction enclosingMember) {
+        qfDafnyRelevantExprs.AddRange(enclosingMember.Req.Select(req => req.E));
+        qfDafnyRelevantExprs.AddRange(enclosingMember.Ens.Select(ens => ens.E));
+        qfDafnyRelevantExprs.AddRange(enclosingMember.Decreases.Expressions);
       }
-      qfDafnyRelevantExprs.AddRange(Args);
+      qfDafnyRelevantExprs.AddRange(callee.Req.Select(req =>
+        Substitute(req.E, receiver, directSubstMap, tySubst)));
 
       var extraModifiedRefs = method is Constructor && outs.Count != 0 && outs[0] != null
         ? new[] { (Bpl.Expr)outs[0] }
