@@ -355,16 +355,13 @@ public partial class BoogieGenerator {
           CheckFrameWellFormed(wfOptions, s.Mod.Expressions, locals, builder, etran);
           // check that the modifies is a subset
           var desc = new ModifyFrameSubset("modify statement", s.Mod.Expressions, GetContextModifiesFrames());
-          if (!TryEmitConcreteFrameSubset(s.Origin, s.Mod.Expressions, GetContextModifiesFrames(), null, null, etran, builder, desc, null)) {
-            CheckFrameSubset(s.Origin, s.Mod.Expressions, null, null, etran, etran.ModifiesFrame(s.Origin), builder, desc,
-              null);
-          }
+          CheckFrameSubset(s.Origin, s.Mod.Expressions, null, null, etran, etran.ModifiesFrame(s.Origin), builder, desc, null);
           // cause the change of the heap according to the given frame
           var suffix = CurrentIdGenerator.FreshId("modify#");
           string modifyFrameName = FrameVariablePrefix + suffix;
           var preModifyHeapVar = locals.GetOrAdd(new Bpl.LocalVariable(s.Origin,
             new Bpl.TypedIdent(s.Origin, "$PreModifyHeap$" + suffix, Predef.HeapType)));
-          DefineFrame(s.Origin, etran.ModifiesFrame(s.Origin), s.Mod.Expressions, builder, locals, modifyFrameName);
+          DefineFrame(s.Origin, etran.ModifiesFrame(s.Origin), s.Mod.Expressions, builder, locals, modifyFrameName, etran);
           if (s.Body == null) {
             var preModifyHeap = new Bpl.IdentifierExpr(s.Origin, preModifyHeapVar);
             // preModifyHeap := $Heap;
@@ -373,14 +370,17 @@ public partial class BoogieGenerator {
               SnapshotAllocState(s.Origin, "$PreModifyHeap$" + suffix, locals, builder, etran);
             }
             // havoc $Heap;
-            builder.Add(new Bpl.HavocCmd(s.Origin, [etran.HeapCastToIdentifierExpr]));
+            var havocTargets = new List<Bpl.IdentifierExpr> { etran.HeapCastToIdentifierExpr };
+            if (UseQuantifierFreeFrames && codeContext.AllowsAllocation) {
+              havocTargets.Add(AllocStateIdentifierExpr(s.Origin));
+            }
+            builder.Add(new Bpl.HavocCmd(s.Origin, havocTargets));
             if (!UseQuantifierFreeFrames) {
               // assume $HeapSucc(preModifyHeap, $Heap);   OR $HeapSuccGhost
               builder.Add(TrAssumeCmd(s.Origin, HeapSucc(preModifyHeap, etran.HeapExpr, s.IsGhost)));
             }
             // assume nothing outside the frame was changed
-            var etranPreLoop = new ExpressionTranslator(this, Predef, preModifyHeap,
-              this.CurrentDeclaration is IFrameScope fs ? fs : null);
+            var etranPreLoop = new ExpressionTranslator(etran, preModifyHeap);
             var updatedFrameEtran = etran.WithModifiesFrame(modifyFrameName);
             builder.Add(TrAssumeCmd(s.Origin,
               FrameConditionUsingDefinedFrame(s.Origin, etranPreLoop, etran, updatedFrameEtran,

@@ -287,14 +287,8 @@ public partial class BoogieGenerator {
     Bpl.IdentifierExpr preCallHeap = null;
     Bpl.IdentifierExpr preCallAlloc = null;
     if (UseQuantifierFreeFrames) {
-      var preCallHeapVar = new Bpl.LocalVariable(tok, new Bpl.TypedIdent(tok, CurrentIdGenerator.FreshId("$PreCallHeap#"), Predef.HeapType));
-      locals.Add(preCallHeapVar);
-      preCallHeap = new Bpl.IdentifierExpr(tok, preCallHeapVar);
-      builder.Add(Bpl.Cmd.SimpleAssign(tok, preCallHeap, etran.HeapExpr));
-      var preCallAllocVar = new Bpl.LocalVariable(tok, new Bpl.TypedIdent(tok, CurrentIdGenerator.FreshId("$PreCallAlloc#"), AllocMapType(tok)));
-      locals.Add(preCallAllocVar);
-      preCallAlloc = new Bpl.IdentifierExpr(tok, preCallAllocVar);
-      builder.Add(Bpl.Cmd.SimpleAssign(tok, preCallAlloc, AllocStateExprForHeapExpr(tok, etran.HeapExpr)));
+      preCallHeap = SnapshotQfHeap(tok, "$PreCallHeap#", locals, builder, etran);
+      preCallAlloc = AllocStateIdentifierExpr(tok, AllocVariableNameFromHeapName(preCallHeap.Name));
     }
 
     // Check that the reads clause of a subcall is a subset of the current reads frame,
@@ -314,7 +308,7 @@ public partial class BoogieGenerator {
     var frameExpressions = callee.Mod.Expressions.ConvertAll(frameExpression =>
       new FrameExpression(frameExpression.Origin,
         Substitute(frameExpression.E, receiver, directSubstMap, tySubst),
-        frameExpression.FieldName));
+        frameExpression.FieldName) { Field = frameExpression.Field });
     // Check that the modifies clause of a subcall is a subset of the current modifies frame,
     // but only if we're in a context that defines a modifies frame.
     if (codeContext is IMethodCodeContext methodCodeContext) {
@@ -323,13 +317,9 @@ public partial class BoogieGenerator {
         frameExpressions,
         methodCodeContext.Modifies.Expressions
       );
-      if (!TryEmitConcreteFrameSubset(tok, callee.Mod.Expressions, methodCodeContext.Modifies.Expressions,
-            receiver, substMap, etran, builder, desc, null)) {
-        var modifiesSubst = new Substituter(null, new(), tySubst);
-        CheckFrameSubset(
-          tok, callee.Mod.Expressions.ConvertAll(modifiesSubst.SubstFrameExpr),
-          receiver, substMap, etran, etran.ModifiesFrame(tok), builder, desc, null);
-      }
+      var modifiesSubst = new Substituter(null, new(), tySubst);
+      var calleeFrame = callee.Mod.Expressions.ConvertAll(modifiesSubst.SubstFrameExpr);
+      CheckFrameSubset(tok, calleeFrame, receiver, substMap, etran, etran.ModifiesFrame(tok), builder, desc, null);
     }
 
     // Check termination
@@ -390,16 +380,14 @@ public partial class BoogieGenerator {
       // relative to the enclosing method-entry state. This fact is needed by later
       // caller-frame subset checks that still reason about freshness at method entry.
       builder.Add(TrAssumeCmd(tok, Bpl.Expr.Not(etran.Old.IsAlloced(tok, outs[0]))));
+      builder.Add(TrAssumeCmd(tok, etran.IsAlloced(tok, outs[0])));
     }
 
     if (UseQuantifierFreeFrames && preCallHeap != null) {
-      var qfRelevantExprs = new List<Bpl.Expr>();
       var qfDafnyRelevantExprs = new List<Expression>();
       if (!method.IsStatic && method is not Constructor && receiver != null) {
-        qfRelevantExprs.Add(etran.TrExpr(receiver));
         qfDafnyRelevantExprs.Add(receiver);
       }
-      qfRelevantExprs.AddRange(Args.Select(etran.TrExpr));
       qfDafnyRelevantExprs.AddRange(Args);
 
       // The call-frame facts below inspect postconditions to discover their
@@ -417,25 +405,16 @@ public partial class BoogieGenerator {
       }
       foreach (var ensures in callee.Ens) {
         var substitutedEnsures = Substitute(ensures.E, receiver, qfPostconditionSubstMap, tySubst);
-        qfRelevantExprs.Add(etran.TrExpr(substitutedEnsures));
         qfDafnyRelevantExprs.Add(substitutedEnsures);
       }
 
-      // Preserve the support of the caller's contract across intermediate calls,
-      // even when those calls do not mention the predicates the caller needs.
-      // Keep these as Dafny expressions so support discovery can unfold functions.
-      if (codeContext is MethodOrFunction enclosingMember) {
-        qfDafnyRelevantExprs.AddRange(enclosingMember.Req.Select(req => req.E));
-        qfDafnyRelevantExprs.AddRange(enclosingMember.Ens.Select(ens => ens.E));
-        qfDafnyRelevantExprs.AddRange(enclosingMember.Decreases.Expressions);
-      }
       qfDafnyRelevantExprs.AddRange(callee.Req.Select(req =>
         Substitute(req.E, receiver, directSubstMap, tySubst)));
 
       var extraModifiedRefs = method is Constructor && outs.Count != 0 && outs[0] != null
         ? new[] { (Bpl.Expr)outs[0] }
         : null;
-      EmitCallQfFrameFacts(tok, cs, builder, locals, preCallHeap, etran, frameExpressions, qfRelevantExprs, extraModifiedRefs,
+      EmitCallQfFrameFacts(tok, cs, builder, locals, preCallHeap, etran, frameExpressions, extraModifiedRefs,
         dafnyRelevantExprs: qfDafnyRelevantExprs);
     }
 

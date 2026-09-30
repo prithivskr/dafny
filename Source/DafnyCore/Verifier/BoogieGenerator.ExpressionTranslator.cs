@@ -142,6 +142,9 @@ namespace Microsoft.Dafny {
       public ExpressionTranslator(ExpressionTranslator etran, Boogie.Expr heap)
         : this(etran.BoogieGenerator, etran.Predef, heap, etran.This, etran.applyLimited_CurrentFunction, etran.layerInterCluster, etran.layerIntraCluster, etran.scope, etran.readsFrame, etran.modifiesFrame, etran.stripLits) {
         Contract.Requires(etran != null);
+        if (BoogieGenerator.UseQuantifierFreeFrames) {
+          oldEtran = etran.Old;
+        }
       }
 
       public ExpressionTranslator WithReadsFrame(string newReadsFrame, IFrameScope frameScope) {
@@ -697,6 +700,14 @@ namespace Microsoft.Dafny {
             var freshLabel = ((FreshExpr)e).AtLabel;
             var eeType = e.E.Type.NormalizeToAncestorType();
             if (eeType is SetType setType) {
+              if (BoogieGenerator.UseQuantifierFreeFrames && setType.Finite && setType.Arg.IsRefType) {
+                var set = TrExpr(e.E);
+                var oldAlloc = BoogieGenerator.QfAllocatedSet(opExpr.Origin,
+                  BoogieGenerator.AllocStateExprForHeapExpr(opExpr.Origin, OldAt(freshLabel).HeapExpr));
+                return BplAnd(BoogieGenerator.QfSetDisjoint(opExpr.Origin, set, oldAlloc),
+                  Boogie.Expr.Not(BoogieGenerator.FunctionCall(opExpr.Origin, BuiltinFunction.SetIsMember, null,
+                    set, BoogieGenerator.ApplyBox(opExpr.Origin, Predef.Null))));
+              }
               // generate:  (forall $o: ref :: { $o != null } X[Box($o)] ==> $o != null) &&
               //            (forall $o: ref :: { X[Box($o)] } X[Box($o)] ==> !old($Heap)[$o,alloc])
               // OR, if X[Box($o)] is rewritten into smaller parts, use the less good trigger old($Heap)[$o,alloc]

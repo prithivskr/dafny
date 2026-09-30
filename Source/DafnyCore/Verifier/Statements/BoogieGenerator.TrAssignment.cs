@@ -265,9 +265,7 @@ public partial class BoogieGenerator {
         if (!useSurrogateLocal) {
           // check that the enclosing modifies clause allows this object to be written:  assert $_ModifiesFrame[obj]);
           var desc = new Modifiable("field", contextModFrames, fse.Obj, field);
-          if (!TryEmitConcreteModifiesCheck(tok, obj, contextModFrames, etran, builder, desc)) {
-            builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, GetField(fse)), desc, builder.Context));
-          }
+          builder.Add(Assert(tok, FrameMembership(tok, etran.ModifiesFrame(tok), obj, GetField(fse)), desc, builder.Context));
         }
 
         if (useSurrogateLocal) {
@@ -293,11 +291,15 @@ public partial class BoogieGenerator {
               Contract.Assert(fseField != null);
               Check_NewRestrictions(tok, fse.Obj, obj, fseField, rhs, bldr, et);
               var h = (Bpl.IdentifierExpr)et.HeapExpr;  // TODO: is this cast always justified?
-              var cmd = Bpl.Cmd.SimpleAssign(tok, h, UpdateHeap(tok, h, obj, new Bpl.IdentifierExpr(tok, GetField(fseField)), rhs));
+              var preHeap = UseQuantifierFreeFrames ? SnapshotQfHeap(tok, "$PreWriteHeap#", locals, bldr, et) : null;
+              var modifiedObject = UseQuantifierFreeFrames ? SaveInTemp(obj, true, "$qfWrittenObject", Predef.RefType, bldr, locals) : obj;
+              var fieldExpr = new Bpl.IdentifierExpr(tok, GetField(fseField));
+              var cmd = Bpl.Cmd.SimpleAssign(tok, h, UpdateHeap(tok, h, obj, fieldExpr, rhs));
               proofDependencies?.AddProofDependencyId(cmd, lhs.Origin, new AssignmentDependency(stmt.Origin));
               bldr.Add(cmd);
               // assume $IsGoodHeap($Heap);
               bldr.Add(AssumeGoodHeap(tok, et));
+              EmitQfMutationFacts(tok, preHeap, modifiedObject, fieldExpr, bldr, locals, et);
             }
           });
         }
@@ -317,19 +319,21 @@ public partial class BoogieGenerator {
         prevIndex[i] = fieldName;
         // check that the enclosing modifies clause allows this object to be written:  assert $_Frame[obj,index]);
         var desc = new Modifiable("array location", contextModFrames, sel.Seq, null);
-        if (!TryEmitConcreteModifiesCheck(tok, obj, contextModFrames, etran, builder, desc)) {
-          builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, fieldName), desc, builder.Context));
-        }
+        builder.Add(Assert(tok, FrameMembership(tok, etran.ModifiesFrame(tok), obj, fieldName), desc, builder.Context));
 
         bLhss.Add(null);
         lhsBuilders.Add(delegate (Bpl.Expr rhs, bool origRhsIsHavoc, BoogieStmtListBuilder bldr, ExpressionTranslator et) {
           if (rhs != null) {
             var h = (Bpl.IdentifierExpr)et.HeapExpr;  // TODO: is this cast always justified?
+            var preHeap = UseQuantifierFreeFrames ? SnapshotQfHeap(tok, "$PreWriteHeap#", locals, bldr, et) : null;
+            var modifiedObject = UseQuantifierFreeFrames ? SaveInTemp(obj, true, "$qfWrittenArray", Predef.RefType, bldr, locals) : obj;
+            var modifiedField = UseQuantifierFreeFrames ? SaveInTemp(fieldName, true, "$qfWrittenIndex", Predef.FieldName(tok), bldr, locals) : fieldName;
             var cmd = Bpl.Cmd.SimpleAssign(tok, h, UpdateHeap(tok, h, obj, fieldName, rhs));
             proofDependencies?.AddProofDependencyId(cmd, lhs.Origin, new AssignmentDependency(stmt.Origin));
             bldr.Add(cmd);
             // assume $IsGoodHeap($Heap);
             bldr.Add(AssumeGoodHeap(tok, et));
+            EmitQfMutationFacts(tok, preHeap, modifiedObject, modifiedField, bldr, locals, et);
           }
         });
 
@@ -344,19 +348,21 @@ public partial class BoogieGenerator {
         prevObj[i] = obj;
         prevIndex[i] = fieldName;
         var desc = new Modifiable("array location", contextModFrames, mse.Array, null);
-        if (!TryEmitConcreteModifiesCheck(tok, obj, contextModFrames, etran, builder, desc)) {
-          builder.Add(Assert(tok, Bpl.Expr.SelectTok(tok, etran.ModifiesFrame(tok), obj, fieldName), desc, builder.Context));
-        }
+        builder.Add(Assert(tok, FrameMembership(tok, etran.ModifiesFrame(tok), obj, fieldName), desc, builder.Context));
 
         bLhss.Add(null);
         lhsBuilders.Add(delegate (Bpl.Expr rhs, bool origRhsIsHavoc, BoogieStmtListBuilder bldr, ExpressionTranslator et) {
           if (rhs != null) {
             var h = (Bpl.IdentifierExpr)et.HeapExpr;  // TODO: is this cast always justified?
+            var preHeap = UseQuantifierFreeFrames ? SnapshotQfHeap(tok, "$PreWriteHeap#", locals, bldr, et) : null;
+            var modifiedObject = UseQuantifierFreeFrames ? SaveInTemp(obj, true, "$qfWrittenArray", Predef.RefType, bldr, locals) : obj;
+            var modifiedField = UseQuantifierFreeFrames ? SaveInTemp(fieldName, true, "$qfWrittenIndex", Predef.FieldName(tok), bldr, locals) : fieldName;
             var cmd = Bpl.Cmd.SimpleAssign(tok, h, UpdateHeap(tok, h, obj, fieldName, rhs));
             proofDependencies?.AddProofDependencyId(cmd, lhs.Origin, new AssignmentDependency(stmt.Origin));
             bldr.Add(cmd);
             // assume $IsGoodHeap($Heap);
             bldr.Add(AssumeGoodHeap(tok, etran));
+            EmitQfMutationFacts(tok, preHeap, modifiedObject, modifiedField, bldr, locals, et);
           }
         });
       }

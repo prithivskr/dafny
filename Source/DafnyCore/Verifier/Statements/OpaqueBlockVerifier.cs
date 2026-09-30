@@ -44,16 +44,9 @@ public static class OpaqueBlockVerifier {
 
     BoogieGenerator.ExpressionTranslator beforeBlockExpressionTranslator;
     if (block.Modifies.Expressions.Any()) {
-      var context = new OpaqueBlockContext(codeContext, block);
-      if (context is IMethodCodeContext methodCodeContext) {
-        generator.CheckFrameSubset(
-          block.Origin, block.Modifies.Expressions,
-          null, null, etran, etran.ModifiesFrame(block.Origin), blockBuilder, new ModifyFrameSubset(
-            "opaque block",
-            block.Modifies.Expressions,
-            methodCodeContext.Modifies.Expressions
-          ), null);
-      }
+      var desc = new ModifyFrameSubset("opaque block", block.Modifies.Expressions, codeContext.Modifies.Expressions);
+      generator.CheckFrameSubset(block.Origin, block.Modifies.Expressions,
+        null, null, etran, etran.ModifiesFrame(block.Origin), blockBuilder, desc, null);
 
       var uniqueId = generator.CurrentIdGenerator.FreshId("$Heap_before_opaque");
       var heapAtVariable = locals.GetOrAdd(new Boogie.LocalVariable(block.Origin,
@@ -70,7 +63,7 @@ public static class OpaqueBlockVerifier {
 
     generator.PathAsideBlock(block.Origin, blockBuilder, builder);
 
-    generator.ApplyModifiesEffect(block, beforeBlockExpressionTranslator, etran, builder, block.Modifies, true, block.IsGhost);
+    generator.ApplyModifiesEffect(block, beforeBlockExpressionTranslator, etran, builder, locals, block.Modifies, true, block.IsGhost);
     builder.Add(new HavocCmd(Token.NoToken, assignedVariables.Select(v => new BoogieIdentifierExpr(v.Origin, v.UniqueName)).ToList()));
 
     foreach (var ensure in totalEnsures) {
@@ -84,7 +77,7 @@ public static class OpaqueBlockVerifier {
     BoogieGenerator.ExpressionTranslator bodyTranslator;
     if (block.Modifies.Expressions.Any()) {
       string modifyFrameName = BoogieGenerator.FrameVariablePrefix + generator.CurrentIdGenerator.FreshId("opaque#");
-      generator.DefineFrame(block.Origin, etran.ModifiesFrame(block.Origin), block.Modifies.Expressions, blockBuilder, locals, modifyFrameName);
+      generator.DefineFrame(block.Origin, etran.ModifiesFrame(block.Origin), block.Modifies.Expressions, blockBuilder, locals, modifyFrameName, etran);
       bodyTranslator = etran.WithModifiesFrame(modifyFrameName);
     } else {
       bodyTranslator = etran;

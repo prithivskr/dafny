@@ -681,7 +681,7 @@ namespace Microsoft.Dafny {
         var modifies = m.Mod;
         var allowsAllocation = m.AllowsAllocation;
 
-        ApplyModifiesEffect(m, etran.Old, etran, builder, modifies, allowsAllocation, m.IsGhost);
+        ApplyModifiesEffect(m, etran.Old, etran, builder, localVariables, modifies, allowsAllocation, m.IsGhost);
       }
 
       // also play havoc with the out parameters
@@ -719,10 +719,22 @@ namespace Microsoft.Dafny {
     }
 
     public void ApplyModifiesEffect(INode node, ExpressionTranslator beforeBlockExpressionTranslator,
-      ExpressionTranslator etran, BoogieStmtListBuilder builder,
+      ExpressionTranslator etran, BoogieStmtListBuilder builder, Variables locals,
       Specification<FrameExpression> modifies, bool allowsAllocation, bool isGhostContext) {
+      if (UseQuantifierFreeFrames && beforeBlockExpressionTranslator.HeapExpr == etran.HeapExpr) {
+        beforeBlockExpressionTranslator = new ExpressionTranslator(etran,
+          SnapshotQfHeap(node.Origin, "$PreHavocHeap#", locals, builder, etran));
+      }
+      List<QfFrameComponent> components = null;
+      if (UseQuantifierFreeFrames) {
+        TryQfFrameComponents(node.Origin, modifies.Expressions, beforeBlockExpressionTranslator, out components);
+      }
       // play havoc with the heap according to the modifies clause
-      builder.Add(new Boogie.HavocCmd(node.Origin, [etran.HeapCastToIdentifierExpr]));
+      var targets = new List<Bpl.IdentifierExpr> { etran.HeapCastToIdentifierExpr };
+      if (UseQuantifierFreeFrames && allowsAllocation) {
+        targets.Add(AllocStateIdentifierExpr(node.Origin));
+      }
+      builder.Add(new Boogie.HavocCmd(node.Origin, targets));
       // assume the usual two-state boilerplate information
       foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(node.Origin, modifies.Expressions, isGhostContext,
                  allowsAllocation, beforeBlockExpressionTranslator, etran, beforeBlockExpressionTranslator)) {
@@ -731,6 +743,12 @@ namespace Microsoft.Dafny {
         }
         if (tri.IsFree) {
           builder.Add(TrAssumeCmd(node.Origin, tri.Expr));
+        }
+      }
+      if (UseQuantifierFreeFrames && SupportsQfFrame(modifies.Expressions)) {
+        foreach (var fact in QfTransitionFacts(node.Origin, locals, beforeBlockExpressionTranslator, etran, components,
+                   QfRelevantExpressions(locals), allowsAllocation)) {
+          builder.Add(fact);
         }
       }
     }
@@ -951,17 +969,7 @@ namespace Microsoft.Dafny {
       Contract.Requires(m != null);
       Contract.Requires(m.EnclosingClass != null && m.EnclosingClass is ClassLikeDecl);
 
-      // play havoc with the heap according to the modifies clause
-      builder.Add(new Bpl.HavocCmd(m.Origin, [etran.HeapCastToIdentifierExpr]));
-      // assume the usual two-state boilerplate information
-      foreach (BoilerplateTriple tri in GetTwoStateBoilerplate(m.Origin, m.Mod.Expressions, m.IsGhost, m.AllowsAllocation, etran.Old, etran, etran.Old)) {
-        if (UseQuantifierFreeFrames && IsQuantifiedFrameConditionBoilerplate(tri) && !NeedsLegacyModifiesFrame(m.Mod.Expressions, etran)) {
-          continue;
-        }
-        if (tri.IsFree) {
-          builder.Add(TrAssumeCmd(m.Origin, tri.Expr));
-        }
-      }
+      ApplyModifiesEffect(m, etran.Old, etran, builder, localVariables, m.Mod, m.AllowsAllocation, m.IsGhost);
     }
 
     private void AddFunctionOverrideCheckImpl(Function f) {

@@ -110,6 +110,9 @@ namespace Microsoft.Dafny {
           function.AlwaysRevealed = true;
         }
         Predef = FindPredefinedDecls(boogieProgram);
+        if (Predef != null) {
+          ConfigureP3SetEquality();
+        }
       }
     }
 
@@ -1814,6 +1817,7 @@ namespace Microsoft.Dafny {
     }
 
     private void Reset() {
+      qfFrames.Clear();
       currentModule = null;
       codeContext = null;
       CurrentIdGenerator.Reset();
@@ -2416,11 +2420,9 @@ namespace Microsoft.Dafny {
 
       // set up the information used to verify the method's reads and modifies clauses
       if (etran.readsFrame != null) {
-        DefineFrame(m.Origin, etran.ReadsFrame(m.Origin), m.Reads.Expressions, builder, localVariables, null);
+        DefineFrame(m.Origin, etran.ReadsFrame(m.Origin), m.Reads.Expressions, builder, localVariables, null, etran);
       }
-      if (NeedsLegacyModifiesFrame(m.Mod.Expressions, etran)) {
-        DefineFrame(m.Origin, etran.ModifiesFrame(m.Origin), m.Mod.Expressions, builder, localVariables, null);
-      }
+      DefineFrame(m.Origin, etran.ModifiesFrame(m.Origin), m.Mod.Expressions, builder, localVariables, null, etran);
       if (wellformednessProc) {
         builder.AddCaptureState(m.Origin, false, "initial state");
       } else {
@@ -2447,6 +2449,10 @@ namespace Microsoft.Dafny {
         // sit inside of an "old" expression.
         etran = new ExpressionTranslator(this, Predef, tok, null);
       }
+      if (TryDefineQfFrame(tok, frameIdentifier, frameClause, builder, localVariables, name, etran)) {
+        return;
+      }
+      qfFrames.Remove(name ?? frameIdentifier.Name);
       // Declare a local variable $_Frame: [ref, Field]bool
       var frame = localVariables.GetOrAdd(new Bpl.LocalVariable(tok, new Bpl.TypedIdent(tok, name ?? frameIdentifier.Name, frameIdentifier.Type)));
       // $_Frame := (lambda $o: ref, $f: Field :: $o != null && $Heap[$o,alloc] ==> ($o,$f) in Modifies/Reads-Clause);
@@ -2497,6 +2503,10 @@ namespace Microsoft.Dafny {
         makeAssert(tok, Bpl.Expr.False, desc, kv);
         return;
       }
+      if (TryQfFrameSubset(tok, calleeFrame, receiverReplacement, substMap, etran, enclosingFrame,
+            makeAssert, makeAssume, desc, kv)) {
+        return;
+      }
 
       foreach (var frameExpression in calleeFrame) {
         var e = substMap != null ? Substitute(frameExpression.E, receiverReplacement, substMap) : frameExpression.E;
@@ -2531,6 +2541,17 @@ namespace Microsoft.Dafny {
       Contract.Requires(Predef != null);
 
       // emit: assert (forall o: ref, f: Field :: o != null && $Heap[o,alloc] ==> !frame[o,f]);
+      if (UseQuantifierFreeFrames && qfFrames.TryGetValue(frame.Name, out var snapshot)) {
+        var objLocal = snapshot.Locals.GetOrAdd(new Bpl.LocalVariable(tok,
+          new Bpl.TypedIdent(tok, CurrentIdGenerator.FreshId("$qfEmptyObject#"), Predef.RefType)));
+        var fieldLocal = snapshot.Locals.GetOrAdd(new Bpl.LocalVariable(tok,
+          new Bpl.TypedIdent(tok, CurrentIdGenerator.FreshId("$qfEmptyField#"), Predef.FieldName(tok))));
+        var arbitraryObject = new Bpl.IdentifierExpr(tok, objLocal);
+        var arbitraryField = new Bpl.IdentifierExpr(tok, fieldLocal);
+        builder.Add(Assert(tok, BplImp(BplAnd(Bpl.Expr.Neq(arbitraryObject, Predef.Null), etran.IsAlloced(tok, arbitraryObject)),
+          Bpl.Expr.Not(FrameMembership(tok, frame, arbitraryObject, arbitraryField))), desc, builder.Context, kv));
+        return;
+      }
       var oVar = new Bpl.BoundVariable(tok, new Bpl.TypedIdent(tok, "$o", Predef.RefType));
       var o = new Bpl.IdentifierExpr(tok, oVar);
       var fVar = new Bpl.BoundVariable(tok, new Bpl.TypedIdent(tok, "$f", Predef.FieldName(tok)));
@@ -3498,6 +3519,11 @@ namespace Microsoft.Dafny {
       //      o != null && old($Heap)[o,alloc] ==>
       //        $Heap[o,f] == PreHeap[o,f] ||
       //        $_Frame[o,f])
+      if (UseQuantifierFreeFrames && qfFrames.TryGetValue(frameExpr.Name, out var frame)) {
+        return QfTransitionFacts(tok, frame.Locals, etranPre, etran, frame.Components,
+          QfRelevantExpressions(frame.Locals), codeContext.AllowsAllocation)
+          .Aggregate((Bpl.Expr)Bpl.Expr.True, (acc, fact) => BplAnd(acc, fact.Expr));
+      }
       Bpl.BoundVariable oVar = new Bpl.BoundVariable(tok, new Bpl.TypedIdent(tok, "$o", Predef.RefType));
       Bpl.IdentifierExpr o = new Bpl.IdentifierExpr(tok, oVar);
       Bpl.BoundVariable fVar = new Bpl.BoundVariable(tok, new Bpl.TypedIdent(tok, "$f", Predef.FieldName(tok)));
@@ -4209,6 +4235,9 @@ namespace Microsoft.Dafny {
       if (UseQuantifierFreeFrames && normalizedType.IsRefType) {
         return BplOr(Bpl.Expr.Eq(x, Predef.Null), IsAlloced(ToDafnyToken(x.tok), h, x));
       }
+      if (UseQuantifierFreeFrames && normalizedType.NormalizeToAncestorType() is SetType { Finite: true } set && set.Arg.IsRefType) {
+        return QfSetAllocated(ToDafnyToken(x.tok), x, h);
+      }
       return MkIsAlloc(x, TypeToTy(t), h, ModeledAsBoxType(t));
     }
 
@@ -4217,6 +4246,9 @@ namespace Microsoft.Dafny {
       if (UseQuantifierFreeFrames && normalizedType.IsRefType) {
         var unboxedRef = ApplyUnbox(x.tok, x, Predef.RefType);
         return BplOr(Bpl.Expr.Eq(unboxedRef, Predef.Null), IsAlloced(ToDafnyToken(x.tok), h, unboxedRef));
+      }
+      if (UseQuantifierFreeFrames && normalizedType.NormalizeToAncestorType() is SetType { Finite: true } set && set.Arg.IsRefType) {
+        return QfSetAllocated(ToDafnyToken(x.tok), ApplyUnbox(x.tok, x, Predef.SetType), h);
       }
       return MkIsAlloc(x, TypeToTy(t), h, true);
     }

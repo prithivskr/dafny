@@ -182,11 +182,10 @@ public partial class BoogieGenerator {
     var preloopheap = "$PreLoopHeap$" + suffix;
     var preLoopHeapVar = locals.GetOrCreate(preloopheap, () => new Bpl.LocalVariable(loop.Origin, new Bpl.TypedIdent(loop.Origin, preloopheap, Predef.HeapType)));
     Bpl.IdentifierExpr preLoopHeap = new Bpl.IdentifierExpr(loop.Origin, preLoopHeapVar);
-    ExpressionTranslator etranPreLoop = new ExpressionTranslator(this, Predef, preLoopHeap, etran.scope);
+    ExpressionTranslator etranPreLoop = new ExpressionTranslator(etran, preLoopHeap);
     ExpressionTranslator updatedFrameEtran;
     string loopFrameName = FrameVariablePrefix + suffix;
-    var useLegacyLoopFrame = loop.Mod.Expressions != null && NeedsLegacyModifiesFrame(loop.Mod.Expressions, etran);
-    if (useLegacyLoopFrame) {
+    if (loop.Mod.Expressions != null) {
       updatedFrameEtran = etran.WithModifiesFrame(loopFrameName);
     } else {
       updatedFrameEtran = etran;
@@ -195,12 +194,8 @@ public partial class BoogieGenerator {
     if (loop.Mod.Expressions != null) { // check well-formedness and that the modifies is a subset
       CheckFrameWellFormed(new WFOptions(), loop.Mod.Expressions, locals, builder, etran);
       var desc = new ModifyFrameSubset("loop modifies clause", loop.Mod.Expressions, GetContextModifiesFrames());
-      if (!TryEmitConcreteFrameSubset(loop.Origin, loop.Mod.Expressions, GetContextModifiesFrames(), null, null, etran, builder, desc, null)) {
-        CheckFrameSubset(loop.Origin, loop.Mod.Expressions, null, null, etran, etran.ModifiesFrame(loop.Origin), builder, desc, null);
-      }
-      if (useLegacyLoopFrame) {
-        DefineFrame(loop.Origin, etran.ModifiesFrame(loop.Origin), loop.Mod.Expressions, builder, locals, loopFrameName);
-      }
+      CheckFrameSubset(loop.Origin, loop.Mod.Expressions, null, null, etran, etran.ModifiesFrame(loop.Origin), builder, desc, null);
+      DefineFrame(loop.Origin, etran.ModifiesFrame(loop.Origin), loop.Mod.Expressions, builder, locals, loopFrameName, etran);
     }
     builder.Add(Bpl.Cmd.SimpleAssign(loop.Origin, preLoopHeap, etran.HeapExpr));
     if (UseQuantifierFreeFrames) {
@@ -282,7 +277,7 @@ public partial class BoogieGenerator {
       }
       var emittedQfLoopFrame = false;
       if (UseQuantifierFreeFrames) {
-        emittedQfLoopFrame = TryBuildLoopQfFrameFacts(loop.Origin, loop, Guard, locals, etranPreLoop.HeapExpr, etranPreLoop, out var qfInvariants);
+        emittedQfLoopFrame = TryBuildLoopQfFrameFacts(loop.Origin, loop, Guard, locals, etranPreLoop.HeapExpr, updatedFrameEtran, out var qfInvariants);
         invariants.AddRange(qfInvariants);
       }
       // include boilerplate invariants

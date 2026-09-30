@@ -398,7 +398,7 @@ namespace Microsoft.Dafny {
             if (!origOptions.LValueContext && wfOptions.DoReadsChecks && e.Member is Field { IsMutable: true } f) {
               var requiredFrame = new FrameExpression(Token.NoToken, e.Obj, f.Name);
               var desc = new ReadFrameSubset("read field", requiredFrame, readFrames, selectExpr, etran.scope);
-              wfOptions.AssertSink(this, builder)(selectExpr.Origin, Bpl.Expr.SelectTok(selectExpr.Origin, etran.ReadsFrame(selectExpr.Origin), etran.TrExpr(e.Obj), GetField(e)),
+              wfOptions.AssertSink(this, builder)(selectExpr.Origin, FrameMembership(selectExpr.Origin, etran.ReadsFrame(selectExpr.Origin), etran.TrExpr(e.Obj), GetField(e)),
                 desc, wfOptions.AssertKv);
             }
 
@@ -480,7 +480,7 @@ namespace Microsoft.Dafny {
                 Bpl.Expr fieldName = FunctionCall(selectExpr.Origin, BuiltinFunction.IndexField, null, i);
                 var requiredFrame = new FrameExpression(Token.NoToken, e.Seq, null);
                 var desc = new ReadFrameSubset("read array element", requiredFrame, readFrames, e, etran.scope);
-                wfOptions.AssertSink(this, builder)(selectExpr.Origin, Bpl.Expr.SelectTok(selectExpr.Origin, etran.ReadsFrame(selectExpr.Origin), seq, fieldName),
+                wfOptions.AssertSink(this, builder)(selectExpr.Origin, FrameMembership(selectExpr.Origin, etran.ReadsFrame(selectExpr.Origin), seq, fieldName),
                   desc, wfOptions.AssertKv);
               } else {
                 Bpl.Expr lowerBound = e.E0 == null ? Bpl.Expr.Literal(0) : etran.TrExpr(e.E0);
@@ -491,7 +491,7 @@ namespace Microsoft.Dafny {
                 Bpl.IdentifierExpr i = new Bpl.IdentifierExpr(e.Origin, iVar);
                 var range = BplAnd(Bpl.Expr.Le(lowerBound, i), Bpl.Expr.Lt(i, upperBound));
                 var fieldName = FunctionCall(e.Origin, BuiltinFunction.IndexField, null, i);
-                var allowedToRead = Bpl.Expr.SelectTok(e.Origin, etran.ReadsFrame(e.Origin), seq, fieldName);
+                var allowedToRead = FrameMembership(e.Origin, etran.ReadsFrame(e.Origin), seq, fieldName);
                 var trigger = BplTrigger(allowedToRead); // Note, the assertion we're about to produce only seems useful in the check-only mode (that is, with subsumption 0), but if it were to be assumed, we'll use this entire RHS as the trigger
                 var qq = new Bpl.ForallExpr(e.Origin, [iVar], trigger, BplImp(range, allowedToRead));
                 var requiredFrame = new FrameExpression(Token.NoToken, e.Seq, null);
@@ -515,7 +515,7 @@ namespace Microsoft.Dafny {
               Bpl.Expr fieldName = etran.GetArrayIndexFieldName(e.Origin, indices);
               var requiredFrame = new FrameExpression(Token.NoToken, e.Array, null);
               var desc = new ReadFrameSubset("read array element", requiredFrame, readFrames, selectExpr, etran.scope);
-              wfOptions.AssertSink(this, builder)(selectExpr.Origin, Bpl.Expr.SelectTok(selectExpr.Origin, etran.ReadsFrame(selectExpr.Origin), array, fieldName),
+              wfOptions.AssertSink(this, builder)(selectExpr.Origin, FrameMembership(selectExpr.Origin, etran.ReadsFrame(selectExpr.Origin), array, fieldName),
                 desc, wfOptions.AssertKv);
             }
 
@@ -1621,6 +1621,9 @@ namespace Microsoft.Dafny {
           Contract.Assert(false); throw new Cce.UnreachableException();  // unexpected expression
       }
 
+      if (!origOptions.LValueContext) {
+        EmitQfSetFacts(expr, builder, etran);
+      }
       addResultCommands?.Invoke(builder, expr);
     }
 

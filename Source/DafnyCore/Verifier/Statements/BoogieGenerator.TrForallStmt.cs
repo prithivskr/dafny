@@ -328,10 +328,8 @@ public partial class BoogieGenerator {
       _ => throw new Cce.UnreachableException()
     };
     var desc = new Modifiable(description, GetContextModifiesFrames(), lhsObj, lhsField);
-    if (!TryEmitConcreteModifiesCheck(lhs.Origin, obj, GetContextModifiesFrames(), etran, definedness, desc)) {
-      definedness.Add(Assert(lhs.Origin, Bpl.Expr.SelectTok(lhs.Origin, etran.ModifiesFrame(lhs.Origin), obj, F),
-        desc, definedness.Context));
-    }
+    definedness.Add(Assert(lhs.Origin, FrameMembership(lhs.Origin, etran.ModifiesFrame(lhs.Origin), obj, F),
+      desc, definedness.Context));
     if (s0.Rhs is ExprRhs) {
       var r = (ExprRhs)s0.Rhs;
       var rhs = Substitute(r.Expr, null, substMap);

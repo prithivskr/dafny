@@ -99,7 +99,7 @@ public partial class BoogieGenerator {
       builder.AddCaptureState(f.Origin, false, "initial state");
 
       if (etran.readsFrame != null) {
-        generator.DefineFrame(f.Origin, etran.ReadsFrame(f.Origin), f.Reads.Expressions, builder, locals, null);
+        generator.DefineFrame(f.Origin, etran.ReadsFrame(f.Origin), f.Reads.Expressions, builder, locals, null, etran);
       }
       generator.InitializeFuelConstant(f.Origin, builder, etran);
 
