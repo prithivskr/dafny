@@ -1818,6 +1818,7 @@ namespace Microsoft.Dafny {
 
     private void Reset() {
       qfFrames.Clear();
+      qfObservedExpressions.Clear();
       currentModule = null;
       codeContext = null;
       CurrentIdGenerator.Reset();

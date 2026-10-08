@@ -38,6 +38,53 @@ public partial class BoogieGenerator {
     AddQfSetFacts(expression, etran, fact => builder.Add(TrAssumeCmd(expression.Origin, fact)));
   }
 
+  private void EmitQfPostconditionSetFacts(MethodOrConstructor method, BoogieStmtListBuilder builder, ExpressionTranslator etran) {
+    if (!UseQuantifierFreeFrames || !options.Get(CommonOptionBag.Prelude3)) {
+      return;
+    }
+    Bpl.Expr guard = Bpl.Expr.True;
+    foreach (var ensures in method.Ens) {
+      EmitQfContractSetFacts(ensures.E, builder, etran, guard);
+      guard = BplAnd(guard, etran.TrExpr(ensures.E));
+    }
+  }
+
+  // A callee's postcondition is assumed without running its well-formedness
+  // checker in the caller. Instantiate finite-set laws for its subexpressions
+  // too, respecting the same short-circuit domains as well-formedness checking.
+  private void EmitQfContractSetFacts(Expression expression, BoogieStmtListBuilder builder,
+    ExpressionTranslator etran, Bpl.Expr guard = null) {
+    if (!UseQuantifierFreeFrames || !options.Get(CommonOptionBag.Prelude3)) {
+      return;
+    }
+    expression = expression.Resolved;
+    guard ??= Bpl.Expr.True;
+    if (expression is ComprehensionExpr or LetExpr or StaticReceiverExpr) {
+      return;
+    }
+    if (expression is OldExpr old) {
+      EmitQfContractSetFacts(old.Expr, builder, etran.OldAt(old.AtLabel), guard);
+      return;
+    }
+    if (expression is ITEExpr ite) {
+      EmitQfContractSetFacts(ite.Test, builder, etran, guard);
+      var test = etran.TrExpr(ite.Test);
+      EmitQfContractSetFacts(ite.Thn, builder, etran, BplAnd(guard, test));
+      EmitQfContractSetFacts(ite.Els, builder, etran, BplAnd(guard, Bpl.Expr.Not(test)));
+    } else if (expression is BinaryExpr binary &&
+               binary.ResolvedOp is BinaryExpr.ResolvedOpcode.And or BinaryExpr.ResolvedOpcode.Imp or BinaryExpr.ResolvedOpcode.Or) {
+      EmitQfContractSetFacts(binary.E0, builder, etran, guard);
+      var left = etran.TrExpr(binary.E0);
+      var rightGuard = binary.ResolvedOp == BinaryExpr.ResolvedOpcode.Or ? Bpl.Expr.Not(left) : left;
+      EmitQfContractSetFacts(binary.E1, builder, etran, BplAnd(guard, rightGuard));
+    } else {
+      foreach (var sub in expression.SubExpressions) {
+        EmitQfContractSetFacts(sub, builder, etran, guard);
+      }
+    }
+    AddQfSetFacts(expression, etran, fact => builder.Add(TrAssumeCmd(expression.Origin, BplImp(guard, fact))));
+  }
+
   private void AddQfSetFacts(Expression expression, ExpressionTranslator etran, Action<Bpl.Expr> emit) {
     if (!UseQuantifierFreeFrames || !options.Get(CommonOptionBag.Prelude3)) {
       return;

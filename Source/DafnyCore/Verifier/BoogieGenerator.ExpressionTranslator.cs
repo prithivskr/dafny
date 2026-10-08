@@ -139,6 +139,12 @@ namespace Microsoft.Dafny {
         Contract.Requires(thisVar != null);
       }
 
+      public ExpressionTranslator(ExpressionTranslator etran, Boogie.Expr heap, Boogie.Expr oldHeap)
+        : this(etran, heap) {
+        oldEtran = new ExpressionTranslator(etran, oldHeap);
+        oldEtran.oldEtran = oldEtran;
+      }
+
       public ExpressionTranslator(ExpressionTranslator etran, Boogie.Expr heap)
         : this(etran.BoogieGenerator, etran.Predef, heap, etran.This, etran.applyLimited_CurrentFunction, etran.layerInterCluster, etran.layerIntraCluster, etran.scope, etran.readsFrame, etran.modifiesFrame, etran.stripLits) {
         Contract.Requires(etran != null);

@@ -109,14 +109,10 @@ namespace Microsoft.Dafny {
           return;
         }
 
-        // QF mode: the universal $Is axiom for reference types is dropped.
-        // $Is facts are established locally:
-        //   (a) via `where` clauses on procedure in-parameters (GetWhereClause returns MkIs for ref types),
-        //   (b) via `assume $nw != null && $Is($nw, type)` at each allocation site (SelectAllocateObject).
-        // Keeping a global `forall $o :: $Is($o, TClassA(G)) <=> ...` would reintroduce quantifiers.
-        if (UseQuantifierFreeFrames && !is_alloc) {
-          return;
-        }
+        // Reference type membership is heap independent background theory.
+        // Keep its connection to dynamic types in QF heap mode: isolated $Is
+        // assumptions cannot establish that instances of distinct classes are
+        // distinct, which is needed to frame Node reads across a LinkedSet write.
 
         var vars = MkTyParamBinders(GetTypeParams(c), out var tyexprs);
 
@@ -755,6 +751,9 @@ namespace Microsoft.Dafny {
 
     private StmtList TrMethodBody(MethodOrConstructor m, BoogieStmtListBuilder builder, Variables localVariables,
       ExpressionTranslator etran) {
+      foreach (var requires in m.Req) {
+        EmitQfContractSetFacts(requires.E, builder, etran);
+      }
       var inductionVars = ApplyInduction(m.Ins, m.Attributes);
       if (inductionVars.Count != 0) {
         // Let the parameters be this,x,y of the method M and suppose ApplyInduction returns this,y.
@@ -871,6 +870,7 @@ namespace Microsoft.Dafny {
       // translate the body
       TrStmt(m.Body, builder, localVariables, etran);
       m.Outs.ForEach(p => CheckDefiniteAssignmentReturn(m.Body.EndToken, p, builder));
+      EmitQfPostconditionSetFacts(m, builder, etran);
       if (m is { FunctionFromWhichThisIsByMethodDecl: { ByMethodTok: { } } fun }) {
         AssumeCanCallForByMethodDecl(m, builder);
       }

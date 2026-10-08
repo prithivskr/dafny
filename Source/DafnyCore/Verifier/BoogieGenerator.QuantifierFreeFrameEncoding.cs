@@ -9,6 +9,7 @@ public partial class BoogieGenerator {
   private record QfFrameComponent(Bpl.Expr Objects, Bpl.Expr Field);
   private record QfFrameSnapshot(List<QfFrameComponent> Components, Bpl.Expr Alloc, Variables Locals);
   private readonly Dictionary<string, QfFrameSnapshot> qfFrames = new();
+  private readonly List<Expression> qfObservedExpressions = new();
   private bool qfAllocSetConfigured;
 
   private Bpl.Expr QfAllocatedSet(IOrigin tok, Bpl.Expr alloc) {
@@ -128,6 +129,24 @@ public partial class BoogieGenerator {
       var substituted = substitutions == null ? expression.E : Substitute(expression.E, receiver, substitutions);
       makeAssume(expression.Origin, etran.CanCallAssumption(substituted));
     }
+    var substitutedFrame = calleeFrame.Select(expression => new FrameExpression(expression.Origin,
+      Substitute(expression.E, receiver, substitutions ?? new Dictionary<IVariable, Expression>()), expression.FieldName) {
+      Field = expression.Field
+    }).ToList();
+    if (TryQfFrameComponents(tok, substitutedFrame, etran, out var required)) {
+      // Keep symbolic footprints and freshness in the same set encoding.
+      // Only the field is arbitrary: each object-set inclusion checks all
+      // locations at once, including freshly allocated sets returned by calls.
+      var arbitraryField = frame.Locals.GetOrAdd(new Bpl.LocalVariable(tok,
+        new Bpl.TypedIdent(tok, CurrentIdGenerator.FreshId("$qfSubsetField#"), Predef.FieldName(tok))));
+      var fieldId = new Bpl.IdentifierExpr(tok, arbitraryField);
+      Bpl.Expr ObjectsAtField(IEnumerable<QfFrameComponent> components) => components.Aggregate(QfEmptySet(tok),
+        (objects, component) => QfSetUnion(tok, objects, component.Field == null ? component.Objects :
+          QfIte(tok, Bpl.Expr.Eq(fieldId, component.Field), component.Objects, QfEmptySet(tok))));
+      var existingRequired = QfSetIntersection(tok, ObjectsAtField(required), QfAllocatedSet(tok, frame.Alloc));
+      makeAssert(tok, QfSetSubset(tok, existingRequired, ObjectsAtField(frame.Components)), description, attributes);
+      return true;
+    }
     // Unassigned, unconstrained implementation locals denote arbitrary values.
     // Unlike a map lambda/forall, this introduces no quantified heap encoding.
     var objLocal = frame.Locals.GetOrAdd(new Bpl.LocalVariable(tok,
@@ -143,12 +162,23 @@ public partial class BoogieGenerator {
   }
 
   private bool QfExpressionInScope(Expression expression, Variables locals) {
-    if (expression is OldExpr or ComprehensionExpr or LetExpr) {
+    expression = expression.Resolved;
+    if (expression is OldExpr or ComprehensionExpr or LetExpr or StaticReceiverExpr or ImplicitThisExprConstructorCall) {
       return false;
+    }
+    if (expression is ThisExpr) {
+      return codeContext is MemberDecl { IsStatic: false } or IteratorDecl;
     }
     if (expression is IdentifierExpr identifier) {
       return identifier.Var is Formal || identifier.Var is LocalVariable local &&
         locals.GetValueOrDefault(local.AssignUniqueName(CurrentDeclaration.IdGenerator)) != null;
+    }
+    // Static receivers identify a declaration; they are not runtime arguments.
+    if (expression is FunctionCallExpr { Function.IsStatic: true } call) {
+      return call.Args.All(arg => QfExpressionInScope(arg, locals));
+    }
+    if (expression is MemberSelectExpr { Member.IsStatic: true }) {
+      return true;
     }
     return expression.SubExpressions.All(sub => QfExpressionInScope(sub.Resolved, locals));
   }
@@ -164,8 +194,11 @@ public partial class BoogieGenerator {
       expressions.AddRange(body.SubExpressionsIncludingTransitiveSubStatements);
     }
     if (extra != null) {
-      expressions.AddRange(extra);
+      qfObservedExpressions.AddRange(extra);
     }
+    // A read exposed by an earlier callee's contract must still be framed at
+    // later transitions, even if the caller's own source never mentions it.
+    expressions.AddRange(qfObservedExpressions);
     // Filter individual ground terms after traversal. Filtering a whole
     // postcondition would discard its current-state terms merely because a
     // different conjunct contains old(...), a quantifier, or a let binding.
@@ -194,7 +227,15 @@ public partial class BoogieGenerator {
   private void CollectQfTerms(Expression expression, List<FunctionCallExpr> calls, List<Expression> reads, List<Expression> references,
     HashSet<Function> active) {
     expression = expression.Resolved;
-    if (expression is OldExpr or ComprehensionExpr or LetExpr) {
+    if (expression is StaticReceiverExpr staticReceiver) {
+      if (staticReceiver.ObjectToDiscard != null) {
+        CollectQfTerms(staticReceiver.ObjectToDiscard, calls, reads, references, active);
+      }
+      return;
+    }
+    // A constructor's AST receiver is a throw-away placeholder, not the
+    // enclosing method's this (which may not even exist in a static caller).
+    if (expression is OldExpr or ComprehensionExpr or LetExpr or ImplicitThisExprConstructorCall) {
       return;
     }
     if (expression.Type?.IsRefType == true) {

@@ -392,10 +392,17 @@ public partial class BoogieGenerator {
 
       // The call-frame facts below inspect postconditions to discover their
       // heap reads.  Unlike input formals, output formals are not part of
-      // directSubstMap.  Substitute them with the Boogie temporaries used as
+      // substMap.  Substitute them with the Boogie temporaries used as
       // call outputs; otherwise the translated postcondition can contain an
       // undeclared callee-local name (for example, `node#0_0` from Create).
-      var qfPostconditionSubstMap = new Dictionary<IVariable, Expression>(directSubstMap);
+      // Input temporaries retain their pre-call values even when evaluating
+      // the original argument expression after the call would read changed fields.
+      var qfPostconditionSubstMap = new Dictionary<IVariable, Expression>(substMap);
+      // Constructors return their receiver in Boogie. Their AST receiver is
+      // only a placeholder and must never become a ground term in the caller.
+      var qfPostconditionReceiver = method is Constructor
+        ? new BoogieWrapper(outs[0], receiver.Type)
+        : method.IsStatic ? receiver : new BoogieWrapper(new ExpressionTranslator(etran, preCallHeap).TrExpr(receiver), receiver.Type);
       if (method is not Constructor) {
         Contract.Assert(callee.Outs.Count == outs.Count);
         for (var i = 0; i < callee.Outs.Count; i++) {
@@ -403,9 +410,11 @@ public partial class BoogieGenerator {
             new BoogieWrapper(outs[i], callee.Outs[i].Type.Subst(tySubst)));
         }
       }
+      var qfPostconditionEtran = new ExpressionTranslator(etran, etran.HeapExpr, preCallHeap);
       foreach (var ensures in callee.Ens) {
-        var substitutedEnsures = Substitute(ensures.E, receiver, qfPostconditionSubstMap, tySubst);
+        var substitutedEnsures = Substitute(ensures.E, qfPostconditionReceiver, qfPostconditionSubstMap, tySubst);
         qfDafnyRelevantExprs.Add(substitutedEnsures);
+        EmitQfContractSetFacts(substitutedEnsures, builder, qfPostconditionEtran);
       }
 
       qfDafnyRelevantExprs.AddRange(callee.Req.Select(req =>
