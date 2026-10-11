@@ -755,7 +755,7 @@ namespace Microsoft.Dafny {
         EmitQfContractSetFacts(requires.E, builder, etran);
       }
       var inductionVars = ApplyInduction(m.Ins, m.Attributes);
-      if (inductionVars.Count != 0) {
+      if (inductionVars.Count != 0 && !UseQuantifierFreeVerification) {
         // Let the parameters be this,x,y of the method M and suppose ApplyInduction returns this,y.
         // Also, let Pre be the precondition and VF be the decreases clause.
         // Then, insert into the method body what amounts to:

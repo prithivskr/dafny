@@ -94,6 +94,9 @@ namespace Microsoft.Dafny {
     [NotDelayed]
     public BoogieGenerator(ErrorReporter reporter, ProofDependencyManager depManager, TranslatorFlags flags = null) {
       this.options = reporter.Options;
+      if (UseQuantifierFreeVerification) {
+        options.TypeEncodingMethod = Bpl.CoreOptions.TypeEncoding.Monomorphic;
+      }
       this.flags = new TranslatorFlags(options);
       this.proofDependencies = depManager;
       this.reporter = reporter;
@@ -111,6 +114,7 @@ namespace Microsoft.Dafny {
         }
         Predef = FindPredefinedDecls(boogieProgram);
         if (Predef != null) {
+          ConfigureQfNativeArrays();
           ConfigureP3SetEquality();
         }
       }
@@ -926,6 +930,9 @@ namespace Microsoft.Dafny {
 
       Type.PopScope(this.currentScope);
       Type.DisableScopes();
+      if (UseQuantifierFreeVerification) {
+        LowerQuantifierFreeProgram();
+      }
       return sink;
 
     }
@@ -1693,7 +1700,8 @@ namespace Microsoft.Dafny {
       Contract.Ensures(Contract.Result<Bpl.Expr>() != null);
 
       if (UseQuantifierFreeFrames) {
-        return Bpl.Expr.SelectTok(tok, AllocStateExprForHeapExpr(tok, heapExpr), e);
+        return Bpl.Expr.SelectTok(tok, AllocStateExprForHeapExpr(tok, heapExpr),
+          UseQuantifierFreeVerification ? ApplyBox(tok, e) : e);
       }
       return ApplyUnbox(tok, ReadHeap(tok, heapExpr, e, Predef.Alloc(tok)), Bpl.Type.Bool);
     }
@@ -4219,6 +4227,25 @@ namespace Microsoft.Dafny {
 
     // Boxes, if necessary
     Bpl.Expr MkIs(Bpl.Expr x, Type t, Bpl.IToken tok = null) {
+      if (UseQuantifierFreeVerification && t.NormalizeToAncestorType() is SetType { Finite: true } set &&
+          QfWithoutTypeCoercion(x) is Bpl.NAryExpr application) {
+        if (application.Fun is Bpl.IfThenElse) {
+          return QfIte(ToDafnyToken(tok ?? x.tok), application.Args[0], MkIs(application.Args[1], t, tok), MkIs(application.Args[2], t, tok));
+        }
+        switch ((application.Fun as Bpl.FunctionCall)?.FunctionName) {
+          case "Set#Empty":
+            return Bpl.Expr.True;
+          case "Set#Union":
+            return BplAnd(MkIs(application.Args[0], t, tok), MkIs(application.Args[1], t, tok));
+          case "Set#UnionOne":
+            var element = application.Args[1];
+            var value = ApplyUnbox(element.tok, element, TrType(set.Arg));
+            return BplAnd(MkIs(application.Args[0], t, tok),
+              BplAnd(MkIs(value, set.Arg, tok), Bpl.Expr.Eq(ApplyBox(element.tok, value), element)));
+          case "Lit":
+            return MkIs(application.Args[0], t, tok);
+        }
+      }
       return MkIs(x, TypeToTy(t), ModeledAsBoxType(t), tok);
     }
 

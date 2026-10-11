@@ -831,7 +831,8 @@ public partial class BoogieGenerator {
     if (UseQuantifierFreeFrames) {
       // $Alloc[$nw] := true;
       var alloc = AllocStateIdentifierExpr(tok);
-      cmd = Bpl.Cmd.SimpleAssign(tok, alloc, Bpl.Expr.StoreTok(tok, alloc, nw, Bpl.Expr.True));
+      cmd = Bpl.Cmd.SimpleAssign(tok, alloc, Bpl.Expr.StoreTok(tok, alloc,
+        UseQuantifierFreeVerification ? ApplyBox(tok, nw) : nw, Bpl.Expr.True));
     } else {
       // $Heap[$nw, alloc] := true;
       Bpl.Expr alloc = Predef.Alloc(tok);

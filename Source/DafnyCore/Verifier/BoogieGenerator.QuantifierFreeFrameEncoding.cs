@@ -13,6 +13,9 @@ public partial class BoogieGenerator {
   private bool qfAllocSetConfigured;
 
   private Bpl.Expr QfAllocatedSet(IOrigin tok, Bpl.Expr alloc) {
+    if (UseQuantifierFreeVerification) {
+      return alloc;
+    }
     if (!qfAllocSetConfigured) {
       // P3 omitted the definition of this prelude conversion. It is a
       // background map operation, not an axiom quantifying over heaps.
@@ -112,7 +115,8 @@ public partial class BoogieGenerator {
 
   private Bpl.Expr FrameMembership(IOrigin tok, Bpl.IdentifierExpr frame, Bpl.Expr obj, Bpl.Expr field) {
     if (UseQuantifierFreeFrames && qfFrames.TryGetValue(frame.Name, out var snapshot)) {
-      return BplOr(Bpl.Expr.Not(BplAnd(Bpl.Expr.Neq(obj, Predef.Null), Bpl.Expr.Select(snapshot.Alloc, obj))),
+      return BplOr(Bpl.Expr.Not(BplAnd(Bpl.Expr.Neq(obj, Predef.Null), Bpl.Expr.Select(snapshot.Alloc,
+          UseQuantifierFreeVerification ? ApplyBox(tok, obj) : obj))),
         QfInFrame(tok, snapshot.Components, obj, field));
     }
     return Bpl.Expr.SelectTok(tok, frame, obj, field);
@@ -279,6 +283,14 @@ public partial class BoogieGenerator {
       call.Args.Select(arg => (Expression)new BoogieWrapper(etran.TrExpr(arg), arg.Type)).ToList());
 
   private IEnumerable<FunctionCallExpr> QfFrameInstances(FunctionCallExpr call, List<Expression> references) {
+    // Transparent nonrecursive definitions expose their own field reads and
+    // nested calls in CollectQfTerms. Expanding them at unrelated receivers
+    // multiplies those observations without helping frame the observed call.
+    if (UseQuantifierFreeVerification && !call.Function.IsRecursive &&
+        FunctionBodyIsAvailable(call.Function, currentModule, currentScope)) {
+      yield return call;
+      yield break;
+    }
     // Artifact add_instantiation_pairs: substitute foreground arguments with
     // current variables and pointer projections. Background arguments stay fixed.
     IEnumerable<Expression> Choices(Expression original, Type acceptedType) => acceptedType.IsRefType
@@ -378,6 +390,8 @@ public partial class BoogieGenerator {
       .DistinctBy(call => before.TrExpr(call).ToString()).ToList();
     reads = reads.Where(read => QfExpressionInScope(read, locals))
       .DistinctBy(read => before.TrExpr(read).ToString()).ToList();
+    references = references.Where(reference => QfExpressionInScope(reference, locals))
+      .DistinctBy(reference => before.TrExpr(reference).ToString()).ToList();
     var changes = new List<QfFrameComponent>(modified);
     foreach (var obj in extraModified ?? []) {
       changes.Add(new QfFrameComponent(QfSingleton(tok, obj), null));
@@ -398,6 +412,24 @@ public partial class BoogieGenerator {
       Assume(QfSetSubset(tok, QfAllocatedSet(tok, beforeAlloc), QfAllocatedSet(tok, afterAlloc)));
     } else {
       Assume(Bpl.Expr.Eq(beforeAlloc, afterAlloc));
+    }
+    if (UseQuantifierFreeVerification) {
+      // A set<Node> cannot contain a LinkedSet receiver. The usual set
+      // typing axiom quantifies over every element; instantiate its forward
+      // implication at the reference observations used by these frame checks.
+      var typedSets = reads.Concat<Expression>(calls)
+        .Where(expression => expression.Type.NormalizeToAncestorType() is SetType { Finite: true } set && set.Arg.IsRefType);
+      foreach (var setExpression in typedSets) {
+        var elementType = ((SetType)setExpression.Type.NormalizeToAncestorType()).Arg;
+        foreach (var state in new[] { before, after }) {
+          var setValue = state.TrExpr(setExpression);
+          foreach (var reference in references) {
+            var element = state.TrExpr(reference);
+            var member = FunctionCall(tok, BuiltinFunction.SetIsMember, null, setValue, ApplyBox(tok, element));
+            Assume(BplImp(BplAnd(MkIs(setValue, setExpression.Type), member), MkIs(element, elementType)));
+          }
+        }
+      }
     }
     foreach (var call in calls.Where(call => call.Function is not TwoStateFunction && call.AtLabel == null)) {
       foreach (var state in new[] { before, after }) {
@@ -464,7 +496,7 @@ public partial class BoogieGenerator {
         }
         var ante = BplAnd(Bpl.Expr.Neq(obj, Predef.Null), Bpl.Expr.Not(QfInFrame(tok, modified, obj, field)));
         if (canAllocate) {
-          ante = BplAnd(ante, Bpl.Expr.Select(beforeAlloc, obj));
+          ante = BplAnd(ante, Bpl.Expr.Select(beforeAlloc, UseQuantifierFreeVerification ? ApplyBox(tok, obj) : obj));
         }
         foreach (var changed in extraModified ?? []) {
           ante = BplAnd(ante, Bpl.Expr.Neq(obj, changed));

@@ -8,9 +8,10 @@ namespace Microsoft.Dafny;
 
 public partial class BoogieGenerator {
   private bool UseQuantifierFreeFrames => options.Get(CommonOptionBag.QuantifierFreeFrames);
+  private bool UseQuantifierFreeVerification => UseQuantifierFreeFrames && options.Get(CommonOptionBag.Prelude3);
 
   private Bpl.Type AllocMapType(Bpl.IToken tok) {
-    return new Bpl.MapType(tok, [], [Predef.RefType], Bpl.Type.Bool);
+    return new Bpl.MapType(tok, [], [UseQuantifierFreeVerification ? Predef.BoxType : Predef.RefType], Bpl.Type.Bool);
   }
 
   internal string AllocVariableNameFromHeapName(string heapVariableName) {
